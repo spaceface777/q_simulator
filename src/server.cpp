@@ -4,9 +4,10 @@
 #include <sys/socket.h>
 #include <netinet/ip.h>
 #include <unistd.h>
+#include <array>
 
 #define MAX_BACKLOG 10
-#define MAX_TCP_BYTES_SIZE 4096
+#define MAX_TCP_BYTES_SIZE 512
 
 long port = 8080;
 
@@ -52,23 +53,23 @@ int main(void)
         throw std::runtime_error("Failed to accept peer connection");
     }
 
-    while (true)
+    // while (true)
     {
-        char buff[MAX_TCP_BYTES_SIZE];
-        for (int i = 0; i < MAX_TCP_BYTES_SIZE; ++i)
-        {
-            buff[i] = '\0';
-        }
-        const ssize_t count = read(other_fd, &buff, MAX_TCP_BYTES_SIZE - 1);
+        std::array<char, MAX_TCP_BYTES_SIZE> buff;
+        const ssize_t count = read(other_fd, buff.data(), buff.size());
 
-        std::cerr << "Read " << buff << std::endl;
+        std::cerr << "Read ";
+        for (const char c : buff)
+        {
+            std::cerr << c;
+        }
+        std::cerr << std::endl;
         if (count <= 0)
         {
             throw std::runtime_error("Failed to read");
         }
 
         const std::string b = "OK";
-
         if (write(other_fd, b.c_str(), b.length()) <= 0)
         {
             throw std::runtime_error("Failed to write");

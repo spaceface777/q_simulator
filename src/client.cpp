@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <array>
 
+#define MAX_TCP_BYTES_SIZE 512
+
 void setup_connection(int fd)
 {
     const struct sockaddr_in addr_in = {
@@ -38,7 +40,7 @@ int main(void)
 
     std::cerr << "Sent GET" << std::endl;
 
-    std::array<char, 4096> buff;
+    std::array<char, MAX_TCP_BYTES_SIZE> buff;
     const ssize_t confirm = read(fd, buff.data(), buff.size());
     if (confirm <= 0)
     {
@@ -52,9 +54,9 @@ int main(void)
     }
     std::cerr << std::endl;
 
-    while (true)
-    {
-    }
+    // while (true)
+    // {
+    // }
 
     close(fd);
 
