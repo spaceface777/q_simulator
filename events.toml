@@ -1,0 +1,55 @@
+# Defines the events that are to be used in this simulation run.
+# Each event is either a tub entering, or a plane arriving.
+# Events may be interleaved.
+
+# === Tubs ===
+# Tubs have the following attributes:
+# - time: The time at which the tub arrives in seconds.
+# - id: The tub id.
+# - origin: The origin of the tub. 
+#           Should be an array with the first element being either "plane" or "module".
+#           The second element is the id of the module or plane.
+# - destination: The destination of the tub. 
+#           Should be an array with the first element being either "plane" or "module".
+#           The second element is the id of the module or plane.
+# - safe: Whether the payload of the tub is safe.
+
+# === Planes ===
+# Planes have the following attributes:
+# - time: The time at which the plane arrives in seconds.
+# - id: The plane id.
+# - module: The module at which the plane arrives.
+# - leaves_in: The time in seconds after "time" the plane leaves.
+
+[tub.1]
+time = 0
+id = 1
+origin = ["module", 1]
+destination = ["module", 12]
+safe = true
+
+[tub.2]
+time = 15
+id = 2
+origin = ["module", 1]
+destination = ["module", 10]
+safe = false
+
+[plane.1]
+time = 20
+id = 1
+module = 3
+leaves_in = 60
+
+[tub.3]
+time = 30
+id = 4
+origin = ["plane", 3]
+destination = ["plane", 4]
+safe = true
+
+[plane.2]
+time = 40
+id = 1
+module = 3
+leaves_in = 60
