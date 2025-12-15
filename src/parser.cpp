@@ -106,6 +106,24 @@ int parse_int(std::string_view sv, std::string_view name)
 }
 
 /**
+ * Parses an bool from sv.
+ * @param sv The string to parse as an bool.
+ * @param name The name of the attribute.
+ * @return The parsed bool, or throws if invalid bounds.
+ * @throws std::invalid_argument for out of bounds values.
+ */
+bool parse_bool(std::string_view sv, std::string_view name) 
+{
+    if (sv == "true") {
+        return true;
+    } else if (sv == "false") {
+        return false;
+    }
+
+    throw std::invalid_argument("Invalid value for " + std::string(name) + ": " + std::string(sv));
+}
+
+/**
  * Parses the attributes of a tub.
  * @param state The state of the parsing machine.
  * @return The parsed tub, or throws for invalid attributes or values.
@@ -150,7 +168,7 @@ events::Tub parse_tub(State &state)
         }
         else if (attribute.name == "safe")
         {
-            safe = attribute.value == "true";
+            safe = parse_bool(attribute.value, "safe");
         }
         else if (attribute.name == "origin" || attribute.name == "destination")
         {
