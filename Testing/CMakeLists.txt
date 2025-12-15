@@ -3,7 +3,7 @@ project(Testing)
 
 enable_testing()
 
-add_executable(tests test_parser.cpp ../src/parser.cpp)
+add_executable(tests test_parser.cpp ../src/parser.cpp ../src/util.cpp)
 
 target_link_libraries(tests gtest gtest_main)
 

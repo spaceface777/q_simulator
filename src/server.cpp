@@ -31,7 +31,7 @@ void setup_port(int fd)
     }
 }
 
-int main(void)
+int main()
 {
     std::cerr << "Server init" << std::endl;
 

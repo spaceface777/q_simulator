@@ -1,47 +1,71 @@
+#include <algorithm>
+#include <cctype>
+#include <locale>
 #include <vector>
-#include <string>
+#include <string_view>
 
-namespace util
+#include "util.h"
+
+std::vector<std::string_view> util::split(std::string_view sv, std::string_view delimiter)
 {
-
-    /**
-     * Splits a string at the specified delimiter.
-     * @param str The string to split.
-     * @param delimiter The delimiter.
-     * @return All parts of str split by the delimiter.
-     */
-    std::vector<std::string_view> split(std::string_view str, std::string_view delimiter)
+    std::vector<std::string_view> tokens;
+    size_t pos = 0;
+    size_t start = 0;
+    while ((pos = sv.find(delimiter, start)) != std::string::npos)
     {
-        std::vector<std::string_view> tokens;
-        size_t pos = 0;
-        size_t start = 0;
-        while ((pos = str.find(delimiter, start)) != std::string::npos)
-        {
-            tokens.push_back(str.substr(start, pos - start));
-            start = pos + delimiter.length();
-        }
-        tokens.push_back(str.substr(start));
+        tokens.push_back(sv.substr(start, pos - start));
+        start = pos + delimiter.length();
+    }
+    tokens.push_back(sv.substr(start));
 
-        return tokens;
+    return tokens;
+}
+
+// gets the index of the last non-space character
+std::size_t rtrim_index(std::string_view sv)
+{
+    if (sv.empty())
+    {
+        return size_t(-1);
     }
 
-    /**
-     * Returns the final index of the non-space part of a string.
-     */
-    std::size_t rtrim_index(const std::string_view str)
+    std::size_t i = sv.size();
+    while (i > 0)
     {
-        const std::size_t length = str.size() - 1;
-        std::size_t trailing = length;
-
-        for (; trailing >= 0; trailing--)
+        const unsigned char ch = static_cast<unsigned char>(sv[i - 1]);
+        if (!std::isspace(ch))
         {
-            if (str[trailing] != ' ')
-            {
-                break;
-            }
+            return i - 1;
         }
-
-        return trailing;
+        --i;
     }
+    return std::size_t(-1);
+}
 
-};
+std::string_view util::ltrim(std::string_view sv)
+{
+    std::size_t i = 0;
+    while (i < sv.size())
+    {
+        const unsigned char ch = static_cast<unsigned char>(sv[i]);
+        if (!std::isspace(ch))
+            break;
+        ++i;
+    }
+    return sv.substr(i);
+}
+
+std::string_view util::rtrim(std::string_view sv)
+{
+    const std::size_t idx = rtrim_index(sv);
+    if (idx == size_t(-1))
+    {
+        return std::string_view();
+    }
+    return sv.substr(0, idx + 1);
+}
+
+std::string_view util::trim(std::string_view sv)
+{
+    return rtrim(ltrim(sv));
+}

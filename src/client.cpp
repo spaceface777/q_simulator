@@ -20,7 +20,7 @@ void setup_connection(int fd)
     }
 }
 
-int main(void)
+int main()
 {
     std::cerr << "Client init" << std::endl;
 

@@ -5,20 +5,20 @@
 #include <memory>
 #include <unordered_map>
 
-#include "util.cpp"
+#include "util.h"
 #include "parser.h"
 
 parser::Attribute parser::parse_attribute(std::string_view line)
 {
-    const std::vector<std::string_view> parts = util::split(line, " = ");
+    const std::vector<std::string_view> parts = util::split(line, "=");
 
     if (parts.size() != 2)
     {
         throw new std::runtime_error("Invalid attribute format");
     }
 
-    const std::string_view type = parts[0];
-    const std::string_view value = parts[1];
+    const std::string_view type = util::trim(parts[0]);
+    const std::string_view value = util::trim(parts[1]);
 
     // find last character that is not a comment
     bool inArray = false;
@@ -27,7 +27,7 @@ parser::Attribute parser::parse_attribute(std::string_view line)
     for (std::size_t i = 0; i < value.length(); i++)
     {
         const char c = value[i];
-        if (c == '"')
+        if (c == '"' && (i == 0 || value[i - 1] != '\\'))
         {
             inString = !inString;
             continue;
@@ -56,7 +56,7 @@ parser::Attribute parser::parse_attribute(std::string_view line)
     const std::string_view stripped = parts[1].substr(0, last);
     const parser::Attribute attribute = {
         .name = parts[0],
-        .value = stripped.substr(0, util::rtrim_index(stripped) + 1),
+        .value = util::rtrim(stripped),
     };
 
     return attribute;
@@ -75,7 +75,7 @@ std::unique_ptr<std::vector<parser::Parsable>> parser::parse_events()
         throw new std::runtime_error("Failed to open events.toml");
     }
 
-    int i = 0;
+    std::size_t i = 0;
     std::string line;
     while (std::getline(*file, line))
     {
@@ -93,15 +93,15 @@ std::unique_ptr<std::vector<parser::Parsable>> parser::parse_events()
 
         if (line[0] == '[')
         {
-            if (line[line.size() - 1] != ']')
+            if (line.back() != ']')
             {
-                throw new std::runtime_error("Invalid formatting in line " + i);
+                throw new std::runtime_error("Invalid formatting in line " + std::to_string(i));
             }
 
             const std::vector<std::string_view> parts = util::split(line, ".");
             if (parts.size() != 2)
             {
-                throw new std::runtime_error("Invalid formatting in line " + i);
+                throw new std::runtime_error("Invalid formatting in line " + std::to_string(i));
             }
 
             const std::string_view type = parts[0].substr(1);
@@ -113,7 +113,7 @@ std::unique_ptr<std::vector<parser::Parsable>> parser::parse_events()
             }
             else
             {
-                throw new std::runtime_error("Invalid type in line " + i);
+                throw new std::runtime_error("Invalid type in line " + std::to_string(i));
             }
         }
     }
