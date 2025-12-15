@@ -20,10 +20,11 @@ parser::Attribute parser::parse_attribute(std::string_view line)
     const std::string_view type = parts[0];
     const std::string_view value = parts[1];
 
+    // find last character that is not a comment
     bool inArray = false;
     bool inString = false;
-    size_t last = value.length() - 1;
-    for (size_t i = 0; i < value.length(); i++)
+    std::size_t last = value.length();
+    for (std::size_t i = 0; i < value.length(); i++)
     {
         const char c = value[i];
         if (c == '"')
@@ -51,9 +52,11 @@ parser::Attribute parser::parse_attribute(std::string_view line)
         }
     }
 
+    // strip comment
+    const std::string_view stripped = parts[1].substr(0, last);
     const parser::Attribute attribute = {
         .name = parts[0],
-        .value = parts[1].substr(0, last),
+        .value = stripped.substr(0, util::rtrim_index(stripped) + 1),
     };
 
     return attribute;
@@ -62,9 +65,10 @@ parser::Attribute parser::parse_attribute(std::string_view line)
 /**
  * Parses the events in the events.toml file.
  */
-std::vector<parser::Parsable> parser::parse_events()
+std::unique_ptr<std::vector<parser::Parsable>> parser::parse_events()
 {
     const std::unique_ptr<std::ifstream> file = std::make_unique<std::ifstream>("events.toml");
+    std::unique_ptr<std::vector<parser::Parsable>> objects = std::make_unique<std::vector<parser::Parsable>>();
 
     if (!file->is_open())
     {
@@ -114,5 +118,5 @@ std::vector<parser::Parsable> parser::parse_events()
         }
     }
 
-    return std::vector<parser::Parsable>();
+    return objects;
 }

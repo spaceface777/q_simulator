@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string_view>
 #include <vector>
+#include <memory>
 
 namespace parser
 {
@@ -121,8 +122,9 @@ namespace parser
 
     /**
      * Parses the events in the events.toml file.
+     * @return All parsed objects.
      */
-    std::vector<Parsable> parse_events();
+    std::unique_ptr<std::vector<Parsable>> parse_events();
 
 }
 
