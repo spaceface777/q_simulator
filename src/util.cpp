@@ -10,9 +10,9 @@ namespace util
      * @param delimiter The delimiter.
      * @return All parts of str split by the delimiter.
      */
-    std::vector<std::string> split(const std::string &str, const std::string &delimiter)
+    std::vector<std::string_view> split(const std::string_view str, const std::string_view delimiter)
     {
-        std::vector<std::string> tokens;
+        std::vector<std::string_view> tokens;
         size_t pos = 0;
         size_t start = 0;
         while ((pos = str.find(delimiter, start)) != std::string::npos)
