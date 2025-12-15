@@ -112,11 +112,14 @@ int parse_int(std::string_view sv, std::string_view name)
  * @return The parsed bool, or throws if invalid bounds.
  * @throws std::invalid_argument for out of bounds values.
  */
-bool parse_bool(std::string_view sv, std::string_view name) 
+bool parse_bool(std::string_view sv, std::string_view name)
 {
-    if (sv == "true") {
+    if (sv == "true")
+    {
         return true;
-    } else if (sv == "false") {
+    }
+    else if (sv == "false")
+    {
         return false;
     }
 
@@ -319,30 +322,47 @@ std::vector<events::Event> parser::parse_events()
         {
             if (line.back() != ']')
             {
+                state.file.close();
                 throw std::runtime_error("Invalid formatting in line " + std::to_string(state.idx));
             }
 
             const std::vector<std::string_view> parts = util::split(line, ".");
             if (parts.size() != 2)
             {
+                state.file.close();
                 throw std::runtime_error("Invalid formatting in line " + std::to_string(state.idx));
             }
 
             const std::string_view type = parts[0].substr(1);
             if (type == "tub")
             {
-                state.type = ParsableType::TUB;
-                objects.push_back(parse_tub(state));
-                state.type = ParsableType::NONE;
+                try
+                {
+                    state.type = ParsableType::TUB;
+                    objects.push_back(parse_tub(state));
+                    state.type = ParsableType::NONE;
+                }
+                catch (std::invalid_argument ex)
+                {
+                    state.file.close();
+                }
             }
             else if (type == "plane")
             {
-                state.type = ParsableType::PLANE;
-                objects.push_back(parse_plane(state));
-                state.type = ParsableType::NONE;
+                try
+                {
+                    state.type = ParsableType::PLANE;
+                    objects.push_back(parse_plane(state));
+                    state.type = ParsableType::NONE;
+                }
+                catch (std::invalid_argument ex)
+                {
+                    state.file.close();
+                }
             }
             else
             {
+                state.file.close();
                 throw std::runtime_error("Invalid type in line " + std::to_string(state.idx));
             }
         }

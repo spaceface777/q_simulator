@@ -14,7 +14,7 @@ namespace parser
     std::vector<events::Event> parse_events();
 
     /**
-     * Internal struct for parsing attributes.
+     * Struct for parsing attributes.
      */
     typedef struct
     {
