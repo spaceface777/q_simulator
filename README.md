@@ -1,6 +1,5 @@
-# Quercus Router Twin
-
-The repository for the Quercus Airport Router App Digital Twin.
+# Quercus Simulation
+The repository for the Quercus Airport Router Simulation.
 
 ## Requirements
 - Ubuntu 24 or higher, Debian 13 or higher
