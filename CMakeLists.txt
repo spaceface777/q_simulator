@@ -22,5 +22,5 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-add_subdirectory(Testing)
+add_subdirectory(test)
 
