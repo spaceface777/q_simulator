@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <array>
+#include "socket.h"
 
 #define MAX_TCP_BYTES_SIZE 512
 
@@ -24,16 +25,16 @@ int main()
 {
     std::cerr << "Client init" << std::endl;
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1)
+    Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
+    if (!socket.valid())
     {
         throw std::runtime_error("Failed to bind socket");
     }
 
-    (void)setup_connection(fd);
+    setup_connection(socket.fd());
 
     const std::string hey = "GET /index HTTP/1.1";
-    if (write(fd, hey.c_str(), hey.size()) <= 0)
+    if (write(socket.fd(), hey.c_str(), hey.size()) <= 0)
     {
         throw std::runtime_error("Failed to write to socket");
     }
@@ -41,7 +42,7 @@ int main()
     std::cerr << "Sent GET" << std::endl;
 
     std::array<char, MAX_TCP_BYTES_SIZE> buff;
-    const ssize_t confirm = read(fd, buff.data(), buff.size());
+    const ssize_t confirm = read(socket.fd(), buff.data(), buff.size());
     if (confirm <= 0)
     {
         throw std::runtime_error("Failed to get confirmation message");
@@ -57,8 +58,6 @@ int main()
     // while (true)
     // {
     // }
-
-    close(fd);
 
     return 0;
 }

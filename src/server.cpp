@@ -5,6 +5,7 @@
 #include <netinet/ip.h>
 #include <unistd.h>
 #include <array>
+#include "socket.h"
 
 #define MAX_BACKLOG 10
 #define MAX_TCP_BYTES_SIZE 512
@@ -35,19 +36,19 @@ int main()
 {
     std::cerr << "Server init" << std::endl;
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1)
+    Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
+    if (!socket.valid())
     {
         throw std::runtime_error("Failed to initialize socket");
     }
 
-    (void)setup_port(fd);
+    setup_port(socket.fd());
 
     std::cerr << "Waiting to connect to peer..." << std::endl;
 
     struct sockaddr other_addr;
     socklen_t other_len;
-    const int other_fd = accept(fd, &other_addr, &other_len);
+    const int other_fd = accept(socket.fd(), &other_addr, &other_len);
     if (other_fd == -1)
     {
         throw std::runtime_error("Failed to accept peer connection");
@@ -76,6 +77,5 @@ int main()
         }
     }
 
-    close(fd);
-    close(other_fd);
+    return 0;
 }
