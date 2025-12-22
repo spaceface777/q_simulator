@@ -3,22 +3,43 @@
 
 #include <pthread.h>
 #include <cstdint>
+#include <filesystem>
 
 class Module
 {
 private:
     uint8_t _id;
-    pid_t pid;
+    pid_t _pid = -1;
+    bool _running = false;
 
 public:
+    Module(uint8_t id)
+    {
+        _id = id;
+    }
+
     /**
      * @return The id of this module.
      */
-    uint8_t id() {
+    uint8_t id() const
+    {
         return _id;
     }
 
-    void run();
+    /**
+     * @return Whether this module's executable is running.
+     */
+    bool is_running() const
+    {
+        return _running;
+    }
+
+    /**
+     * Run this module as the executable found at path.
+     *
+     * @param path The file to execute.
+     */
+    void run(std::filesystem::path path);
 };
 
 #endif // MODULE_H
