@@ -3,18 +3,11 @@ project(quercus-router-shadow VERSION 0.1.0 LANGUAGES C CXX)
 
 # === Builds ===
 
-# add_executable(server src/tcp/server.cpp)
-# target_link_libraries(server pthread)
-
-add_executable(client 
-    src/tcp/client.cpp
-    src/packet/packet.cpp)
-target_link_libraries(client pthread)
-
 add_executable(main 
     src/main.cpp 
     src/events/parser.cpp 
     src/tcp/server.cpp 
+    src/tcp/client.cpp 
     src/util.cpp 
     src/module/module.cpp
     src/packet/packet.cpp)

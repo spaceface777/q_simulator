@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <cstdint>
 #include <filesystem>
+#include "../packet/packet.h"
 
 class Module
 {
@@ -40,6 +41,14 @@ public:
      * @param path The file to execute.
      */
     void run(std::filesystem::path path);
+
+    /**
+     * Sends a packet to this module.
+     *
+     * @param packet The packet to send.
+     */
+    void send(packet::Packet packet);
+
 };
 
 #endif // MODULE_H
