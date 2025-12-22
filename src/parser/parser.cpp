@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <string>
 
-#include "util.h"
+#include "../util.h"
 #include "parser.h"
 
 parser::Attribute parser::parse_attribute(std::string_view line)

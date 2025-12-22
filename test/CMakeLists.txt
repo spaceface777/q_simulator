@@ -3,7 +3,9 @@ project(test)
 
 enable_testing()
 
-add_executable(tests test_parser.cpp ../src/parser.cpp ../src/util.cpp)
+add_executable(tests 
+    test_parser.cpp ../src/parser/parser.cpp 
+    ../src/util.cpp)
 
 target_link_libraries(tests gtest gtest_main)
 target_compile_definitions(tests PRIVATE TESTS)
