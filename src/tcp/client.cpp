@@ -26,7 +26,7 @@ int main()
     std::cerr << "Client init" << std::endl;
 
     Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
-    if (!socket.valid())
+    if (!socket.is_valid())
     {
         throw std::runtime_error("Failed to bind socket");
     }

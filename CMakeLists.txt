@@ -9,7 +9,13 @@ project(quercus-router-shadow VERSION 0.1.0 LANGUAGES C CXX)
 add_executable(client src/tcp/client.cpp)
 target_link_libraries(client pthread)
 
-add_executable(main src/main.cpp src/events/parser.cpp src/tcp/server.cpp src/util.cpp)
+add_executable(main 
+    src/main.cpp 
+    src/events/parser.cpp 
+    src/tcp/server.cpp 
+    src/util.cpp 
+    src/module/module.cpp
+    src/purple/purple.cpp)
 target_link_libraries(main pthread)
 
 configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)

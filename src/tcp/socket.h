@@ -21,7 +21,7 @@ public:
 
     ~Socket()
     {
-        if (valid())
+        if (is_valid())
         {
             ::close(_fd);
         }
@@ -30,7 +30,7 @@ public:
     /**
      * Returns whether this socket has a valid file descriptor.
      */
-    bool valid()
+    bool is_valid() const
     {
         return _fd >= 0;
     }
@@ -66,7 +66,7 @@ public:
     {
         if (this != &other)
         {
-            if (valid())
+            if (is_valid())
             {
                 ::close(_fd);
             }
