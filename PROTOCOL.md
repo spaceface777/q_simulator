@@ -1,5 +1,5 @@
-# PURPLE
-The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE).
+# PURPLE 2
+The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE), version 2.
 
 ## Format
 The format of PURPLE follows that of TOML. The header indicates the type of message that is sent. Currently accepted:
@@ -76,6 +76,24 @@ Required elements:
 [plane.departure]
 id = 2
 module = 6
+```
+
+## `[shutdown]`
+Used to indicate to a module to shut down immediately.
+
+```toml
+[shutdown]
+```
+
+## `[shutdown.confirm]`
+Sent from a module to indicate shutdown was completed.
+
+Required elements:
+- `id = <uint>`: The id of the plane.
+
+```toml
+[shutdown.confirm]
+id = 2
 ```
 
 ## Sending
