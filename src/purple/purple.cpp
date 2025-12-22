@@ -3,7 +3,7 @@
 #include <string_view>
 
 /**
- * Creates a buffer to create a TOML representation.
+ * @return A buffer to create a TOML representation.
  */
 std::string create_buffer()
 {
@@ -70,6 +70,31 @@ std::string purple::Update::to_toml() const
     append_header(buffer, "update");
     append_value(buffer, "id", _id);
     append_value(buffer, "device", _device);
-    append_value(buffer, "value", _id);
+    append_value(buffer, "value", _value);
+    return buffer;
+}
+
+bool purple::Shutdown::is_valid() const
+{
+    return true;
+}
+
+std::string purple::Shutdown::to_toml() const
+{
+    std::string buffer = create_buffer();
+    append_header(buffer, "shutdown");
+    return buffer;
+}
+
+bool purple::ShutdownConfirm::is_valid() const
+{
+    return true;
+}
+
+std::string purple::ShutdownConfirm::to_toml() const
+{
+    std::string buffer = create_buffer();
+    append_header(buffer, "shutdown.confirm");
+    append_value(buffer, "id", _id);
     return buffer;
 }
