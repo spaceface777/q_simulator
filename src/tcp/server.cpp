@@ -5,6 +5,7 @@
 #include <netinet/ip.h>
 #include <unistd.h>
 #include <array>
+#include <atomic>
 
 #include "socket.h"
 #include "server.h"
@@ -12,9 +13,13 @@
 #define MAX_BACKLOG 10
 #define MAX_TCP_BYTES_SIZE 512
 
-long port = 8080;
+std::atomic_bool stopped = false;
 
-void setup_port(int fd)
+void server::stop() {
+    stopped = true;
+}
+
+void setup_port(int fd, unsigned long port)
 {
     const struct sockaddr_in addr_in = {
         .sin_family = AF_INET,
@@ -34,7 +39,7 @@ void setup_port(int fd)
     }
 }
 
-int main()
+void server::run(unsigned long port)
 {
     std::cerr << "Server init" << std::endl;
 
@@ -44,7 +49,7 @@ int main()
         throw std::runtime_error("Failed to initialize socket");
     }
 
-    setup_port(socket.fd());
+    setup_port(socket.fd(), port);
 
     std::cerr << "Waiting to connect to peer..." << std::endl;
 
@@ -78,6 +83,4 @@ int main()
             throw std::runtime_error("Failed to write");
         }
     }
-
-    return 0;
 }

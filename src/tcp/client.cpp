@@ -11,7 +11,7 @@ void setup_connection(int fd)
 {
     const struct sockaddr_in addr_in = {
         .sin_family = AF_INET,
-        .sin_port = htons(8080),
+        .sin_port = htons(7777),
         .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
 
     // connect to peer

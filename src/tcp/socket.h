@@ -10,6 +10,9 @@
  */
 class Socket
 {
+private:
+    int _fd = -1;
+
 public:
     Socket(int fd)
     {
@@ -71,9 +74,6 @@ public:
         }
         return *this;
     }
-
-private:
-    int _fd = -1;
 };
 
 #endif // SOCKET_H

@@ -4,7 +4,7 @@ project(test)
 enable_testing()
 
 add_executable(tests 
-    test_parser.cpp ../src/parser/parser.cpp 
+    test_parser.cpp ../src/events/parser.cpp 
     ../src/util.cpp)
 
 target_link_libraries(tests gtest gtest_main)

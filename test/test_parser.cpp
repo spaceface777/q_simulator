@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../src/parser/parser.h"
+#include "../src/events/parser.h"
 
 TEST(Parser, ParseAttribute)
 {
