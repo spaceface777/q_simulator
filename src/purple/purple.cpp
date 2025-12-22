@@ -44,6 +44,18 @@ void append_value(std::string &buf, std::string_view attr, std::string_view valu
     buf += std::string(attr) + " = \"" + std::string(value) + "\"\n";
 }
 
+/**
+ * Removes a trailing nl.
+ * @param buf The buffer.
+ */
+void trim_trailing_nl(std::string &buf) 
+{
+    if (buf[buf.size() - 1] == '\n') 
+    {
+        buf.erase(buf.size() - 1, 1);
+    }
+}
+
 bool purple::Message::is_valid() const
 {
     return false;
@@ -52,65 +64,6 @@ bool purple::Message::is_valid() const
 std::string purple::Message::to_toml() const
 {
     return std::string();
-}
-
-bool purple::TubArrival::is_valid() const
-{
-    return true;
-}
-
-std::string purple::TubArrival::to_toml() const
-{
-    std::string buffer = create_buffer();
-    append_header(buffer, "tub.arrival");
-    append_value(buffer, "id", _id);
-    append_value(buffer, "module", _module);
-    append_value(buffer, "destination", _destination);
-    append_value(buffer, "safe", _safe);
-    return buffer;
-}
-
-bool purple::TubDeparture::is_valid() const
-{
-    return true;
-}
-
-std::string purple::TubDeparture::to_toml() const
-{
-    std::string buffer = create_buffer();
-    append_header(buffer, "tub.departure");
-    append_value(buffer, "id", _id);
-    append_value(buffer, "module", _module);
-    return buffer;
-}
-
-bool purple::PlaneArrival::is_valid() const
-{
-    return true;
-}
-
-std::string purple::PlaneArrival::to_toml() const
-{
-    std::string buffer = create_buffer();
-    append_header(buffer, "plane.arrival");
-    append_value(buffer, "id", _id);
-    append_value(buffer, "module", _module);
-    append_value(buffer, "leaves_in", _leaves_in);
-    return buffer;
-}
-
-bool purple::PlaneDeparture::is_valid() const
-{
-    return true;
-}
-
-std::string purple::PlaneDeparture::to_toml() const
-{
-    std::string buffer = create_buffer();
-    append_header(buffer, "plane.departure");
-    append_value(buffer, "id", _id);
-    append_value(buffer, "module", _module);
-    return buffer;
 }
 
 bool purple::Update::is_valid() const
@@ -125,12 +78,76 @@ bool purple::Update::is_valid() const
 
 std::string purple::Update::to_toml() const
 {
-    std::string buffer = create_buffer();
-    append_header(buffer, "update");
-    append_value(buffer, "id", _id);
-    append_value(buffer, "device", _device);
-    append_value(buffer, "value", _value);
-    return buffer;
+    std::string buf = create_buffer();
+    append_header(buf, "update");
+    append_value(buf, "id", _id);
+    append_value(buf, "device", _device);
+    append_value(buf, "value", _value);
+    trim_trailing_nl(buf);
+    return buf;
+}
+
+bool purple::TubArrival::is_valid() const
+{
+    return true;
+}
+
+std::string purple::TubArrival::to_toml() const
+{
+    std::string buf = create_buffer();
+    append_header(buf, "tub.arrival");
+    append_value(buf, "id", _id);
+    append_value(buf, "module", _module);
+    append_value(buf, "destination", _destination);
+    append_value(buf, "safe", _safe);
+    trim_trailing_nl(buf);
+    return buf;
+}
+
+bool purple::TubDeparture::is_valid() const
+{
+    return true;
+}
+
+std::string purple::TubDeparture::to_toml() const
+{
+    std::string buf = create_buffer();
+    append_header(buf, "tub.departure");
+    append_value(buf, "id", _id);
+    append_value(buf, "module", _module);
+    trim_trailing_nl(buf);
+    return buf;
+}
+
+bool purple::PlaneArrival::is_valid() const
+{
+    return true;
+}
+
+std::string purple::PlaneArrival::to_toml() const
+{
+    std::string buf = create_buffer();
+    append_header(buf, "plane.arrival");
+    append_value(buf, "id", _id);
+    append_value(buf, "module", _module);
+    append_value(buf, "leaves_in", _leaves_in);
+    trim_trailing_nl(buf);
+    return buf;
+}
+
+bool purple::PlaneDeparture::is_valid() const
+{
+    return true;
+}
+
+std::string purple::PlaneDeparture::to_toml() const
+{
+    std::string buf = create_buffer();
+    append_header(buf, "plane.departure");
+    append_value(buf, "id", _id);
+    append_value(buf, "module", _module);
+    trim_trailing_nl(buf);
+    return buf;
 }
 
 bool purple::Shutdown::is_valid() const
@@ -140,9 +157,10 @@ bool purple::Shutdown::is_valid() const
 
 std::string purple::Shutdown::to_toml() const
 {
-    std::string buffer = create_buffer();
-    append_header(buffer, "shutdown");
-    return buffer;
+    std::string buf = create_buffer();
+    append_header(buf, "shutdown");
+    trim_trailing_nl(buf);
+    return buf;
 }
 
 bool purple::ShutdownConfirm::is_valid() const
@@ -152,8 +170,9 @@ bool purple::ShutdownConfirm::is_valid() const
 
 std::string purple::ShutdownConfirm::to_toml() const
 {
-    std::string buffer = create_buffer();
-    append_header(buffer, "shutdown.confirm");
-    append_value(buffer, "id", _id);
-    return buffer;
+    std::string buf = create_buffer();
+    append_header(buf, "shutdown.confirm");
+    append_value(buf, "id", _id);
+    trim_trailing_nl(buf);
+    return buf;
 }
