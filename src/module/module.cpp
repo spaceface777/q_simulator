@@ -1,32 +1,36 @@
-#include "module.h"
-
 #include <pthread.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <iostream>
 #include <string>
 
-void Module::run(std::filesystem::path path)
+#include "module.h"
+
+namespace module
 {
-	_pid = fork();
-	if (_pid == -1)
+
+	void Module::run(std::filesystem::path path)
 	{
-		throw std::runtime_error("Failed to fork");
-	}
-
-	const bool child = _pid == 0;
-	if (child)
-	{
-		std::cout << "Starting process " << path << "at " << getpid() << std::endl;
-
-		const std::string module_name = "Module " + std::to_string(_id);
-		const int success = execl(path.c_str(), module_name.c_str(), std::to_string(7777 + _id + 1), (char *)0);
-
-		if (success < 0)
+		_pid = fork();
+		if (_pid == -1)
 		{
-			throw std::runtime_error("Failed to execl");
+			throw std::runtime_error("Failed to fork");
 		}
-	}
 
-	_running = true;
+		const bool child = _pid == 0;
+		if (child)
+		{
+			std::cout << "Starting process " << path << "at " << getpid() << std::endl;
+
+			const std::string module_name = "Module " + std::to_string(_id);
+			const int success = execl(path.c_str(), module_name.c_str(), std::to_string(7777 + _id + 1), (char *)0);
+
+			if (success < 0)
+			{
+				throw std::runtime_error("Failed to execl");
+			}
+		}
+
+		_running = true;
+	}
 }
