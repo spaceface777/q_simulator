@@ -78,6 +78,7 @@ void server::run(unsigned long port)
         }
 
         const std::string b = "OK";
+        
         if (write(other_fd, b.c_str(), b.length()) <= 0)
         {
             throw std::runtime_error("Failed to write");

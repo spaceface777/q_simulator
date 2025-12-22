@@ -1,6 +1,6 @@
 #include "events/parser.h"
 #include "tcp/server.h"
-#include "purple/purple.h"
+#include "packet/packet.h"
 #include <thread>
 
 int main(int argc, char const *argv[])
@@ -13,8 +13,6 @@ int main(int argc, char const *argv[])
     {
         server.join();
     }
-
-    purple::Message msg = purple::Update(1, "2", 3);
 
     return 0;
 }

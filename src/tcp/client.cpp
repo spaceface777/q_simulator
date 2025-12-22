@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <array>
 #include "socket.h"
+#include "../packet/packet.h"
 
 #define MAX_TCP_BYTES_SIZE 512
 
@@ -33,8 +34,9 @@ int main()
 
     setup_connection(socket.fd());
 
-    const std::string hey = "GET /index HTTP/1.1";
-    if (write(socket.fd(), hey.c_str(), hey.size()) <= 0)
+    packet::Update update(1, "2", 3);
+    const std::string toml = update.to_toml();
+    if (write(socket.fd(), toml.c_str(), toml.size()) <= 0)
     {
         throw std::runtime_error("Failed to write to socket");
     }

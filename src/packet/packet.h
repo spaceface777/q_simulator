@@ -4,12 +4,12 @@
 #include <string>
 #include <cstdint>
 
-namespace purple
+namespace packet
 {
     /**
      * Represents a generic PURPLE message.
      */
-    class Message
+    class Packet
     {
     public:
         /**
@@ -22,10 +22,10 @@ namespace purple
          */
         virtual std::string to_toml() const;
 
-        virtual ~Message() = default;
+        virtual ~Packet() = default;
     };
 
-    class Update : public Message
+    class Update : public Packet
     {
     private:
         uint8_t _id;
@@ -68,7 +68,7 @@ namespace purple
         std::string to_toml() const override;
     };
 
-    class TubArrival : public Message
+    class TubArrival : public Packet
     {
     private:
         uint8_t _id;
@@ -112,7 +112,7 @@ namespace purple
         /**
          * @return Whether this tub is safe.
          */
-        bool safe() const 
+        bool safe() const
         {
             return _safe;
         }
@@ -121,7 +121,7 @@ namespace purple
         std::string to_toml() const override;
     };
 
-    class TubDeparture : public Message
+    class TubDeparture : public Packet
     {
     private:
         uint8_t _id;
@@ -154,7 +154,7 @@ namespace purple
         std::string to_toml() const override;
     };
 
-    class PlaneArrival : public Message
+    class PlaneArrival : public Packet
     {
     private:
         uint8_t _id;
@@ -197,7 +197,7 @@ namespace purple
         std::string to_toml() const override;
     };
 
-    class PlaneDeparture : public Message
+    class PlaneDeparture : public Packet
     {
     private:
         uint8_t _id;
@@ -230,7 +230,7 @@ namespace purple
         std::string to_toml() const override;
     };
 
-    class Shutdown : public Message
+    class Shutdown : public Packet
     {
     public:
         Shutdown() {};
@@ -239,7 +239,7 @@ namespace purple
         std::string to_toml() const override;
     };
 
-    class ShutdownConfirm : public Message
+    class ShutdownConfirm : public Packet
     {
     private:
         uint8_t _id;

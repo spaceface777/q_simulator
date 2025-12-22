@@ -1,6 +1,7 @@
-#include "purple.h"
 #include <string>
 #include <string_view>
+
+#include "packet.h"
 
 /**
  * @return A buffer to create a TOML representation.
@@ -56,17 +57,17 @@ void trim_trailing_nl(std::string &buf)
     }
 }
 
-bool purple::Message::is_valid() const
+bool packet::Packet::is_valid() const
 {
     return false;
 }
 
-std::string purple::Message::to_toml() const
+std::string packet::Packet::to_toml() const
 {
     return std::string();
 }
 
-bool purple::Update::is_valid() const
+bool packet::Update::is_valid() const
 {
     if (_device.empty())
     {
@@ -76,7 +77,7 @@ bool purple::Update::is_valid() const
     return true;
 }
 
-std::string purple::Update::to_toml() const
+std::string packet::Update::to_toml() const
 {
     std::string buf = create_buffer();
     append_header(buf, "update");
@@ -87,12 +88,12 @@ std::string purple::Update::to_toml() const
     return buf;
 }
 
-bool purple::TubArrival::is_valid() const
+bool packet::TubArrival::is_valid() const
 {
     return true;
 }
 
-std::string purple::TubArrival::to_toml() const
+std::string packet::TubArrival::to_toml() const
 {
     std::string buf = create_buffer();
     append_header(buf, "tub.arrival");
@@ -104,12 +105,12 @@ std::string purple::TubArrival::to_toml() const
     return buf;
 }
 
-bool purple::TubDeparture::is_valid() const
+bool packet::TubDeparture::is_valid() const
 {
     return true;
 }
 
-std::string purple::TubDeparture::to_toml() const
+std::string packet::TubDeparture::to_toml() const
 {
     std::string buf = create_buffer();
     append_header(buf, "tub.departure");
@@ -119,12 +120,12 @@ std::string purple::TubDeparture::to_toml() const
     return buf;
 }
 
-bool purple::PlaneArrival::is_valid() const
+bool packet::PlaneArrival::is_valid() const
 {
     return true;
 }
 
-std::string purple::PlaneArrival::to_toml() const
+std::string packet::PlaneArrival::to_toml() const
 {
     std::string buf = create_buffer();
     append_header(buf, "plane.arrival");
@@ -135,12 +136,12 @@ std::string purple::PlaneArrival::to_toml() const
     return buf;
 }
 
-bool purple::PlaneDeparture::is_valid() const
+bool packet::PlaneDeparture::is_valid() const
 {
     return true;
 }
 
-std::string purple::PlaneDeparture::to_toml() const
+std::string packet::PlaneDeparture::to_toml() const
 {
     std::string buf = create_buffer();
     append_header(buf, "plane.departure");
@@ -150,12 +151,12 @@ std::string purple::PlaneDeparture::to_toml() const
     return buf;
 }
 
-bool purple::Shutdown::is_valid() const
+bool packet::Shutdown::is_valid() const
 {
     return true;
 }
 
-std::string purple::Shutdown::to_toml() const
+std::string packet::Shutdown::to_toml() const
 {
     std::string buf = create_buffer();
     append_header(buf, "shutdown");
@@ -163,12 +164,12 @@ std::string purple::Shutdown::to_toml() const
     return buf;
 }
 
-bool purple::ShutdownConfirm::is_valid() const
+bool packet::ShutdownConfirm::is_valid() const
 {
     return true;
 }
 
-std::string purple::ShutdownConfirm::to_toml() const
+std::string packet::ShutdownConfirm::to_toml() const
 {
     std::string buf = create_buffer();
     append_header(buf, "shutdown.confirm");
