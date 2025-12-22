@@ -26,7 +26,7 @@ Used to indicate the arrival of a tub in the system.
 Required elements:
 - `id = <uint>`: The id of the tub.
 - `module = <uint>`: The module that this tub arrives at.
-- `device = <uint>`: The destination module. 
+- `destination = <uint>`: The destination module. 
 - `safe = <bool>`: Whether the tub is safe.
 
 ```toml
