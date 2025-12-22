@@ -17,7 +17,7 @@ Example:
 [update]
 module = 12
 device = "led"
-value = 0x231409
+value = 2298889
 ```
 
 ## `[tub.arrival]`
