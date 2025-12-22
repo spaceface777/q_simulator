@@ -5,7 +5,9 @@
 #include <netinet/ip.h>
 #include <unistd.h>
 #include <array>
+
 #include "socket.h"
+#include "server.h"
 
 #define MAX_BACKLOG 10
 #define MAX_TCP_BYTES_SIZE 512
