@@ -1,8 +1,11 @@
 image: ubuntu:24.04
 
-job:
+before_script:
+  - apt-get update
+  - apt-get install -y cmake
+
+build:
   script:
-    - apt-get install cmake
     - cmake .
     - cmake --build .
     - ./test/tests
