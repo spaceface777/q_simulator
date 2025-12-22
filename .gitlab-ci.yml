@@ -2,7 +2,7 @@ image: ubuntu:24.04
 
 before_script:
   - apt-get update
-  - apt-get install -y cmake build-essential
+  - apt-get install -y git cmake build-essential
 
 build:
   script:
