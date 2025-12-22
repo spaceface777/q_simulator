@@ -8,7 +8,7 @@
 #include <atomic>
 
 #include "socket.h"
-#include "server.h"
+#include "tcp.h"
 
 #define MAX_BACKLOG 10
 #define MAX_TCP_BYTES_SIZE 512

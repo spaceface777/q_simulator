@@ -6,7 +6,7 @@ project(quercus-router-shadow VERSION 0.1.0 LANGUAGES C CXX)
 add_executable(main 
     src/main.cpp 
     src/events/parser.cpp 
-    src/tcp/server.cpp 
+    src/tcp/tcp.cpp 
     src/tcp/client.cpp 
     src/util.cpp 
     src/module/module.cpp
