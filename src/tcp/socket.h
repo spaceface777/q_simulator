@@ -30,7 +30,7 @@ public:
     /**
      * Returns whether this socket has a valid file descriptor.
      */
-    bool is_valid() const
+    bool is_valid() const noexcept
     {
         return _fd >= 0;
     }
@@ -38,7 +38,7 @@ public:
     /**
      * Returns the file descriptor described by this socket.
      */
-    int fd() const
+    int fd() const noexcept
     {
         return _fd;
     }
@@ -46,7 +46,7 @@ public:
     /**
      * Marks this socket as unused.
      */
-    int release()
+    int release() noexcept
     {
         int _ = _fd;
         _fd = -1;

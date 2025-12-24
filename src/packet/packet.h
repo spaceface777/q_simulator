@@ -15,12 +15,12 @@ namespace packet
         /**
          * @return Whether the message with these values is valid.
          */
-        virtual bool is_valid() const;
+        virtual bool is_valid() const noexcept;
 
         /**
          * @return Converts the data in this class to TOML.
          */
-        virtual std::string to_toml() const;
+        virtual std::string to_toml() const noexcept;
 
         virtual ~Packet() = default;
     };
@@ -43,7 +43,7 @@ namespace packet
         /**
          * @return The id of the module.
          */
-        uint8_t id() const
+        uint8_t id() const noexcept
         {
             return _id;
         }
@@ -51,7 +51,7 @@ namespace packet
         /**
          * @return The device that had its value updated.
          */
-        std::string device() const
+        std::string device() const noexcept
         {
             return _device;
         }
@@ -59,13 +59,13 @@ namespace packet
         /**
          * @return The updated value.
          */
-        int value() const
+        int value() const noexcept
         {
             return _value;
         }
 
-        bool is_valid() const override;
-        std::string to_toml() const override;
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
     };
 
     class TubArrival : public Packet
@@ -88,7 +88,7 @@ namespace packet
         /**
          * @return The id of the plane.
          */
-        uint8_t id() const
+        uint8_t id() const noexcept
         {
             return _id;
         }
@@ -96,7 +96,7 @@ namespace packet
         /**
          * @return The id of the module.
          */
-        uint8_t module() const
+        uint8_t module() const noexcept
         {
             return _module;
         }
@@ -104,7 +104,7 @@ namespace packet
         /**
          * @return The amount of time until the plane leaves.
          */
-        uint8_t destination() const
+        uint8_t destination() const noexcept
         {
             return _destination;
         }
@@ -112,13 +112,13 @@ namespace packet
         /**
          * @return Whether this tub is safe.
          */
-        bool safe() const
+        bool safe() const noexcept
         {
             return _safe;
         }
 
-        bool is_valid() const override;
-        std::string to_toml() const override;
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
     };
 
     class TubDeparture : public Packet
@@ -137,7 +137,7 @@ namespace packet
         /**
          * @return The id of the plane.
          */
-        uint8_t id() const
+        uint8_t id() const noexcept
         {
             return _id;
         }
@@ -145,13 +145,13 @@ namespace packet
         /**
          * @return The id of the module.
          */
-        uint8_t module() const
+        uint8_t module() const noexcept
         {
             return _module;
         }
 
-        bool is_valid() const override;
-        std::string to_toml() const override;
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
     };
 
     class PlaneArrival : public Packet
@@ -172,7 +172,7 @@ namespace packet
         /**
          * @return The id of the plane.
          */
-        uint8_t id() const
+        uint8_t id() const noexcept
         {
             return _id;
         }
@@ -180,7 +180,7 @@ namespace packet
         /**
          * @return The id of the module.
          */
-        uint8_t module() const
+        uint8_t module() const noexcept
         {
             return _module;
         }
@@ -188,13 +188,13 @@ namespace packet
         /**
          * @return The amount of time until the plane leaves.
          */
-        uint16_t leaves_in() const
+        uint16_t leaves_in() const noexcept
         {
             return _leaves_in;
         }
 
-        bool is_valid() const override;
-        std::string to_toml() const override;
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
     };
 
     class PlaneDeparture : public Packet
@@ -213,7 +213,7 @@ namespace packet
         /**
          * @return The id of the plane.
          */
-        uint8_t id() const
+        uint8_t id() const noexcept
         {
             return _id;
         }
@@ -221,13 +221,13 @@ namespace packet
         /**
          * @return The id of the module.
          */
-        uint8_t module() const
+        uint8_t module() const noexcept
         {
             return _module;
         }
 
-        bool is_valid() const override;
-        std::string to_toml() const override;
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
     };
 
     class Shutdown : public Packet
@@ -235,8 +235,8 @@ namespace packet
     public:
         Shutdown() {};
 
-        bool is_valid() const override;
-        std::string to_toml() const override;
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
     };
 
     class ShutdownConfirm : public Packet
@@ -253,13 +253,13 @@ namespace packet
         /**
          * @return The id of the module.
          */
-        uint8_t id() const
+        uint8_t id() const noexcept
         {
             return _id;
         }
 
-        bool is_valid() const override;
-        std::string to_toml() const override;
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
     };
 
 };

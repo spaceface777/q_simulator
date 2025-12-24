@@ -24,7 +24,7 @@ namespace module
         /**
          * @return The id of this module.
          */
-        uint8_t id() const
+        uint8_t id() const noexcept
         {
             return _id;
         }
@@ -32,7 +32,7 @@ namespace module
         /**
          * @return Whether this module's executable is running.
          */
-        bool is_running() const
+        bool is_running() const noexcept
         {
             return _running;
         }
