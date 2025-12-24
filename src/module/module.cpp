@@ -15,7 +15,7 @@ namespace module
 		_pid = fork();
 		if (_pid == -1)
 		{
-			throw std::runtime_error("Failed to fork: " + std::string(::strerror(errno)));
+			throw std::runtime_error("Failed to fork: " + std::string(std::strerror(errno)));
 		}
 
 		const bool child = _pid == 0;
@@ -24,7 +24,8 @@ namespace module
 			std::cout << "Starting process " << path << " at " << getpid() << std::endl;
 
 			const std::string module_name = "Module " + std::to_string(_id);
-			const int success = execl(path.c_str(), module_name.c_str(), std::to_string(7777 + _id + 1), (char *)0);
+			const std::string port = std::to_string(7777 + _id + 1);
+			const int success = execl(path.c_str(), module_name.c_str(), port.c_str(), (char *)0);
 
 			if (success < 0)
 			{
