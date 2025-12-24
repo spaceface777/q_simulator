@@ -45,8 +45,6 @@ namespace server
 
     void run(unsigned int port)
     {
-        std::cerr << "Server init" << std::endl;
-
         Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
         if (!socket.is_valid())
         {
