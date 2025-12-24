@@ -16,7 +16,7 @@ namespace client
 {
     std::atomic_bool stopped = false;
 
-    void stop()
+    void Client::stop()
     {
         stopped = true;
     }
@@ -35,10 +35,8 @@ namespace client
         }
     }
 
-    void run(unsigned int port)
+    void Client::run()
     {
-        std::cerr << "Client init" << std::endl;
-
         Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
         if (!socket.is_valid())
         {
@@ -80,16 +78,12 @@ namespace client
 #ifdef CLIENT
 int main(int argc, char const *argv[])
 {
-    for (size_t i = 0; i < argc; i++)
-    {
-        std::cout << "Arg " << std::to_string(i) << " = " << argv[i] << std::endl;
-    }
-
     int port = std::stoi(argv[1]);
 
     std::cout << "Started client on port " << std::to_string(port) << std::endl;
 
-    client::run(port);
+    client::Client client(7777);
+    client.run();
 
     return 0;
 }

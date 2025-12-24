@@ -4,11 +4,22 @@
 // only used for testing
 namespace client
 {
+    class Client
+    {
+    private:
+        int _fd;
+        unsigned int _port;
 
-    void stop();
+    public:
+        Client(unsigned int port)
+        {
+            _port = port;
+        }
 
+        void stop();
 
-    void run(unsigned int port);
+        void run();
+    };
 
 }
 
