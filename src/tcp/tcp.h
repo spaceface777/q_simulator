@@ -13,7 +13,7 @@ namespace server
      *
      * @param port The port to run the server on.
      */
-    void run(unsigned long port);
+    void run(unsigned int port);
 
 }
 

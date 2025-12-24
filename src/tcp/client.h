@@ -8,7 +8,7 @@ namespace client
     void stop();
 
 
-    void run(unsigned long port);
+    void run(unsigned int port);
 
 }
 

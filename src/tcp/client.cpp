@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <array>
 #include <atomic>
+#include <cstring>
 
 #include "../packet/packet.h"
 #include "socket.h"
@@ -30,18 +31,18 @@ namespace client
         // connect to peer
         if (connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
-            throw std::runtime_error("Failed to connect to peer");
+            throw std::runtime_error("Failed to connect to peer: " + std::string(::strerror(errno)));
         }
     }
 
-    void run(unsigned long port)
+    void run(unsigned int port)
     {
         std::cerr << "Client init" << std::endl;
 
         Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
         if (!socket.is_valid())
         {
-            throw std::runtime_error("Failed to bind socket");
+            throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
         setup_connection(socket.fd());
@@ -59,7 +60,7 @@ namespace client
         const ssize_t confirm = read(socket.fd(), buff.data(), buff.size());
         if (confirm <= 0)
         {
-            throw std::runtime_error("Failed to get confirmation message");
+            throw std::runtime_error("Failed to get confirmation message: " + std::string(::strerror(errno)));
         }
 
         std::cerr << "Read ";
@@ -75,3 +76,21 @@ namespace client
     }
 
 }
+
+#ifdef CLIENT
+int main(int argc, char const *argv[])
+{
+    for (size_t i = 0; i < argc; i++)
+    {
+        std::cout << "Arg " << std::to_string(i) << " = " << argv[i] << std::endl;
+    }
+
+    int port = std::stoi(argv[1]);
+
+    std::cout << "Started client on port " << std::to_string(port) << std::endl;
+
+    client::run(port);
+
+    return 0;
+}
+#endif

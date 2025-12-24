@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <array>
 #include <atomic>
+#include <cstring>
 
 #include "socket.h"
 #include "tcp.h"
@@ -22,7 +23,7 @@ namespace server
         stopped = true;
     }
 
-    void setup_port(int fd, unsigned long port)
+    void setup_port(int fd, unsigned int port)
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
@@ -32,24 +33,24 @@ namespace server
         // assign fd to port
         if (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
-            throw std::runtime_error("Failed to bind socket");
+            throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
         // enable listening
         if (::listen(fd, MAX_BACKLOG) != 0)
         {
-            throw std::runtime_error("Failed to set listening mode");
+            throw std::runtime_error("Failed to set listening mode: " + std::string(::strerror(errno)));
         }
     }
 
-    void run(unsigned long port)
+    void run(unsigned int port)
     {
         std::cerr << "Server init" << std::endl;
 
         Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
         if (!socket.is_valid())
         {
-            throw std::runtime_error("Failed to initialize socket");
+            throw std::runtime_error("Failed to initialize socket: " + std::string(::strerror(errno)));
         }
 
         setup_port(socket.fd(), port);
@@ -61,7 +62,7 @@ namespace server
         const int other_fd = ::accept(socket.fd(), &other_addr, &other_len);
         if (other_fd == -1)
         {
-            throw std::runtime_error("Failed to accept peer connection");
+            throw std::runtime_error("Failed to accept peer connection: " + std::string(::strerror(errno)));
         }
 
         // while (true)
@@ -84,7 +85,7 @@ namespace server
 
             if (::write(other_fd, b.c_str(), b.length()) <= 0)
             {
-                throw std::runtime_error("Failed to write");
+                throw std::runtime_error("Failed to write: " + std::string(::strerror(errno)));
             }
         }
     }

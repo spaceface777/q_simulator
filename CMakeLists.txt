@@ -3,6 +3,11 @@ project(quercus-router-shadow VERSION 0.1.0 LANGUAGES C CXX)
 
 # === Builds ===
 
+add_executable(client 
+    src/tcp/client.cpp
+    src/packet/packet.cpp)
+target_compile_definitions(client PUBLIC CLIENT)
+
 add_executable(main 
     src/main.cpp 
     src/events/parser.cpp 

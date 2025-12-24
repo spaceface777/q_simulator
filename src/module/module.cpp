@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <string>
+#include <cstring>
 
 #include "module.h"
 
@@ -14,20 +15,20 @@ namespace module
 		_pid = fork();
 		if (_pid == -1)
 		{
-			throw std::runtime_error("Failed to fork");
+			throw std::runtime_error("Failed to fork: " + std::string(::strerror(errno)));
 		}
 
 		const bool child = _pid == 0;
 		if (child)
 		{
-			std::cout << "Starting process " << path << "at " << getpid() << std::endl;
+			std::cout << "Starting process " << path << " at " << getpid() << std::endl;
 
 			const std::string module_name = "Module " + std::to_string(_id);
 			const int success = execl(path.c_str(), module_name.c_str(), std::to_string(7777 + _id + 1), (char *)0);
 
 			if (success < 0)
 			{
-				throw std::runtime_error("Failed to execl");
+				throw std::runtime_error("Failed to execl: " + std::string(::strerror(errno)));
 			}
 		}
 
