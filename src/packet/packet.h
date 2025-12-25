@@ -25,6 +25,54 @@ namespace packet
         virtual ~Packet() = default;
     };
 
+    /**
+     * Thrown when a packet that is attempting to be parsed is deformed.
+     */
+    class DeformedPacketException : public std::exception
+    {
+    private:
+        std::string message;
+
+    public:
+        DeformedPacketException(const char *msg) : message(msg) {}
+
+        const char *what() const noexcept
+        {
+            return message.c_str();
+        }
+    };
+
+    class Introduction : public Packet
+    {
+    private:
+        uint8_t _id;
+
+    public:
+        Introduction(uint8_t id)
+        {
+            _id = id;
+        }
+
+        /**
+         * @return The id of the module.
+         */
+        uint8_t id() const noexcept
+        {
+            return _id;
+        }
+
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
+
+        /**
+         * Creates a new instance on this class based on the passed TOML info.
+         * @param toml The TOML info.
+         * @return A new Introduction instance.
+         * @throws DeformedPacketException When the packet is deformed.
+         */
+        static Introduction from_toml(std::string_view toml);
+    };
+
     class Update : public Packet
     {
     private:
@@ -66,6 +114,14 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
+
+        /**
+         * Creates a new instance on this class based on the passed TOML info.
+         * @param toml The TOML info.
+         * @return A new Update instance.
+         * @throws DeformedPacketException When the packet is deformed.
+         */
+        static Update from_toml(std::string_view toml);
     };
 
     class TubArrival : public Packet
@@ -261,7 +317,6 @@ namespace packet
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
     };
-
 };
 
 #endif // PURPLE_H

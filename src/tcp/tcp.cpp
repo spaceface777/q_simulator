@@ -59,33 +59,22 @@ namespace server
 
         struct sockaddr other_addr;
         socklen_t other_len;
-        const int other_fd = ::accept(socket.fd(), &other_addr, &other_len);
-        if (other_fd == -1)
+        Socket other(::accept(socket.fd(), &other_addr, &other_len));
+        if (!other.is_valid())
         {
             throw std::runtime_error("Failed to accept peer connection: " + std::string(::strerror(errno)));
         }
 
         // while (true)
         {
-            // std::array<char, MAX_TCP_BYTES_SIZE> buff;
-            // const ssize_t count = ::read(other_fd, buff.data(), buff.size());
+            std::string buff;
+            buff.reserve(MAX_TCP_BYTES_SIZE);
+            const ssize_t count = ::read(other.fd(), buff.data(), buff.capacity());
 
-            // std::cerr << "Read ";
-            // for (const char c : buff)
-            // {
-            //     std::cerr << c;
-            // }
-            // std::cerr << std::endl;
-            // if (count <= 0)
-            // {
-            //     throw std::runtime_error("Failed to read");
-            // }
-
-            const std::string b = "OKs";
-
-            if (::write(other_fd, b.c_str(), b.length()) <= 0)
+            std::cerr << "Read " << buff << std::endl;
+            if (count <= 0)
             {
-                throw std::runtime_error("Failed to write: " + std::string(::strerror(errno)));
+                throw std::runtime_error("Failed to read");
             }
         }
     }

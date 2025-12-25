@@ -1,7 +1,9 @@
 #include <string>
 #include <string_view>
+#include <stdexcept>
 
 #include "packet.h"
+#include "../util.h"
 
 namespace packet
 {
@@ -67,6 +69,58 @@ namespace packet
     std::string Packet::to_toml() const noexcept
     {
         return std::string();
+    }
+
+    bool Introduction::is_valid() const noexcept
+    {
+        return true;
+    }
+
+    std::string Introduction::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "introduction");
+        append_value(buf, "id", _id);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    Introduction Introduction::from_toml(std::string_view toml)
+    {
+        const std::vector<std::string_view> lines = util::split(toml, "\n");
+
+        // stages:
+        // 0: [introduction]
+        // 1: id = xxx
+        int stage = 0;
+        int id = -1;
+        for (const std::string_view line : lines)
+        {
+            const std::string_view trimmed = util::trim(line);
+
+            if (trimmed.empty())
+            {
+                continue;
+            }
+
+            if (trimmed == "[introduction]")
+            {
+                stage = 1;
+                continue;
+            }
+
+            const std::vector<std::string_view> parts = util::split(trimmed, "=");
+            if (parts.size() == 2 && util::trim(parts[0]) == "id" && stage > 0)
+            {
+                id = std::stoi(std::string(parts[1]));
+                continue;
+            }
+
+            const std::string err = "Invalid line: " + std::string(trimmed);
+            throw DeformedPacketException(err.c_str());
+        }
+
+        return Introduction(id);
     }
 
     bool Update::is_valid() const noexcept

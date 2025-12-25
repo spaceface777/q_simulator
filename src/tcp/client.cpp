@@ -45,14 +45,14 @@ namespace client
 
         setup_connection(socket.fd(), _port);
 
-        // packet::Update update(1, "2", 3);
-        // const std::string toml = update.to_toml();
-        // if (write(socket.fd(), toml.c_str(), toml.size()) <= 0)
-        // {
-        //     throw std::runtime_error("Failed to write to socket");
-        // }
+        packet::Introduction introduction(_port - 7777);
+        const std::string toml = introduction.to_toml();
+        if (write(socket.fd(), toml.c_str(), toml.size()) <= 0)
+        {
+            throw std::runtime_error("Failed to write to socket");
+        }
 
-        // std::cerr << "Sent GET" << std::endl;
+        std::cerr << "Sent " << toml << std::endl;
 
         std::string buff;
         buff.reserve(MAX_TCP_BYTES_SIZE);
@@ -63,10 +63,6 @@ namespace client
         }
 
         std::cerr << "Read " << buff << std::endl;
-
-        // while (true)
-        // {
-        // }
     }
 
 }
