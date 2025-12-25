@@ -7,10 +7,9 @@
 #include <cstring>
 
 #include "../packet/packet.h"
+#include "../util.h"
 #include "socket.h"
 #include "client.h"
-
-#define MAX_TCP_BYTES_SIZE 512
 
 namespace client
 {
@@ -52,17 +51,17 @@ namespace client
             throw std::runtime_error("Failed to write to socket");
         }
 
-        std::cerr << "Sent " << toml << std::endl;
+        std::cout << "Sent " << toml << std::endl;
 
-        std::string buff;
-        buff.reserve(MAX_TCP_BYTES_SIZE);
-        const ssize_t confirm = read(socket.fd(), buff.data(), buff.capacity());
-        if (confirm < 0)
-        {
-            throw std::runtime_error("Failed to get confirmation message: " + std::string(::strerror(errno)));
-        }
+        // std::string buff;
+        // buff.reserve(MAX_TCP_BYTES_SIZE);
+        // const ssize_t confirm = read(socket.fd(), buff.data(), buff.capacity());
+        // if (confirm < 0)
+        // {
+        //     throw std::runtime_error("Failed to get confirmation message: " + std::string(::strerror(errno)));
+        // }
 
-        std::cerr << "Read " << buff << std::endl;
+        // std::cout << "Read " << buff << std::endl;
     }
 
 }

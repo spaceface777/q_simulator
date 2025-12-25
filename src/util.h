@@ -4,6 +4,21 @@
 #include <vector>
 #include <string_view>
 
+/**
+ * The max amount of modules supported.
+ */
+#define MAX_MODULES 50
+
+/**
+ * Max size for TCP messages.
+ */
+#define MAX_TCP_BYTES_SIZE 512
+
+/**
+ * Max TCP backlog.
+ */
+#define MAX_TCP_BACKLOG 10
+
 namespace util
 {
 

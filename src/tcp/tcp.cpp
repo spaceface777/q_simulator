@@ -10,9 +10,8 @@
 
 #include "socket.h"
 #include "tcp.h"
-
-#define MAX_BACKLOG 10
-#define MAX_TCP_BYTES_SIZE 512
+#include "../packet/packet.h"
+#include "../util.h"
 
 namespace server
 {
@@ -38,7 +37,7 @@ namespace server
         }
 
         // enable listening
-        if (::listen(fd, MAX_BACKLOG) != 0)
+        if (::listen(fd, MAX_TCP_BACKLOG) != 0)
         {
             close(fd);
             throw std::runtime_error("Failed to set listening mode: " + std::string(::strerror(errno)));
@@ -55,7 +54,7 @@ namespace server
 
         setup_port(socket.fd(), port);
 
-        std::cerr << "Waiting to connect to peer..." << std::endl;
+        std::cout << "Waiting to connect to peer..." << std::endl;
 
         struct sockaddr other_addr;
         socklen_t other_len;
@@ -67,14 +66,24 @@ namespace server
 
         // while (true)
         {
-            std::string buff;
-            buff.reserve(MAX_TCP_BYTES_SIZE);
-            const ssize_t count = ::read(other.fd(), buff.data(), buff.capacity());
+            char buff[MAX_TCP_BYTES_SIZE];
+            const ssize_t count = ::read(other.fd(), buff, MAX_TCP_BYTES_SIZE);
 
-            std::cerr << "Read " << buff << std::endl;
             if (count <= 0)
             {
                 throw std::runtime_error("Failed to read");
+            }
+
+            std::cout << "Read " << buff << std::endl;
+
+            try
+            {
+                const packet::Introduction introduction = packet::Introduction::from_toml(buff);
+                std::cout << "Got id " << std::to_string(introduction.id()) << std::endl;
+            }
+            catch (const packet::DeformedPacketException &e)
+            {
+                other.close();
             }
         }
     }

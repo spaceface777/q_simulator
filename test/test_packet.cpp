@@ -2,7 +2,7 @@
 #include "../src/packet/packet.h"
 #include "../src/util.h"
 
-TEST(Purple, ToToml)
+TEST(Packet, ToToml)
 {
     packet::Update update(1, "2", 3);
     const std::string toml = update.to_toml();
@@ -13,4 +13,14 @@ TEST(Purple, ToToml)
     ASSERT_STREQ("id = 1", std::string(parts[1]).c_str());
     ASSERT_STREQ("device = \"2\"", std::string(parts[2]).c_str());
     ASSERT_STREQ("value = 3", std::string(parts[3]).c_str());
+}
+
+TEST(Packet, FromTo)
+{
+    const std::string toml = "  [introduction]\n\n  id  =  4";
+    const packet::Introduction intro = packet::Introduction::from_toml(toml);
+
+    ASSERT_TRUE(intro.is_valid());
+    ASSERT_EQ(4, intro.id());
+    ASSERT_STREQ("[introduction]\nid = 4", intro.to_toml().c_str());
 }

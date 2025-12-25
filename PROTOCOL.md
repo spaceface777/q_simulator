@@ -4,6 +4,18 @@ The details for the Protocol for Unified Real-time Physical-Logical Exchange (PU
 ## Format
 The format of PURPLE follows that of TOML. The header indicates the type of message that is sent. Currently accepted:
 
+### `[introduction]`
+Used to pass the id of the started module to the receiving server.
+
+Required elements:
+- `id = <uint>`: The id of the module.
+
+Example:
+```toml
+[introduction]
+id = 12
+```
+
 ### `[update]`
 Used to indicate the value of a hardware component.
 

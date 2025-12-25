@@ -44,6 +44,15 @@ public:
     }
 
     /**
+     * Closes this socket.
+     */
+    void close()
+    {
+        ::close(_fd);
+        release();
+    }
+
+    /**
      * Marks this socket as unused.
      */
     int release() noexcept
