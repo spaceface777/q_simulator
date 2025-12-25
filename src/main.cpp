@@ -12,8 +12,12 @@ int main(int argc, char const *argv[])
     std::thread server(server::run, 7777);
     // std::thread client(client::run, 7778);
 
-    module::Module module(0);
-    module.run(std::filesystem::path("client"));
+    const std::filesystem::path path = std::filesystem::path("client");
+    module::Module module0(0);
+    module0.run(path);
+
+    // module::Module module1(1);
+    // module1.run(path);
 
     if (server.joinable())
     {

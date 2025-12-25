@@ -21,11 +21,11 @@ namespace client
         stopped = true;
     }
 
-    void setup_connection(int fd)
+    void setup_connection(int fd, unsigned int port)
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
-            .sin_port = htons(7777),
+            .sin_port = htons(port),
             .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
 
         // connect to peer
@@ -43,7 +43,7 @@ namespace client
             throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
-        setup_connection(socket.fd());
+        setup_connection(socket.fd(), _port);
 
         // packet::Update update(1, "2", 3);
         // const std::string toml = update.to_toml();
@@ -54,19 +54,15 @@ namespace client
 
         // std::cerr << "Sent GET" << std::endl;
 
-        std::array<char, MAX_TCP_BYTES_SIZE> buff;
-        const ssize_t confirm = read(socket.fd(), buff.data(), buff.size());
-        if (confirm <= 0)
+        std::string buff;
+        buff.reserve(MAX_TCP_BYTES_SIZE);
+        const ssize_t confirm = read(socket.fd(), buff.data(), buff.capacity());
+        if (confirm < 0)
         {
             throw std::runtime_error("Failed to get confirmation message: " + std::string(::strerror(errno)));
         }
 
-        std::cerr << "Read ";
-        for (const char c : buff)
-        {
-            std::cerr << c;
-        }
-        std::cerr << std::endl;
+        std::cerr << "Read " << buff << std::endl;
 
         // while (true)
         // {

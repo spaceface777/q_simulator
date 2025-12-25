@@ -33,12 +33,14 @@ namespace server
         // assign fd to port
         if (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
+            close(fd);
             throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
         // enable listening
         if (::listen(fd, MAX_BACKLOG) != 0)
         {
+            close(fd);
             throw std::runtime_error("Failed to set listening mode: " + std::string(::strerror(errno)));
         }
     }

@@ -1,6 +1,8 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
+#include <unistd.h>
+
 // only used for testing
 namespace client
 {

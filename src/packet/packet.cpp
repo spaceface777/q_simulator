@@ -59,17 +59,17 @@ namespace packet
         }
     }
 
-    bool Packet::is_valid() const
+    bool Packet::is_valid() const noexcept
     {
         return false;
     }
 
-    std::string Packet::to_toml() const
+    std::string Packet::to_toml() const noexcept
     {
         return std::string();
     }
 
-    bool Update::is_valid() const
+    bool Update::is_valid() const noexcept
     {
         if (_device.empty())
         {
@@ -79,7 +79,7 @@ namespace packet
         return true;
     }
 
-    std::string Update::to_toml() const
+    std::string Update::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "update");
@@ -90,12 +90,12 @@ namespace packet
         return buf;
     }
 
-    bool TubArrival::is_valid() const
+    bool TubArrival::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string TubArrival::to_toml() const
+    std::string TubArrival::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "tub.arrival");
@@ -107,12 +107,12 @@ namespace packet
         return buf;
     }
 
-    bool TubDeparture::is_valid() const
+    bool TubDeparture::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string TubDeparture::to_toml() const
+    std::string TubDeparture::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "tub.departure");
@@ -122,12 +122,12 @@ namespace packet
         return buf;
     }
 
-    bool PlaneArrival::is_valid() const
+    bool PlaneArrival::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string PlaneArrival::to_toml() const
+    std::string PlaneArrival::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "plane.arrival");
@@ -138,12 +138,12 @@ namespace packet
         return buf;
     }
 
-    bool PlaneDeparture::is_valid() const
+    bool PlaneDeparture::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string PlaneDeparture::to_toml() const
+    std::string PlaneDeparture::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "plane.departure");
@@ -153,12 +153,12 @@ namespace packet
         return buf;
     }
 
-    bool Shutdown::is_valid() const
+    bool Shutdown::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string Shutdown::to_toml() const
+    std::string Shutdown::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "shutdown");
@@ -166,12 +166,12 @@ namespace packet
         return buf;
     }
 
-    bool ShutdownConfirm::is_valid() const
+    bool ShutdownConfirm::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string ShutdownConfirm::to_toml() const
+    std::string ShutdownConfirm::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "shutdown.confirm");
