@@ -7,6 +7,8 @@
 #include <array>
 #include <atomic>
 #include <cstring>
+#include <utility>
+#include <thread>
 
 #include "socket.h"
 #include "tcp.h"
@@ -44,6 +46,30 @@ namespace server
         }
     }
 
+    void handle_module(int fd)
+    {
+        Socket socket(fd);
+
+        while (!stopped)
+        {
+            char buff[MAX_TCP_BYTES_SIZE];
+            const ssize_t count = ::read(socket.fd(), buff, MAX_TCP_BYTES_SIZE);
+            if (count <= 0)
+            {
+                return;
+            }
+
+            try
+            {
+                const packet::Introduction introduction = packet::Introduction::from_toml(buff);
+            }
+            catch (const packet::DeformedPacketException &e)
+            {
+                return;
+            }
+        }
+    }
+
     void run(unsigned int port)
     {
         Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
@@ -54,37 +80,20 @@ namespace server
 
         setup_port(socket.fd(), port);
 
-        std::cout << "Waiting to connect to peer..." << std::endl;
-
-        struct sockaddr other_addr;
-        socklen_t other_len;
-        Socket other(::accept(socket.fd(), &other_addr, &other_len));
-        if (!other.is_valid())
+        while (!stopped)
         {
-            throw std::runtime_error("Failed to accept peer connection: " + std::string(::strerror(errno)));
-        }
+            std::cout << "Waiting to connect to peer..." << std::endl;
 
-        // while (true)
-        {
-            char buff[MAX_TCP_BYTES_SIZE];
-            const ssize_t count = ::read(other.fd(), buff, MAX_TCP_BYTES_SIZE);
-
-            if (count <= 0)
+            struct sockaddr other_addr;
+            socklen_t other_len = sizeof(other_addr);
+            int other = ::accept(socket.fd(), &other_addr, &other_len);
+            if (other < 0)
             {
-                throw std::runtime_error("Failed to read");
+                continue;
             }
 
-            std::cout << "Read " << buff << std::endl;
-
-            try
-            {
-                const packet::Introduction introduction = packet::Introduction::from_toml(buff);
-                std::cout << "Got id " << std::to_string(introduction.id()) << std::endl;
-            }
-            catch (const packet::DeformedPacketException &e)
-            {
-                other.close();
-            }
+            std::thread thread(handle_module, other);
+            thread.detach();
         }
     }
 

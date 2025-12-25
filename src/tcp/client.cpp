@@ -46,7 +46,7 @@ namespace client
 
         packet::Introduction introduction(_port - 7777);
         const std::string toml = introduction.to_toml();
-        if (write(socket.fd(), toml.c_str(), toml.size()) <= 0)
+        if (::write(socket.fd(), toml.c_str(), toml.size()) <= 0)
         {
             throw std::runtime_error("Failed to write to socket");
         }
