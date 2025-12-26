@@ -16,6 +16,14 @@ Example:
 id = 12
 ```
 
+### `[confirm]`
+Used to confirm that a message has been received and that the next one can be sent.
+
+Example:
+```toml
+[confirm]
+```
+
 ### `[update]`
 Used to indicate the value of a hardware component.
 

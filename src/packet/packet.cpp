@@ -85,6 +85,18 @@ namespace packet
         return buf;
     }
 
+    bool Confirm::is_valid() const noexcept
+    {
+        return true;
+    }
+
+    std::string Confirm::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "confirm");
+        return buf;
+    }
+
     Introduction Introduction::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");

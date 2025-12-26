@@ -73,6 +73,16 @@ namespace packet
         static Introduction from_toml(std::string_view toml);
     };
 
+    class Confirm : public Packet
+    {
+
+    public:
+        Confirm() {}
+
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
+    };
+
     class Update : public Packet
     {
     private:

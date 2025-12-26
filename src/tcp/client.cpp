@@ -24,13 +24,13 @@ namespace client
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
-            .sin_port = htons(port),
+            .sin_port = htons(7777),
             .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
 
         // connect to peer
         if (connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
-            throw std::runtime_error("Failed to connect to peer: " + std::string(::strerror(errno)));
+            throw std::runtime_error("Failed to connect to server: " + std::string(::strerror(errno)));
         }
     }
 
@@ -44,24 +44,32 @@ namespace client
 
         setup_connection(socket.fd(), _port);
 
-        packet::Introduction introduction(_port - 7777);
+        const packet::Introduction introduction(_id);
         const std::string toml = introduction.to_toml();
         if (::write(socket.fd(), toml.c_str(), toml.size()) <= 0)
         {
-            throw std::runtime_error("Failed to write to socket");
+            return;
         }
 
-        std::cout << "Sent " << toml << std::endl;
+        char buff[MAX_TCP_BYTES_SIZE];
+        if (::read(socket.fd(), buff, MAX_TCP_BYTES_SIZE) <= 0)
+        {
+            return;
+        }
+        if (buff[0] != '[' || buff[1] != 'i')
+        {
+            return;
+        }
 
-        // std::string buff;
-        // buff.reserve(MAX_TCP_BYTES_SIZE);
-        // const ssize_t confirm = read(socket.fd(), buff.data(), buff.capacity());
-        // if (confirm < 0)
-        // {
-        //     throw std::runtime_error("Failed to get confirmation message: " + std::string(::strerror(errno)));
-        // }
-
-        // std::cout << "Read " << buff << std::endl;
+        while (true)
+        {
+            const packet::Update update(_id, "led", 10);
+            const std::string utoml = update.to_toml();
+            if (::write(socket.fd(), utoml.c_str(), utoml.size()) <= 0)
+            {
+                throw std::runtime_error("Failed to write to socket");
+            }
+        }
     }
 
 }
@@ -73,7 +81,7 @@ int main(int argc, char const *argv[])
 
     std::cout << "Started client on port " << std::to_string(port) << std::endl;
 
-    client::Client client(7777);
+    client::Client client(0, port);
     client.run();
 
     return 0;

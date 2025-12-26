@@ -10,11 +10,13 @@ namespace client
     {
     private:
         int _fd;
+        unsigned int _id;
         unsigned int _port;
 
     public:
-        Client(unsigned int port)
+        Client(unsigned int id, unsigned int port)
         {
+            _id = id;
             _port = port;
         }
 
@@ -24,6 +26,16 @@ namespace client
             {
                 ::close(_fd);
             }
+        }
+
+        unsigned int id() const noexcept
+        {
+            return _id;
+        }
+
+        unsigned int port() const noexcept
+        {
+            return _port;
         }
 
         int fd() const noexcept
