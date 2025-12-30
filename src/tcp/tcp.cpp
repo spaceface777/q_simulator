@@ -33,15 +33,16 @@ namespace server
     /**
      * Handles incoming messages for a single module.
      */
-    void handle_incoming(int fd)
+    void handle_incoming(int self_fd, int other_fd)
     {
-        Socket socket(fd);
+        Socket self(self_fd);
+        Socket other(other_fd);
         int id = -1;
 
         // initialize id variable
         {
             char buff[MAX_TCP_BYTES_SIZE];
-            const ssize_t count = ::read(socket.fd(), buff, MAX_TCP_BYTES_SIZE);
+            const ssize_t count = ::read(other.fd(), buff, MAX_TCP_BYTES_SIZE);
             if (count <= 0)
             {
                 return;
@@ -60,20 +61,22 @@ namespace server
 
             const packet::Confirm confirm;
             const std::string toml = confirm.to_toml();
-            if (::write(socket.fd(), toml.c_str(), toml.size()) <= 0)
+            if (::write(self.fd(), toml.c_str(), toml.size()) <= 0)
             {
                 return;
             }
+            std::cout << "[S] 1" << std::endl;
         }
 
         while (!stopped)
         {
             char buff[MAX_TCP_BYTES_SIZE];
-            const ssize_t count = ::read(socket.fd(), buff, MAX_TCP_BYTES_SIZE);
+            const ssize_t count = ::read(other.fd(), buff, MAX_TCP_BYTES_SIZE);
             if (count <= 0)
             {
                 return;
             }
+            std::cout << "[S] 1" << std::endl;
 
             try
             {
@@ -113,13 +116,13 @@ namespace server
 
     void run(unsigned int port)
     {
-        Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
-        if (!socket.is_valid())
+        int self = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (self < 0)
         {
             throw std::runtime_error("Failed to initialize socket: " + std::string(::strerror(errno)));
         }
 
-        setup_port(socket.fd(), port);
+        setup_port(self, port);
 
         while (!stopped)
         {
@@ -127,13 +130,13 @@ namespace server
 
             struct sockaddr other_addr;
             socklen_t other_len = sizeof(other_addr);
-            int other = ::accept(socket.fd(), &other_addr, &other_len);
+            int other = ::accept(self, &other_addr, &other_len);
             if (other < 0)
             {
                 continue;
             }
 
-            std::thread thread(handle_incoming, other);
+            std::thread thread(handle_incoming, self, other);
             thread.detach();
         }
     }

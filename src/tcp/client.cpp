@@ -50,6 +50,7 @@ namespace client
         {
             return;
         }
+        std::cout << "[C] 1" << std::endl;
 
         char buff[MAX_TCP_BYTES_SIZE];
         if (::read(socket.fd(), buff, MAX_TCP_BYTES_SIZE) <= 0)
@@ -60,6 +61,7 @@ namespace client
         {
             return;
         }
+        std::cout << "[C] 2" << std::endl;
 
         while (true)
         {
@@ -69,6 +71,7 @@ namespace client
             {
                 throw std::runtime_error("Failed to write to socket");
             }
+            std::cout << "[C] 3" << std::endl;
         }
     }
 
