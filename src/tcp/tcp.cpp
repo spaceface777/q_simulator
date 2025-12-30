@@ -12,6 +12,7 @@
 #include <map>
 #include <mutex>
 #include <queue>
+#include <cassert>
 
 #include "socket.h"
 #include "tcp.h"
@@ -20,80 +21,20 @@
 
 namespace server
 {
+    static constexpr unsigned int TIMEOUT_MICROS = 250000;
+
     std::atomic_bool stopped = false;
+    std::vector<unsigned int> fds;
 
     void stop()
     {
         stopped = true;
     }
 
-    std::mutex incoming_lock;
-    std::queue<packet::Packet> incoming;
-
-    /**
-     * Handles incoming messages for a single module.
-     */
-    void handle_incoming(int self_fd, int other_fd)
-    {
-        Socket self(self_fd);
-        Socket other(other_fd);
-        int id = -1;
-
-        // initialize id variable
-        {
-            char buff[MAX_TCP_BYTES_SIZE];
-            const ssize_t count = ::read(other.fd(), buff, MAX_TCP_BYTES_SIZE);
-            if (count <= 0)
-            {
-                return;
-            }
-
-            try
-            {
-                const packet::Introduction introduction = packet::Introduction::from_toml(buff);
-                id = introduction.id();
-                std::cout << "Registered for id " << std::to_string(id) << std::endl;
-            }
-            catch (const packet::DeformedPacketException &e)
-            {
-                std::cout << "[S] 1y" << std::endl;
-                return;
-            }
-
-            const packet::Confirm confirm;
-            const std::string toml = confirm.to_toml();
-            if (::write(other.fd(), toml.c_str(), toml.size()) <= 0)
-            {
-                return;
-            }
-        }
-
-        // while (!stopped)
-        {
-            char buff[MAX_TCP_BYTES_SIZE];
-            const ssize_t count = ::read(other.fd(), buff, MAX_TCP_BYTES_SIZE);
-            if (count <= 0)
-            {
-                return;
-            }
-
-            std::cout << "[S] 1" << std::endl;
-
-            try
-            {
-                std::cout << "Received some shi from " << std::to_string(id) << std::endl;
-            }
-            catch (const packet::DeformedPacketException &e)
-            {
-                return;
-            }
-        }
-    }
-
     /**
      * Sets up the port for a server connection.
      */
-    void setup_port(int fd, unsigned int port)
+    static void setup_port(int fd, unsigned int port)
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
@@ -115,6 +56,76 @@ namespace server
         }
     }
 
+    /**
+     * Handles incoming connection requests.
+     * @param self_fd The fd of the current process.
+     */
+    static void handle_connection_requests(int self_fd)
+    {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(self_fd, &rfds);
+
+        timeval timeout = {.tv_usec = TIMEOUT_MICROS};
+
+        int selected = select(self_fd + 1, &rfds, NULL, NULL, &timeout);
+        if (selected <= 0)
+        {
+            return;
+        }
+
+        sockaddr other_addr;
+        socklen_t other_len = sizeof(other_addr);
+        int other = ::accept(self_fd, &other_addr, &other_len);
+        if (other < 0)
+        {
+            return;
+        }
+
+        fds.push_back(other);
+    }
+
+    /**
+     * Handles incoming packets.
+     */
+    static void handle_packets()
+    {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        int max_fd = -1;
+        for (const int fd : fds)
+        {
+            FD_SET(fd, &rfds);
+            max_fd = std::max(max_fd, fd);
+        }
+
+        timeval timeout = {.tv_usec = TIMEOUT_MICROS};
+
+        int selected = select(max_fd + 1, &rfds, NULL, NULL, &timeout);
+        if (selected <= 0)
+        {
+            return;
+        }
+
+        for (const int fd : fds)
+        {
+            if (!FD_ISSET(fd, &rfds))
+            {
+                continue;
+            }
+
+            // there is a value to be read, yay
+            char buff[MAX_TCP_BYTES_SIZE];
+            const ssize_t size = ::read(fd, buff, MAX_TCP_BYTES_SIZE);
+            if (size <= 0)
+            {
+                continue;
+            }
+
+            std::cout << std::string(buff) << std::endl;
+        }
+    }
+
     void run(unsigned int port)
     {
         int self = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -125,20 +136,15 @@ namespace server
 
         setup_port(self, port);
 
+        fds.reserve(MAX_MODULES);
+
+        fd_set rfds;
+        struct timeval timeout;
         while (!stopped)
         {
-            std::cout << "Waiting to connect to peer..." << std::endl;
+            handle_connection_requests(self);
 
-            struct sockaddr other_addr;
-            socklen_t other_len = sizeof(other_addr);
-            int other = ::accept(self, &other_addr, &other_len);
-            if (other < 0)
-            {
-                continue;
-            }
-
-            std::thread thread(handle_incoming, self, other);
-            thread.detach();
+            handle_packets();
         }
     }
 

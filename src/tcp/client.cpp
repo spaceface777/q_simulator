@@ -13,14 +13,14 @@
 
 namespace client
 {
-    std::atomic_bool stopped = false;
+    static std::atomic_bool stopped = false;
 
     void Client::stop()
     {
         stopped = true;
     }
 
-    void setup_connection(int fd, unsigned int port)
+    static void setup_connection(int fd, unsigned int port)
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
@@ -28,7 +28,7 @@ namespace client
             .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
 
         // connect to peer
-        if (connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
+        if (connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
             throw std::runtime_error("Failed to connect to server: " + std::string(::strerror(errno)));
         }
@@ -44,35 +44,13 @@ namespace client
 
         setup_connection(socket.fd(), _port);
 
-        const packet::Introduction introduction(_id);
-        const std::string toml = introduction.to_toml();
+        const packet::Update update(_id, "led", 0x203040);
+        const std::string toml = update.to_toml();
         if (::write(socket.fd(), toml.c_str(), toml.size()) <= 0)
         {
             return;
         }
         std::cout << "[C] 1" << std::endl;
-
-        char buff[MAX_TCP_BYTES_SIZE];
-        if (::read(socket.fd(), buff, MAX_TCP_BYTES_SIZE) <= 0)
-        {
-            return;
-        }
-        if (buff[0] != '[' || buff[1] != 'i')
-        {
-            return;
-        }
-        std::cout << "[C] 2" << std::endl;
-
-        // while (true)
-        {
-            const packet::Update update(_id, "led", 10);
-            const std::string utoml = update.to_toml();
-            if (::write(socket.fd(), utoml.c_str(), utoml.size()) <= 0)
-            {
-                throw std::runtime_error("Failed to write to socket");
-            }
-            std::cout << "[C] 3" << std::endl;
-        }
     }
 
 }
