@@ -14,6 +14,11 @@ private:
     int _fd = -1;
 
 public:
+    Socket()
+    {
+        _fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    }
+
     Socket(int fd)
     {
         _fd = fd;
@@ -21,6 +26,7 @@ public:
 
     ~Socket()
     {
+        std::cout << "Closed socket" << std::endl;
         if (is_valid())
         {
             ::close(_fd);

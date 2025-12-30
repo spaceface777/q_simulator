@@ -56,19 +56,19 @@ namespace server
             }
             catch (const packet::DeformedPacketException &e)
             {
+                std::cout << "[S] 1y" << std::endl;
                 return;
             }
 
             const packet::Confirm confirm;
             const std::string toml = confirm.to_toml();
-            if (::write(self.fd(), toml.c_str(), toml.size()) <= 0)
+            if (::write(other.fd(), toml.c_str(), toml.size()) <= 0)
             {
                 return;
             }
-            std::cout << "[S] 1" << std::endl;
         }
 
-        while (!stopped)
+        // while (!stopped)
         {
             char buff[MAX_TCP_BYTES_SIZE];
             const ssize_t count = ::read(other.fd(), buff, MAX_TCP_BYTES_SIZE);
@@ -76,6 +76,7 @@ namespace server
             {
                 return;
             }
+
             std::cout << "[S] 1" << std::endl;
 
             try

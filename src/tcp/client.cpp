@@ -24,7 +24,7 @@ namespace client
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
-            .sin_port = htons(7777),
+            .sin_port = htons(port),
             .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
 
         // connect to peer
@@ -36,7 +36,7 @@ namespace client
 
     void Client::run()
     {
-        Socket socket(::socket(AF_INET, SOCK_STREAM, 0));
+        Socket socket;
         if (!socket.is_valid())
         {
             throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
@@ -63,7 +63,7 @@ namespace client
         }
         std::cout << "[C] 2" << std::endl;
 
-        while (true)
+        // while (true)
         {
             const packet::Update update(_id, "led", 10);
             const std::string utoml = update.to_toml();
@@ -84,7 +84,7 @@ int main(int argc, char const *argv[])
 
     std::cout << "Started client on port " << std::to_string(port) << std::endl;
 
-    client::Client client(0, port);
+    client::Client client(0, 7777);
     client.run();
 
     return 0;
