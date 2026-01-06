@@ -26,7 +26,6 @@ public:
 
     ~Socket()
     {
-        std::cout << "Closed socket" << std::endl;
         if (is_valid())
         {
             ::close(_fd);
