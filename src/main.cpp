@@ -27,6 +27,9 @@ int main(int argc, char const *argv[])
     module::Module module0(0);
     module0.run(path);
 
+    module::Module module1(1);
+    module1.run(path);
+
     // module::Module module1(1);
     // module1.run(path);
 
