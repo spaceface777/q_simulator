@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "module.h"
+#include "../tcp/tcp.h"
 
 namespace module
 {
@@ -36,4 +37,10 @@ namespace module
 
 		_running = true;
 	}
+
+	void Module::send(packet::Packet packet)
+	{
+		server::send(_id, packet);
+	}
+
 }

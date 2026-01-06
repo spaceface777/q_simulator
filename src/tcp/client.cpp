@@ -32,8 +32,8 @@ namespace client
         uint8_t attempts = 0;
         while (connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
-            std::cerr << "[" << std::to_string(id) << "] Failed to connect to server: " + std::string(::strerror(errno)) << std::endl;
-            std::cerr << "[" << std::to_string(id) << "] Attempting to reconnect" << std::endl;
+            std::cerr << "[" + std::to_string(id) + "] Failed to connect to server: " + std::string(::strerror(errno)) << std::endl;
+            std::cerr << "[" + std::to_string(id) + "] Attempting to reconnect" << std::endl;
 
             std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -50,8 +50,8 @@ namespace client
         attempts = 0;
         while (::write(fd, toml.c_str(), toml.size()) <= 0)
         {
-            std::cerr << "[" << std::to_string(id) << "] Failed to introduce: " + std::string(::strerror(errno)) << std::endl;
-            std::cerr << "[" << std::to_string(id) << "] Attempting to resend" << std::endl;
+            std::cerr << "[" + std::to_string(id) + "] Failed to introduce: " + std::string(::strerror(errno)) << std::endl;
+            std::cerr << "[" + std::to_string(id) + "] Attempting to resend" << std::endl;
 
             std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -73,6 +73,8 @@ namespace client
 
         setup_connection(socket.fd(), _port, _id);
 
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
         for (size_t i = 0; i < 20; i++)
         {
             const packet::Update update(_id, "led", 0x203040);
@@ -82,7 +84,7 @@ namespace client
                 return;
             }
 
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 
