@@ -12,7 +12,7 @@ namespace module
 
 	void Module::run(std::filesystem::path path)
 	{
-		_pid = fork();
+		_pid = ::fork();
 		if (_pid == -1)
 		{
 			throw std::runtime_error("Failed to fork: " + std::string(std::strerror(errno)));
@@ -21,11 +21,12 @@ namespace module
 		const bool child = _pid == 0;
 		if (child)
 		{
-			std::cout << "Starting process " << path << " at " << getpid() << std::endl;
+			std::cout << "Starting process " << path << " at " << ::getpid() << std::endl;
 
 			const std::string module_name = "Module " + std::to_string(_id);
-			const std::string port = std::to_string(7778);
-			const int success = execl(path.c_str(), module_name.c_str(), port.c_str(), (char *)0);
+			const std::string port = std::to_string(7778 + _id);
+			const std::string id = std::to_string(_id);
+			const int success = ::execl(path.c_str(), module_name.c_str(), id.c_str(), port.c_str(), (char *)0);
 
 			if (success < 0)
 			{
