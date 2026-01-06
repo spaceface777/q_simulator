@@ -213,7 +213,7 @@ events::Tub parse_tub(State &state)
 
     if (time == -1 || id == -1 || safe == -1 || origin.id == -1 || destination.id == -1)
     {
-        throw std::invalid_argument("Missing attributes");
+        throw std::invalid_argument("Missing attributes for tub with id " + std::to_string(id));
     }
 
     return events::Tub(time, id, safe, origin, destination);
@@ -278,7 +278,7 @@ events::Plane parse_plane(State &state)
 
     if (time == -1 || id == -1 || module == -1 || leaves_at == -1)
     {
-        throw std::invalid_argument("Missing attributes");
+        throw std::invalid_argument("Missing attributes for plane with id " + std::to_string(id));
     }
 
     return events::Plane(time, id, module, leaves_at);

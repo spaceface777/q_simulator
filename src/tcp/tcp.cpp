@@ -25,6 +25,7 @@ namespace server
 
     std::atomic_bool stopped = false;
     std::vector<unsigned int> fds;
+    std::map<unsigned int, uint8_t> fdToId;
 
     void stop()
     {
@@ -93,10 +94,10 @@ namespace server
         fd_set rfds;
         FD_ZERO(&rfds);
         int max_fd = -1;
-        for (const int fd : fds)
+        for (const unsigned int fd : fds)
         {
             FD_SET(fd, &rfds);
-            max_fd = std::max(max_fd, fd);
+            max_fd = std::max(max_fd, (int) fd);
         }
 
         timeval timeout = {.tv_usec = TIMEOUT_MICROS};
@@ -107,7 +108,7 @@ namespace server
             return;
         }
 
-        for (const int fd : fds)
+        for (const unsigned int fd : fds)
         {
             if (!FD_ISSET(fd, &rfds))
             {
@@ -122,7 +123,21 @@ namespace server
                 continue;
             }
 
-            std::cout << std::string(buff) << std::endl;
+            const std::string_view trimmed = util::ltrim(buff);
+            const std::size_t first_nl = trimmed.find('\n');
+            if (first_nl == trimmed.npos) // invalid message
+            {
+                continue;
+            }
+
+            const std::string_view header = trimmed.substr(0, first_nl);
+            if (header == "[introduction]") {
+                const packet::Introduction intro = packet::Introduction::from_toml(buff);
+                if (intro.is_valid()) {
+                    fdToId.insert({fd, intro.id()});
+                    std::cout << "[S] Client " << std::to_string(intro.id()) << " assigned to fd " << std::to_string(fd) << std::endl;
+                }
+            }
         }
     }
 
