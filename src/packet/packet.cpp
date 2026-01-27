@@ -4,6 +4,7 @@
 
 #include "packet.h"
 #include "../util.h"
+#include <optional>
 
 namespace packet
 {
@@ -97,7 +98,7 @@ namespace packet
         return buf;
     }
 
-    Introduction Introduction::from_toml(std::string_view toml)
+    std::optional<Introduction> Introduction::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
@@ -122,14 +123,22 @@ namespace packet
             }
 
             const std::vector<std::string_view> parts = util::split(trimmed, "=");
-            if (parts.size() == 2 && util::trim(parts[0]) == "id" && stage > 0)
+
+            if (parts.size() != 2)
             {
-                id = std::stoi(std::string(parts[1]));
+                return {};
+            }
+
+            const std::string_view left = util::trim(parts[0]);
+            const std::string right = std::string(util::trim(parts[1]));
+
+            if (left == "id" && stage == 1)
+            {
+                id = std::stoi(right);
                 continue;
             }
 
-            const std::string err = "Invalid line: " + std::string(trimmed);
-            throw DeformedPacketException(err.c_str());
+            return {};
         }
 
         return Introduction(id);
@@ -154,6 +163,64 @@ namespace packet
         append_value(buf, "value", _value);
         trim_trailing_nl(buf);
         return buf;
+    }
+
+    std::optional<Update> Update::from_toml(std::string_view toml)
+    {
+        const std::vector<std::string_view> lines = util::split(toml, "\n");
+
+        // stages:
+        // 0: [introduction]
+        // 1: id = xxx
+        int stage = 0;
+        int module = -1;
+        std::string device;
+        int value = -1;
+        for (const std::string_view line : lines)
+        {
+            const std::string_view trimmed = util::trim(line);
+
+            if (trimmed.empty())
+            {
+                continue;
+            }
+
+            if (trimmed == "[update]")
+            {
+                stage = 1;
+                continue;
+            }
+
+            const std::vector<std::string_view> parts = util::split(trimmed, "=");
+
+            if (parts.size() != 2)
+            {
+                return {};
+            }
+
+            const std::string_view left = util::trim(parts[0]);
+            const std::string right = std::string(util::trim(parts[1]));
+
+            if (left == "module" && stage == 1)
+            {
+                module = std::stoi(right);
+                continue;
+            }
+            else if (left == "device" && stage == 1)
+            {
+                device = right;
+                continue;
+            }
+            else if (left == "value" && stage == 1)
+            {
+                value = std::stoi(right);
+                continue;
+            }
+
+            return {};
+        }
+
+        return Update(module, device, value);
     }
 
     bool TubArrival::is_valid() const noexcept
