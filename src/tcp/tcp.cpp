@@ -13,20 +13,22 @@
 #include <mutex>
 #include <queue>
 #include <cassert>
+#include <cerrno>
+#include <algorithm>
+#include <poll.h>
 
-#include "socket.h"
 #include "tcp.h"
 #include "../packet/packet.h"
 #include "../util.h"
 
 namespace server
 {
-    static constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(1);
+    static constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(100);
 
     std::atomic_bool stopped = false;
     std::vector<unsigned int> fds;
     std::unordered_map<unsigned int, uint8_t> fdToId;
-    std::unordered_map<unsigned int, uint8_t> idToFd;
+    std::unordered_map<uint8_t, unsigned int> idToFd;
 
     void stop()
     {
@@ -88,31 +90,80 @@ namespace server
     }
 
     /**
-     * Handles incoming packets.
+     * Removes a fd from memory.
      */
-    static void handle_packets()
+    static void remove(int fd)
     {
-        fd_set rfds;
-        FD_ZERO(&rfds);
-        int max_fd = -1;
-        for (const unsigned int fd : fds)
-        {
-            FD_SET(fd, &rfds);
-            max_fd = std::max(max_fd, (int)fd);
-        }
+        fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
 
-        timeval timeout = {.tv_usec = std::chrono::duration_cast<std::chrono::microseconds>(TIMEOUT).count()};
-
-        int selected = ::select(max_fd + 1, &rfds, NULL, NULL, &timeout);
-        if (selected <= 0)
+        if (fdToId.count(fd) == 0)
         {
             return;
         }
 
-        for (const unsigned int fd : fds)
+        unsigned int id = fdToId.at(fd);
+        fdToId.erase(fd);
+        idToFd.erase(id);
+    }
+
+    static void parse_packet(unsigned int fd, char *buff)
+    {
+        std::optional<packet::Introduction> intro = packet::Introduction::from_toml(buff);
+        if (intro)
         {
-            if (!FD_ISSET(fd, &rfds))
+            const packet::Introduction packet = intro.value();
+            const unsigned int id = packet.id();
+            fdToId.insert({fd, id});
+            idToFd.insert({id, fd});
+            std::cout << "[S] Client " << std::to_string(id) << " assigned to fd " << std::to_string(fd) << std::endl;
+        }
+
+        std::optional<packet::Update> update = packet::Update::from_toml(buff);
+        if (update)
+        {
+            const packet::Update packet = update.value();
+            std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
+        }
+    }
+
+    /**
+     * Handles incoming packets.
+     */
+    static void handle_packets()
+    {
+        struct pollfd pfds[fds.size()];
+
+        // populate pfds
+        for (std::size_t i = 0; i < fds.size(); i++)
+        {
+            struct pollfd pollfd = {
+                .fd = static_cast<int>(fds.at(i)),
+                .events = POLLIN | POLLERR | POLLNVAL,
+                .revents = 0,
+            };
+
+            pfds[i] = pollfd;
+        }
+
+        int selected = ::poll(pfds, fds.size(), TIMEOUT.count());
+        if (selected == 0)
+        {
+            return;
+        }
+
+        for (size_t i = 0; i < fds.size(); i++)
+        {
+            const unsigned int fd = fds.at(i);
+
+            if (pfds[i].revents == 0)
             {
+                continue;
+            }
+            else if (pfds[i].revents & (POLLERR | POLLNVAL))
+            {
+                // invalid fd
+                remove(fd);
+                std::cout << "Closed connection with " << std::to_string(fd) << std::endl;
                 continue;
             }
 
@@ -121,30 +172,20 @@ namespace server
             const ssize_t size = ::read(fd, buff, MAX_TCP_BYTES_SIZE);
             if (size <= 0)
             {
+                remove(fd);
+                std::cout << "Closed connection with " << std::to_string(fd) << std::endl;
                 continue;
             }
-            std::cout << std::endl;
-            std::cout << buff << std::endl;
-            std::cout << std::endl;
 
             const std::string_view trimmed = util::ltrim(buff);
             const std::size_t first_nl = trimmed.find('\n');
             if (first_nl == trimmed.npos) // invalid message
             {
+                std::cout << "Received invalid message" << std::endl;
                 continue;
             }
 
-            const std::string_view header = trimmed.substr(0, first_nl);
-            if (header == "[introduction]")
-            {
-                const packet::Introduction intro = packet::Introduction::from_toml(buff);
-                if (intro.is_valid())
-                {
-                    fdToId.insert({fd, intro.id()});
-                    idToFd.insert({intro.id(), fd});
-                    std::cout << "[S] Client " << std::to_string(intro.id()) << " assigned to fd " << std::to_string(fd) << std::endl;
-                }
-            }
+            parse_packet(fd, buff);
         }
     }
 
