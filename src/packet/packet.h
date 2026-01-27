@@ -3,6 +3,7 @@
 
 #include <string>
 #include <cstdint>
+#include <optional>
 
 namespace packet
 {
@@ -68,9 +69,8 @@ namespace packet
          * Creates a new instance on this class based on the passed TOML info.
          * @param toml The TOML info.
          * @return A new Introduction instance.
-         * @throws DeformedPacketException When the packet is deformed.
          */
-        static Introduction from_toml(std::string_view toml);
+        static std::optional<Introduction> from_toml(std::string_view toml);
     };
 
     class Confirm : public Packet
@@ -129,9 +129,8 @@ namespace packet
          * Creates a new instance on this class based on the passed TOML info.
          * @param toml The TOML info.
          * @return A new Update instance.
-         * @throws DeformedPacketException When the packet is deformed.
          */
-        static Update from_toml(std::string_view toml);
+        static std::optional<Update> from_toml(std::string_view toml);
     };
 
     class TubArrival : public Packet
