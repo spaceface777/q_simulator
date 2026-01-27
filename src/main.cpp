@@ -21,14 +21,13 @@ int main(int argc, char const *argv[])
     parser::parse_events();
 
     server_thread = std::thread(server::run, 7777);
-    // std::thread client(client::run, 7778);
 
-    const std::filesystem::path path = std::filesystem::path("client");
-    module::Module module0(0);
-    module0.run(path);
+    // const std::filesystem::path path = std::filesystem::path("client");
+    // module::Module module0(0);
+    // module0.run(path);
 
-    module::Module module1(1);
-    module1.run(path);
+    // module::Module module1(1);
+    // module1.run(path);
 
     // module::Module module1(1);
     // module1.run(path);
