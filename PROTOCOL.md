@@ -16,14 +16,6 @@ Example:
 id = 12
 ```
 
-### `[confirm]`
-Used to confirm that a message has been received and that the next one can be sent.
-
-Example:
-```toml
-[confirm]
-```
-
 ### `[update]`
 Used to indicate the value of a hardware component.
 
@@ -38,6 +30,22 @@ Example:
 module = 12
 device = "led"
 value = 2298889
+```
+
+### `[packet]`
+Used to send a packet to a different module.
+
+Required elements:
+- `module = <uint>`: The module that this packet is being sent to.
+- `length = <uint>`: The length of the contents.
+- `content = <string>`: The content.
+
+Example:
+```toml
+[update]
+module = 12
+length = 12
+content = "2394823492"
 ```
 
 ## `[tub.arrival]`
