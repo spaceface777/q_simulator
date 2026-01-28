@@ -48,14 +48,14 @@ namespace server
         // assign fd to port
         if (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
-            close(fd);
+            ::close(fd);
             throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
         // enable listening
         if (::listen(fd, MAX_TCP_BACKLOG) != 0)
         {
-            close(fd);
+            ::close(fd);
             throw std::runtime_error("Failed to set listening mode: " + std::string(::strerror(errno)));
         }
     }
@@ -124,6 +124,15 @@ namespace server
             const packet::Update packet = update.value();
             std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
         }
+
+        std::optional<packet::PacketSend> send = packet::PacketSend::from_toml(buff);
+        if (send)
+        {
+            const packet::PacketSend packet = send.value();
+            std::cout << "Received packet send request to " << std::to_string(packet.module()) << " with content " << packet.content() << std::endl;
+        }
+
+        std::cout << std::string(buff) << std::endl;
     }
 
     /**

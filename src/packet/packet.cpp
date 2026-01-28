@@ -90,9 +90,6 @@ namespace packet
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
-        // stages:
-        // 0: [introduction]
-        // 1: id = xxx
         int stage = 0;
         int id = -1;
         for (const std::string_view line : lines)
@@ -157,9 +154,6 @@ namespace packet
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
-        // stages:
-        // 0: [introduction]
-        // 1: id = xxx
         int stage = 0;
         int module = -1;
         std::string device;
@@ -209,6 +203,82 @@ namespace packet
         }
 
         return Update(module, device, value);
+    }
+
+    bool PacketSend::is_valid() const noexcept
+    {
+        if (_content.length() != _length)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    std::string PacketSend::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "update");
+        append_value(buf, "module", _module);
+        append_value(buf, "length", _length);
+        append_value(buf, "content", _content);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::optional<PacketSend> PacketSend::from_toml(std::string_view toml)
+    {
+        const std::vector<std::string_view> lines = util::split(toml, "\n");
+
+        int stage = 0;
+        int module = -1;
+        std::size_t length;
+        std::string content;
+        for (const std::string_view line : lines)
+        {
+            const std::string_view trimmed = util::trim(line);
+
+            if (trimmed.empty())
+            {
+                continue;
+            }
+
+            if (trimmed == "[packet]")
+            {
+                stage = 1;
+                continue;
+            }
+
+            const std::vector<std::string_view> parts = util::split(trimmed, "=");
+
+            if (parts.size() != 2)
+            {
+                return {};
+            }
+
+            const std::string_view left = util::trim(parts[0]);
+            const std::string right = std::string(util::trim(parts[1]));
+
+            if (left == "module" && stage == 1)
+            {
+                module = std::stoi(right);
+                continue;
+            }
+            else if (left == "length" && stage == 1)
+            {
+                length = std::stoi(right);
+                continue;
+            }
+            else if (left == "value" && stage == 1)
+            {
+                content = right;
+                continue;
+            }
+
+            return {};
+        }
+
+        return PacketSend(module, length, content);
     }
 
     bool TubArrival::is_valid() const noexcept

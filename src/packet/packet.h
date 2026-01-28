@@ -1,5 +1,5 @@
-#ifndef PURPLE_H
-#define PURPLE_H
+#ifndef PACKET_H
+#define PACKET_H
 
 #include <string>
 #include <cstdint>
@@ -121,6 +121,56 @@ namespace packet
          * @return A new Update instance.
          */
         static std::optional<Update> from_toml(std::string_view toml);
+    };
+
+    class PacketSend : public Packet
+    {
+    private:
+        uint8_t _module;
+        std::size_t _length;
+        std::string _content;
+
+    public:
+        PacketSend(uint8_t module, std::size_t length, std::string content)
+        {
+            _module = module;
+            _length = length;
+            _content = content;
+        }
+
+        /**
+         * @return The id of the target.
+         */
+        uint8_t module() const noexcept
+        {
+            return _module;
+        }
+
+        /**
+         * @return The length of the content.
+         */
+        std::size_t length() const noexcept
+        {
+            return _length;
+        }
+
+        /**
+         * @return The content.
+         */
+        std::string content() const noexcept
+        {
+            return _content;
+        }
+
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
+
+        /**
+         * Creates a new instance on this class based on the passed TOML info.
+         * @param toml The TOML info.
+         * @return A new PacketSend instance.
+         */
+        static std::optional<PacketSend> from_toml(std::string_view toml);
     };
 
     class TubArrival : public Packet
@@ -318,4 +368,4 @@ namespace packet
     };
 };
 
-#endif // PURPLE_H
+#endif // PACKET_H
