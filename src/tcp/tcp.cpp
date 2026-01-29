@@ -40,7 +40,6 @@ namespace server
      */
     static int setup_port(unsigned int port)
     {
-        uint8_t attempts = 0;
         int fd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (fd < 0)
         {
@@ -134,7 +133,7 @@ namespace server
             const unsigned int id = packet.id();
             fdToId.insert({fd, id});
             idToFd.insert({id, fd});
-            std::cout << "[S] Client " << std::to_string(id) << " assigned to fd " << std::to_string(fd) << std::endl;
+            std::cout << "Client " << std::to_string(id) << " assigned to fd " << std::to_string(fd) << std::endl;
             return;
         }
 
@@ -236,13 +235,13 @@ namespace server
 
         fds.reserve(MAX_MODULES);
 
-        fd_set rfds;
-        struct timeval timeout;
         while (!stopped)
         {
             handle_connection_requests(fd);
 
             handle_packets();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
 
