@@ -38,11 +38,11 @@ namespace server
     /**
      * Sets up the port for a server connection.
      */
-    static void setup_port(int fd, unsigned int port)
+    static int setup_port(unsigned int port)
     {
-        int self = -1;
+        int fd = -1;
         uint8_t attempts = 0;
-        while ((self = ::socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        while ((fd = ::socket(AF_INET, SOCK_STREAM, 0)) < 0)
         {
             std::cerr << "Failed to initialize socket: " + std::string(::strerror(errno)) << std::endl;
             std::cerr << "Attempting to re-initialize" << std::endl;
@@ -92,6 +92,8 @@ namespace server
                 throw new std::runtime_error("Failed to set listening mode");
             }
         }
+
+        return fd;
     }
 
     /**
@@ -257,23 +259,7 @@ namespace server
 
     void run(unsigned int port)
     {
-        int self;
-        uint8_t attempts = 0;
-        while ((self = ::socket(AF_INET, SOCK_STREAM, 0)) < 0)
-        {
-            std::cerr << "Failed to initialize socket: " + std::string(::strerror(errno)) << std::endl;
-            std::cerr << "Attempting to re-initialize" << std::endl;
-
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            attempts++;
-            if (attempts > 10)
-            {
-                throw new std::runtime_error("Failed to initialize socket");
-            }
-        }
-
-        setup_port(self, port);
+        int fd = setup_port(port);
 
         fds.reserve(MAX_MODULES);
 
@@ -281,7 +267,7 @@ namespace server
         struct timeval timeout;
         while (!stopped)
         {
-            handle_connection_requests(self);
+            handle_connection_requests(fd);
 
             handle_packets();
         }
