@@ -40,19 +40,11 @@ namespace server
      */
     static int setup_port(unsigned int port)
     {
-        int fd = -1;
         uint8_t attempts = 0;
-        while ((fd = ::socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0)
         {
-            std::cerr << "Failed to initialize socket: " + std::string(::strerror(errno)) << std::endl;
-
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            attempts++;
-            if (attempts > 10)
-            {
-                throw new std::runtime_error("Failed to initialize socket");
-            }
+            throw new std::runtime_error("Failed to initialize socket");
         }
 
         const struct sockaddr_in addr_in = {
@@ -61,35 +53,17 @@ namespace server
             .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
 
         // assign fd to port
-        attempts = 0;
-        while (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
+        if (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
             ::close(fd);
-            std::cerr << "Failed to bind socket: " + std::string(::strerror(errno)) << std::endl;
-
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            attempts++;
-            if (attempts > 10)
-            {
-                throw new std::runtime_error("Failed to bind socket");
-            }
+            throw new std::runtime_error("Failed to bind socket");
         }
 
         // enable listening
-        attempts = 0;
-        while (::listen(fd, MAX_TCP_BACKLOG) != 0)
+        if (::listen(fd, MAX_TCP_BACKLOG) != 0)
         {
             ::close(fd);
-            std::cerr << "Failed to set listening mode: " + std::string(::strerror(errno)) << std::endl;
-
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            attempts++;
-            if (attempts > 10)
-            {
-                throw new std::runtime_error("Failed to set listening mode");
-            }
+            throw new std::runtime_error("Failed to set listening mode");
         }
 
         return fd;
