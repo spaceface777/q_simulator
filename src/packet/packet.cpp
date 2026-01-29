@@ -269,7 +269,7 @@ namespace packet
                 length = std::stoi(right);
                 continue;
             }
-            else if (left == "value" && stage == 1)
+            else if (left == "content" && stage == 1)
             {
                 content = right;
                 continue;
