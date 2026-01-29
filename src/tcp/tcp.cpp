@@ -45,7 +45,6 @@ namespace server
         while ((fd = ::socket(AF_INET, SOCK_STREAM, 0)) < 0)
         {
             std::cerr << "Failed to initialize socket: " + std::string(::strerror(errno)) << std::endl;
-            std::cerr << "Attempting to re-initialize" << std::endl;
 
             std::this_thread::sleep_for(std::chrono::seconds(1));
 
