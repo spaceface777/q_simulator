@@ -66,14 +66,24 @@ namespace server
      */
     static void handle_connection_requests(int self_fd)
     {
-        fd_set rfds;
-        FD_ZERO(&rfds);
-        FD_SET(self_fd, &rfds);
+        struct pollfd pfd = {
+            .fd = self_fd,
+            .events = POLLIN | POLLERR | POLLNVAL,
+            .revents = 0,
+        };
 
-        timeval timeout = {.tv_usec = std::chrono::duration_cast<std::chrono::microseconds>(TIMEOUT).count()};
-
-        int selected = ::select(self_fd + 1, &rfds, NULL, NULL, &timeout);
+        int selected = ::poll(&pfd, 1, TIMEOUT.count());
         if (selected <= 0)
+        {
+            return;
+        }
+
+        if (pfd.revents & (POLLERR | POLLNVAL))
+        {
+            return;
+        }
+
+        if ((pfd.revents & POLLIN) == 0)
         {
             return;
         }
@@ -116,6 +126,7 @@ namespace server
             fdToId.insert({fd, id});
             idToFd.insert({id, fd});
             std::cout << "[S] Client " << std::to_string(id) << " assigned to fd " << std::to_string(fd) << std::endl;
+            return;
         }
 
         std::optional<packet::Update> update = packet::Update::from_toml(buff);
@@ -123,16 +134,17 @@ namespace server
         {
             const packet::Update packet = update.value();
             std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
+            return;
         }
 
-        std::optional<packet::PacketSend> send = packet::PacketSend::from_toml(buff);
-        if (send)
+        std::optional<packet::PacketSend> sent = packet::PacketSend::from_toml(buff);
+        if (sent)
         {
-            const packet::PacketSend packet = send.value();
+            const packet::PacketSend packet = sent.value();
             std::cout << "Received packet send request to " << std::to_string(packet.module()) << " with content " << packet.content() << std::endl;
+            send(0, packet);
+            return;
         }
-
-        std::cout << std::string(buff) << std::endl;
     }
 
     /**
@@ -178,6 +190,7 @@ namespace server
 
             // there is a value to be read, yay
             char buff[MAX_TCP_BYTES_SIZE];
+            memset(buff, '\0', MAX_TCP_BYTES_SIZE); // avoid leftover buff from previous loop
             const ssize_t size = ::read(fd, buff, MAX_TCP_BYTES_SIZE);
             if (size <= 0)
             {
