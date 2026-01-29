@@ -40,23 +40,57 @@ namespace server
      */
     static void setup_port(int fd, unsigned int port)
     {
+        int self = -1;
+        uint8_t attempts = 0;
+        while ((self = ::socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        {
+            std::cerr << "Failed to initialize socket: " + std::string(::strerror(errno)) << std::endl;
+            std::cerr << "Attempting to re-initialize" << std::endl;
+
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            attempts++;
+            if (attempts > 10)
+            {
+                throw new std::runtime_error("Failed to initialize socket");
+            }
+        }
+
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
             .sin_port = ::htons(port),
             .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
 
         // assign fd to port
-        if (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
+        attempts = 0;
+        while (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
             ::close(fd);
-            throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
+            std::cerr << "Failed to bind socket: " + std::string(::strerror(errno)) << std::endl;
+
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            attempts++;
+            if (attempts > 10)
+            {
+                throw new std::runtime_error("Failed to bind socket");
+            }
         }
 
         // enable listening
-        if (::listen(fd, MAX_TCP_BACKLOG) != 0)
+        attempts = 0;
+        while (::listen(fd, MAX_TCP_BACKLOG) != 0)
         {
             ::close(fd);
-            throw std::runtime_error("Failed to set listening mode: " + std::string(::strerror(errno)));
+            std::cerr << "Failed to set listening mode: " + std::string(::strerror(errno)) << std::endl;
+
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            attempts++;
+            if (attempts > 10)
+            {
+                throw new std::runtime_error("Failed to set listening mode");
+            }
         }
     }
 
@@ -227,8 +261,8 @@ namespace server
         uint8_t attempts = 0;
         while ((self = ::socket(AF_INET, SOCK_STREAM, 0)) < 0)
         {
-            std::cerr << "[S] Failed to initialize socket: " + std::string(::strerror(errno)) << std::endl;
-            std::cerr << "[S] Attempting to re-initialize" << std::endl;
+            std::cerr << "Failed to initialize socket: " + std::string(::strerror(errno)) << std::endl;
+            std::cerr << "Attempting to re-initialize" << std::endl;
 
             std::this_thread::sleep_for(std::chrono::seconds(1));
 
