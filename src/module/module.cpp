@@ -25,9 +25,7 @@ namespace module
 			std::cout << "Starting process " << path << " at " << ::getpid() << std::endl;
 
 			const std::string module_name = "Module " + std::to_string(_id);
-			const std::string port = std::to_string(7778 + _id);
-			const std::string id = std::to_string(_id);
-			const int success = ::execl(path.c_str(), module_name.c_str(), id.c_str(), port.c_str(), (char *)0);
+			const int success = ::execl(path.c_str(), module_name.c_str(), (char *)0);
 
 			if (success < 0)
 			{

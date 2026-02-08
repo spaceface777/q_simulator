@@ -109,6 +109,25 @@ namespace server
         fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
     }
 
+    void send(unsigned int id, packet::Packet packet)
+    {
+        if (stopped || id > MAX_MODULES)
+        {
+            return;
+        }
+
+        const std::unique_ptr<client::Client> &client = clients[id];
+        if (!client || !client->is_valid())
+        {
+            return;
+        }
+
+        client->queue(packet);
+    }
+
+    /**
+     * Parses a buffer to a packet::Packet, and performs the appropriate action.
+     */
     static void parse_packet(unsigned int fd, char *buff)
     {
         std::optional<packet::Introduction> intro = packet::Introduction::from_toml(buff);
@@ -203,22 +222,6 @@ namespace server
 
             parse_packet(fd, buff);
         }
-    }
-
-    void send(unsigned int id, packet::Packet packet)
-    {
-        if (stopped || id > MAX_MODULES)
-        {
-            return;
-        }
-
-        const std::unique_ptr<client::Client> &client = clients[id];
-        if (!client || !client->is_valid())
-        {
-            return;
-        }
-
-        client->queue(packet);
     }
 
     void run(unsigned int port)

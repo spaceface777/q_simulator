@@ -22,28 +22,18 @@ int main(int argc, char const *argv[])
 
     server_thread = std::thread(server::run, 7777);
 
-    // const std::filesystem::path path = std::filesystem::path("client");
-    // module::Module module0(0);
-    // module0.run(path);
+    const std::filesystem::path path = std::filesystem::path("/home/efy/Projects/airport-router/build/zephyr/zephyr.exe");
+    module::Module module0(0);
+    module0.run(path);
 
-    // module::Module module1(1);
-    // module1.run(path);
-
-    // module::Module module1(1);
-    // module1.run(path);
-
-    // sleep(10);
+    module::Module module1(1);
+    module1.run(path);
 
     // server::stop();
     if (server_thread.joinable())
     {
         server_thread.join();
     }
-
-    // if (client.joinable())
-    // {
-    //     client.join();
-    // }
 
     return 0;
 }
