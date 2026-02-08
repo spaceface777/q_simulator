@@ -31,7 +31,7 @@ namespace client
         }
     }
 
-    static void run(Client *client)
+    static void _run(Client *client)
     {
         const Socket socket;
         if (!socket.is_valid())
@@ -53,7 +53,6 @@ namespace client
 
             const packet::Packet packet = client->next();
             const std::string toml = packet.to_toml();
-
             if (::write(client->fd(), toml.c_str(), toml.length() + 1) != 0) // include '\0'
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -66,11 +65,16 @@ namespace client
 
     void Client::run()
     {
-        std::thread(run, this);
+        _thread_ptr = std::make_unique<std::thread>(std::thread(_run, this));
     }
 
-    void stop()
+    void Client::stop()
     {
         stopped = true;
+
+        if (_thread_ptr && _thread_ptr->joinable())
+        {
+            _thread_ptr->join();
+        }
     }
 }

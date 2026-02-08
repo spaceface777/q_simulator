@@ -12,13 +12,15 @@ namespace client
     class Client
     {
     private:
-        int _fd;
-        unsigned int _id;
-        unsigned int _port;
+        int _fd = -1;
+        unsigned int _id = 0;
+        unsigned int _port = 0;
         std::queue<packet::Packet> _queue;
-        std::thread _thread;
+        std::unique_ptr<std::thread> _thread_ptr;
 
     public:
+        Client() = default;
+
         Client(unsigned int id, unsigned int port)
         {
             _id = id;
@@ -30,6 +32,10 @@ namespace client
             if (is_valid())
             {
                 ::close(_fd);
+            }
+            if (_thread_ptr && _thread_ptr->joinable())
+            {
+                _thread_ptr->join();
             }
         }
 
@@ -73,18 +79,11 @@ namespace client
             return _queue.front();
         }
 
-        void stop()
-        {
-            if (_thread.joinable())
-            {
-                _thread.join();
-            }
-        }
-
         void run();
+
+        void stop();
     };
 
-    void stop();
 }
 
 #endif // CLIENT_H

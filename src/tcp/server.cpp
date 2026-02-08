@@ -13,6 +13,7 @@
 #include <mutex>
 #include <queue>
 #include <algorithm>
+#include <memory>
 #include <poll.h>
 
 #include "server.h"
@@ -26,9 +27,7 @@ namespace server
 
     std::atomic_bool stopped = false;
     std::vector<unsigned int> fds;
-    std::array<client::Client, MAX_MODULES> clients;
-    std::unordered_map<unsigned int, uint8_t> fdToId;
-    std::unordered_map<uint8_t, unsigned int> idToFd;
+    std::array<std::unique_ptr<client::Client>, MAX_MODULES> clients;
 
     /**
      * Sets up the port for a server connection.
@@ -108,15 +107,6 @@ namespace server
     static void remove(int fd)
     {
         fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
-
-        if (fdToId.count(fd) == 0)
-        {
-            return;
-        }
-
-        unsigned int id = fdToId.at(fd);
-        fdToId.erase(fd);
-        idToFd.erase(id);
     }
 
     static void parse_packet(unsigned int fd, char *buff)
@@ -126,11 +116,7 @@ namespace server
         {
             const packet::Introduction packet = intro.value();
             const unsigned int id = packet.id();
-            fdToId.insert({fd, id});
-            idToFd.insert({id, fd});
-
-            client::Client client(id, 7778 + id);
-            clients[id] = client;
+            clients[id] = std::make_unique<client::Client>(id, 7778 + id);
 
             std::cout << "Started client at " << std::to_string(7778 + id) << std::endl;
 
@@ -150,7 +136,7 @@ namespace server
         {
             const packet::PacketSend packet = sent.value();
             std::cout << "Received packet send request to " << std::to_string(packet.module()) << " with content " << packet.content() << std::endl;
-            send(0, packet);
+            send(packet.module(), packet);
             return;
         }
     }
@@ -219,18 +205,20 @@ namespace server
         }
     }
 
-    void send(int id, packet::Packet packet)
+    void send(unsigned int id, packet::Packet packet)
     {
-        if (stopped || idToFd.count(id) == 0)
+        if (stopped || id > MAX_MODULES)
         {
             return;
         }
 
-        const client::Client client = clients[id];
-        if (!client.is_valid())
+        const std::unique_ptr<client::Client> &client = clients[id];
+        if (!client || !client->is_valid())
         {
             return;
         }
+
+        client->queue(packet);
     }
 
     void run(unsigned int port)
@@ -255,7 +243,11 @@ namespace server
 
         for (size_t i = 0; i < clients.size(); i++)
         {
-            clients[i].stop();
+            const std::unique_ptr<client::Client> &client = clients[i];
+            if (client && client->is_valid())
+            {
+                client->stop();
+            }
         }
     }
 
