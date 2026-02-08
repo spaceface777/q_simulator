@@ -1,5 +1,5 @@
 #include "events/parser.h"
-#include "tcp/tcp.h"
+#include "tcp/server.h"
 #include "tcp/client.h"
 #include "packet/packet.h"
 #include "module/module.h"

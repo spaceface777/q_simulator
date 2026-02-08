@@ -12,12 +12,11 @@
 #include <unordered_map>
 #include <mutex>
 #include <queue>
-#include <cassert>
-#include <cerrno>
 #include <algorithm>
 #include <poll.h>
 
-#include "tcp.h"
+#include "server.h"
+#include "client.h"
 #include "../packet/packet.h"
 #include "../util.h"
 
@@ -27,20 +26,16 @@ namespace server
 
     std::atomic_bool stopped = false;
     std::vector<unsigned int> fds;
+    std::array<client::Client, MAX_MODULES> clients;
     std::unordered_map<unsigned int, uint8_t> fdToId;
     std::unordered_map<uint8_t, unsigned int> idToFd;
-
-    void stop()
-    {
-        stopped = true;
-    }
 
     /**
      * Sets up the port for a server connection.
      */
     static int setup_port(unsigned int port)
     {
-        int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (fd < 0)
         {
             throw new std::runtime_error("Failed to initialize socket");
@@ -133,7 +128,12 @@ namespace server
             const unsigned int id = packet.id();
             fdToId.insert({fd, id});
             idToFd.insert({id, fd});
-            std::cout << "Client " << std::to_string(id) << " assigned to fd " << std::to_string(fd) << std::endl;
+
+            client::Client client(id, 7778 + id);
+            clients[id] = client;
+
+            std::cout << "Started client at " << std::to_string(7778 + id) << std::endl;
+
             return;
         }
 
@@ -226,12 +226,16 @@ namespace server
             return;
         }
 
-        const unsigned int fd = idToFd.at(id);
+        const client::Client client = clients[id];
+        if (!client.is_valid())
+        {
+            return;
+        }
     }
 
     void run(unsigned int port)
     {
-        int fd = setup_port(port);
+        const int fd = setup_port(port);
 
         fds.reserve(MAX_MODULES);
 
@@ -242,6 +246,16 @@ namespace server
             handle_packets();
 
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+
+    void stop()
+    {
+        stopped = true;
+
+        for (size_t i = 0; i < clients.size(); i++)
+        {
+            clients[i].stop();
         }
     }
 

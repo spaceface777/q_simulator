@@ -2,6 +2,9 @@
 #define CLIENT_H
 
 #include <unistd.h>
+#include <memory>
+#include <queue>
+#include <thread>
 
 // only used for testing
 namespace client
@@ -12,6 +15,8 @@ namespace client
         int _fd;
         unsigned int _id;
         unsigned int _port;
+        std::queue<packet::Packet> _queue;
+        std::thread _thread;
 
     public:
         Client(unsigned int id, unsigned int port)
@@ -48,40 +53,38 @@ namespace client
             return _fd >= 0;
         }
 
-        void stop();
+        void queue(packet::Packet packet) noexcept
+        {
+            _queue.push(packet);
+        }
+
+        void pop() noexcept
+        {
+            _queue.pop();
+        }
+
+        bool empty() const noexcept
+        {
+            return _queue.empty();
+        }
+
+        packet::Packet next() const noexcept
+        {
+            return _queue.front();
+        }
+
+        void stop()
+        {
+            if (_thread.joinable())
+            {
+                _thread.join();
+            }
+        }
 
         void run();
-
-        int release() noexcept
-        {
-            int _ = _fd;
-            _fd = -1;
-            return _;
-        }
-
-        // disallow reassigning
-        Client(const Client &) = delete;
-        Client &operator=(const Client &) = delete;
-
-        // disallow transfer
-        Client(Client &&other) noexcept
-        {
-            _fd = other.release();
-        }
-        Client &operator=(Client &&other) noexcept
-        {
-            if (this != &other)
-            {
-                if (is_valid())
-                {
-                    ::close(_fd);
-                }
-                _fd = other.release();
-            }
-            return *this;
-        }
     };
 
+    void stop();
 }
 
 #endif // CLIENT_H

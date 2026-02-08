@@ -5,10 +5,6 @@
 
 namespace server
 {
-    /**
-     * Signals the server thread to stop execution.
-     */
-    void stop();
 
     /**
      * Sends a packet to module id.
@@ -24,6 +20,11 @@ namespace server
      * @param port The port to run the server on.
      */
     void run(unsigned int port);
+
+    /**
+     * Signals the server thread to stop execution.
+     */
+    void stop();
 
 }
 

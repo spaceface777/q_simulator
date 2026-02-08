@@ -7,7 +7,7 @@
 /**
  * The max amount of modules supported.
  */
-#define MAX_MODULES 50
+#define MAX_MODULES 25
 
 /**
  * Max size for TCP messages.
@@ -17,7 +17,7 @@
 /**
  * Max TCP backlog.
  */
-#define MAX_TCP_BACKLOG 10
+#define MAX_TCP_BACKLOG 25
 
 namespace util
 {
