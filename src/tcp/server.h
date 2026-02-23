@@ -26,6 +26,11 @@ namespace server
      */
     void stop();
 
+    /**
+     * @return The amount of connections this server is handling.
+     */
+    std::size_t size();
+
 }
 
 #endif // SERVER_H

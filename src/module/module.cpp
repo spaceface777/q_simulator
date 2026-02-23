@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <fstream>
 
 #include "module.h"
 #include "../tcp/server.h"
@@ -23,6 +24,20 @@ namespace module
 		if (child)
 		{
 			std::cout << "Starting process " << path << " at " << ::getpid() << std::endl;
+
+			// file for id
+
+			const std::filesystem::path id_path = "/tmp/qaid";
+			std::ofstream id_of(id_path);
+			if (!id_of.is_open())
+			{
+				throw std::runtime_error("Failed to create file for " + std::to_string(_id));
+			}
+			id_of << std::to_string(_id);
+			id_of.flush();
+			id_of.close();
+
+			// exec
 
 			const std::string module_name = "Module " + std::to_string(_id);
 			const int success = ::execl(path.c_str(), module_name.c_str(), (char *)0);

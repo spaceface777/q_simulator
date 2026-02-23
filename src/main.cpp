@@ -26,8 +26,18 @@ int main(int argc, char const *argv[])
     module::Module module0(0);
     module0.run(path);
 
+    while (server::size() < 1)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
     module::Module module1(1);
     module1.run(path);
+
+    while (server::size() < 2)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 
     // server::stop();
     if (server_thread.joinable())

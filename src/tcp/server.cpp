@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <memory>
 #include <poll.h>
+#include <errno.h>
 
 #include "server.h"
 #include "client.h"
@@ -49,7 +50,7 @@ namespace server
         if (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
             ::close(fd);
-            throw new std::runtime_error("Failed to bind socket");
+            throw new std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
         // enable listening
@@ -135,9 +136,9 @@ namespace server
         {
             const packet::Introduction packet = intro.value();
             const unsigned int id = packet.id();
-            clients[id] = std::make_unique<client::Client>(id, 7778 + id);
+            clients[id] = std::make_unique<client::Client>(id, 8888 + id);
 
-            std::cout << "Started client at " << std::to_string(7778 + id) << std::endl;
+            std::cout << "Started client at " << std::to_string(8888 + id) << std::endl;
 
             return;
         }
@@ -252,6 +253,11 @@ namespace server
                 client->stop();
             }
         }
+    }
+
+    std::size_t size()
+    {
+        return fds.size();
     }
 
 }
