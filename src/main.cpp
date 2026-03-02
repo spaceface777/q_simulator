@@ -23,20 +23,19 @@ int main(int argc, char const *argv[])
     server_thread = std::thread(server::run, 7777);
 
     const std::filesystem::path path = std::filesystem::path("/home/efy/Projects/airport-router/build/zephyr/zephyr.exe");
-    module::Module module0(0);
-    module0.run(path);
 
-    while (server::size() < 1)
+    uint8_t module_index = 0;
+    while (module_index < MODULE_COUNT)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+        module::Module module(module_index);
+        module.run(path);
 
-    module::Module module1(1);
-    module1.run(path);
+        while (server::size() < module_index + 1)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
 
-    while (server::size() < 2)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        module_index++;
     }
 
     if (server_thread.joinable())
@@ -44,6 +43,6 @@ int main(int argc, char const *argv[])
         server_thread.join();
     }
     server::stop();
-    
+
     return 0;
 }
