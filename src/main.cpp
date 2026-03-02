@@ -39,11 +39,11 @@ int main(int argc, char const *argv[])
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // server::stop();
     if (server_thread.joinable())
     {
         server_thread.join();
     }
-
+    server::stop();
+    
     return 0;
 }
