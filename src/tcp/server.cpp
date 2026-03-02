@@ -24,8 +24,6 @@
 
 namespace server
 {
-    static constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(100);
-
     std::atomic_bool stopped = false;
     std::vector<unsigned int> fds;
     std::array<std::unique_ptr<client::Client>, MAX_MODULES> clients;
@@ -245,7 +243,7 @@ namespace server
 
             handle_packets();
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            std::this_thread::sleep_for(TIMEOUT);
         }
     }
 

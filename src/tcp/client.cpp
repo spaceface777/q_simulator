@@ -48,7 +48,7 @@ namespace client
         {
             if (client->empty())
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                std::this_thread::sleep_for(TIMEOUT);
                 continue;
             }
 
@@ -59,7 +59,7 @@ namespace client
             const std::string toml = packet.to_toml();
             if (::write(client->fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                std::this_thread::sleep_for(TIMEOUT);
                 continue;
             }
 

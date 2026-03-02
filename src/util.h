@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string_view>
+#include <chrono>
 
 /**
  * The max amount of modules supported.
@@ -23,6 +24,11 @@ inline constexpr uint16_t MAX_TCP_BYTES_SIZE = 512;
  * Max TCP backlog.
  */
 inline constexpr uint8_t MAX_TCP_BACKLOG = 25;
+
+/**
+ * A constant timeout value.
+ */
+inline constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(50);
 
 namespace util
 {
