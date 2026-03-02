@@ -7,3 +7,4 @@ CMakePresets.json
 docs/
 _deps/
 Temporary/
+Makefile
