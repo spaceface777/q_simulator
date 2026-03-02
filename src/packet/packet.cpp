@@ -233,7 +233,7 @@ namespace packet
     std::string PacketSend::to_toml() const noexcept
     {
         std::string buf = create_buffer();
-        append_header(buf, "update");
+        append_header(buf, "packet");
         append_value(buf, "module", _module);
         append_value(buf, "length", _length);
         append_value(buf, "content", _content);
