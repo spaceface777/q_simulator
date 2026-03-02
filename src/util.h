@@ -7,17 +7,22 @@
 /**
  * The max amount of modules supported.
  */
-#define MAX_MODULES 25
+inline constexpr uint8_t MAX_MODULES = 25;
+
+/**
+ * The module amount currently being used.
+ */
+inline constexpr uint8_t MODULE_COUNT = 19;
 
 /**
  * Max size for TCP messages.
  */
-#define MAX_TCP_BYTES_SIZE 512
+inline constexpr uint16_t MAX_TCP_BYTES_SIZE = 512;
 
 /**
  * Max TCP backlog.
  */
-#define MAX_TCP_BACKLOG 25
+inline constexpr uint8_t MAX_TCP_BACKLOG = 25;
 
 namespace util
 {
