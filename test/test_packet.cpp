@@ -15,6 +15,19 @@ TEST(Packet, ToToml)
     ASSERT_STREQ("value = 3", std::string(parts[3]).c_str());
 }
 
+TEST(Packet, ToTomlPacket)
+{
+    packet::PacketSend packet(1, 4, "heyy");
+    const std::string toml = packet.to_toml();
+    const std::vector<std::string_view> parts = util::split(toml, "\n");
+
+    ASSERT_EQ(4, parts.size());
+    ASSERT_STREQ("[packet]", std::string(parts[0]).c_str());
+    ASSERT_STREQ("module = 1", std::string(parts[1]).c_str());
+    ASSERT_STREQ("length = 4", std::string(parts[2]).c_str());
+    ASSERT_STREQ("content = \"heyy\"", std::string(parts[3]).c_str());
+}
+
 TEST(Packet, FromTo)
 {
     const std::string toml = "  [introduction]\n\n  id  =  4";
