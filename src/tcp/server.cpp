@@ -110,7 +110,7 @@ namespace server
         fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
     }
 
-    void send(unsigned int id, packet::Packet packet)
+    void send(unsigned int id, const packet::Packet &packet)
     {
         if (stopped || id > MAX_MODULES)
         {
@@ -118,7 +118,7 @@ namespace server
         }
 
         const std::unique_ptr<client::Client> &client = clients[id];
-        if (!client || !client->is_valid())
+        if (!client)
         {
             return;
         }
@@ -136,7 +136,15 @@ namespace server
         {
             const packet::Introduction packet = intro.value();
             const unsigned int id = packet.id();
+
+            if (clients[id])
+            {
+                std::cout << "Attempted to double up client creation at " << std::to_string(8888 + id) << std::endl;
+                return;
+            }
+
             clients[id] = std::make_unique<client::Client>(id, 8888 + id);
+            clients[id]->run();
 
             std::cout << "Started client at " << std::to_string(8888 + id) << std::endl;
 
@@ -248,7 +256,7 @@ namespace server
         for (size_t i = 0; i < clients.size(); i++)
         {
             const std::unique_ptr<client::Client> &client = clients[i];
-            if (client && client->is_valid())
+            if (client)
             {
                 client->stop();
             }

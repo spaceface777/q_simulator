@@ -51,7 +51,7 @@ namespace module
 		_running = true;
 	}
 
-	void Module::send(packet::Packet packet)
+	void Module::send(const packet::Packet &packet)
 	{
 		server::send(_id, packet);
 	}

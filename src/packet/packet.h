@@ -4,6 +4,7 @@
 #include <string>
 #include <cstdint>
 #include <optional>
+#include <memory>
 
 namespace packet
 {
@@ -22,6 +23,11 @@ namespace packet
          * @return Converts the data in this class to TOML.
          */
         virtual std::string to_toml() const noexcept;
+
+        /**
+         * @return A heap-allocated copy of this packet preserving dynamic type.
+         */
+        virtual std::unique_ptr<Packet> clone() const;
 
         virtual ~Packet() = default;
     };
@@ -64,6 +70,7 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
+        std::unique_ptr<Packet> clone() const override;
 
         /**
          * Creates a new instance on this class based on the passed TOML info.
@@ -114,6 +121,7 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
+        std::unique_ptr<Packet> clone() const override;
 
         /**
          * Creates a new instance on this class based on the passed TOML info.
@@ -164,6 +172,7 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
+        std::unique_ptr<Packet> clone() const override;
 
         /**
          * Creates a new instance on this class based on the passed TOML info.
@@ -224,6 +233,7 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
+        std::unique_ptr<Packet> clone() const override;
     };
 
     class TubDeparture : public Packet
@@ -257,6 +267,7 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
+        std::unique_ptr<Packet> clone() const override;
     };
 
     class PlaneArrival : public Packet

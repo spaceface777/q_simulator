@@ -12,7 +12,7 @@ namespace server
      * @param id The module id.
      * @param packet The packet to send.
      */
-    void send(unsigned int id, packet::Packet packet);
+    void send(unsigned int id, const packet::Packet &packet);
 
     /**
      * Runs a TCP server on the designated port.

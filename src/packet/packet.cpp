@@ -72,6 +72,11 @@ namespace packet
         return std::string();
     }
 
+    std::unique_ptr<Packet> Packet::clone() const
+    {
+        return std::make_unique<Packet>(*this);
+    }
+
     bool Introduction::is_valid() const noexcept
     {
         return true;
@@ -84,6 +89,11 @@ namespace packet
         append_value(buf, "id", _id);
         trim_trailing_nl(buf);
         return buf;
+    }
+
+    std::unique_ptr<Packet> Introduction::clone() const
+    {
+        return std::make_unique<Introduction>(*this);
     }
 
     std::optional<Introduction> Introduction::from_toml(std::string_view toml)
@@ -148,6 +158,11 @@ namespace packet
         append_value(buf, "value", _value);
         trim_trailing_nl(buf);
         return buf;
+    }
+
+    std::unique_ptr<Packet> Update::clone() const
+    {
+        return std::make_unique<Update>(*this);
     }
 
     std::optional<Update> Update::from_toml(std::string_view toml)
@@ -226,6 +241,11 @@ namespace packet
         return buf;
     }
 
+    std::unique_ptr<Packet> PacketSend::clone() const
+    {
+        return std::make_unique<PacketSend>(*this);
+    }
+
     std::optional<PacketSend> PacketSend::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
@@ -298,6 +318,11 @@ namespace packet
         return buf;
     }
 
+    std::unique_ptr<Packet> TubArrival::clone() const
+    {
+        return std::make_unique<TubArrival>(*this);
+    }
+
     bool TubDeparture::is_valid() const noexcept
     {
         return true;
@@ -311,6 +336,11 @@ namespace packet
         append_value(buf, "module", _module);
         trim_trailing_nl(buf);
         return buf;
+    }
+
+    std::unique_ptr<Packet> TubDeparture::clone() const
+    {
+        return std::make_unique<TubDeparture>(*this);
     }
 
     bool PlaneArrival::is_valid() const noexcept

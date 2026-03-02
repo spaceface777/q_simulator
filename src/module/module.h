@@ -49,7 +49,7 @@ namespace module
          *
          * @param packet The packet to send.
          */
-        void send(packet::Packet packet);
+        void send(const packet::Packet &packet);
     };
 }
 

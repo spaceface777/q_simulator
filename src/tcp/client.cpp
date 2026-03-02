@@ -39,6 +39,7 @@ namespace client
             throw std::runtime_error("Failed to bind socket");
         }
 
+        client->set_fd(socket.fd());
         setup_connection(socket.fd(), client->port(), client->id());
 
         std::cout << "Connected to module " << std::to_string(client->id()) << std::endl;
@@ -51,9 +52,12 @@ namespace client
                 continue;
             }
 
-            const packet::Packet packet = client->next();
+            const packet::Packet &packet = client->next();
+
+            std::cout << "Size " << std::to_string(client->size()) << std::endl;
+            std::cout << "Sending " << packet.to_toml() << std::endl;
             const std::string toml = packet.to_toml();
-            if (::write(client->fd(), toml.c_str(), toml.length() + 1) != 0) // include '\0'
+            if (::write(client->fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 continue;
