@@ -1,7 +1,6 @@
 #include "tub.h"
 
-namespace tub {
-
-    
+namespace tub
+{
 
 }
