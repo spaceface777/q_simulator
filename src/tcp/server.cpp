@@ -22,6 +22,7 @@
 #include "../packet/packet.h"
 #include "../util.h"
 #include "../defs.h"
+#include "../module/module.h"
 
 namespace server
 {
@@ -155,6 +156,13 @@ namespace server
         {
             const packet::Update packet = update.value();
             std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
+
+            std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(packet.id());
+            if (ptr)
+            {
+                ptr.value()->update(packet);
+            }
+
             return;
         }
 

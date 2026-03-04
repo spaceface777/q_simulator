@@ -4,25 +4,33 @@
 #include <pthread.h>
 #include <cstdint>
 #include <filesystem>
-#include "../packet/packet.h"
-#include "../tub/tub.h"
 #include <vector>
 #include <memory>
+#include <thread>
+
+#include "../packet/packet.h"
+#include "../tub/tub.h"
 
 namespace module
 {
+
     class Module
     {
     private:
-        uint8_t _id;
-        pid_t _pid = -1;
-        bool _running = false;
+        uint8_t id_;
+        pid_t pid_ = -1;
+        bool running_ = false;
         std::vector<std::unique_ptr<tub::Tub>> tubs_;
+        std::unique_ptr<std::thread> thread_ptr_;
+
+        uint8_t big_speed_;
+        uint8_t small_speed_;
+        uint16_t servo_degrees_;
 
     public:
         Module(uint8_t id)
         {
-            _id = id;
+            id_ = id;
         }
 
         /**
@@ -30,7 +38,7 @@ namespace module
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         /**
@@ -38,7 +46,7 @@ namespace module
          */
         bool is_running() const noexcept
         {
-            return _running;
+            return running_;
         }
 
         /**
@@ -56,13 +64,26 @@ namespace module
         void send(const packet::Packet &packet);
 
         /**
-         * Runs when a packet has been sent to this module.
+         * Runs when an update packet has been sent from this module's simulation.
          *
-         * @param packet The packet that was sent to this module.
+         * @param packet The packet that was sent to this module's simulation.
          */
-        void receive(const packet::Packet &packet);
-
+        void update(const packet::Update &packet);
     };
+
+    /**
+     * Adds a module.
+     * @param ptr A unique_ptr to the module.
+     */
+    void add_module(std::shared_ptr<module::Module> ptr);
+
+    /**
+     * Gets an optional module from its id.
+     * @param id The id.
+     * @returns The module instance from the id.
+     */
+    std::optional<std::shared_ptr<module::Module>> get_module(uint8_t id);
+
 }
 
 #endif // MODULE_H

@@ -13,3 +13,4 @@ Makefile
 *.tcl
 lib/
 bin/
+build/

@@ -7,6 +7,7 @@
 #include <csignal>
 #include "util.h"
 #include "defs.h"
+#include <map>
 
 static std::thread server_thread;
 
@@ -28,8 +29,9 @@ int main(int argc, char const *argv[])
     uint8_t module_index = 0;
     while (module_index < MODULE_COUNT)
     {
-        module::Module module(module_index);
-        module.run(path);
+        std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
+        module->run(path);
+        module::add_module(std::move(module));
 
         while (server::size() < module_index + 1)
         {
