@@ -28,7 +28,6 @@ namespace server
 {
     std::atomic_bool stopped = false;
     std::vector<unsigned int> fds;
-    std::array<std::unique_ptr<client::Client>, MAX_MODULES> clients;
 
     /**
      * Sets up the port for a server connection.
@@ -117,13 +116,13 @@ namespace server
             return;
         }
 
-        const std::unique_ptr<client::Client> &client = clients[id];
+        const std::optional<std::shared_ptr<client::Client>> client = client::get_client(id);
         if (!client)
         {
             return;
         }
 
-        client->queue(packet);
+        client.value()->queue(packet);
     }
 
     /**
@@ -137,14 +136,16 @@ namespace server
             const packet::Introduction packet = intro.value();
             const unsigned int id = packet.id();
 
-            if (clients[id])
+            const std::optional<std::shared_ptr<client::Client>> existing_client = client::get_client(id);
+            if (existing_client)
             {
                 std::cout << "Attempted to double up client creation at " << std::to_string(8888 + id) << std::endl;
                 return;
             }
 
-            clients[id] = std::make_unique<client::Client>(id, 8888 + id);
-            clients[id]->run();
+            std::unique_ptr<client::Client> ptr = std::make_unique<client::Client>(id, 8888 + id);
+            ptr->run();
+            client::add_client(std::move(ptr));
 
             std::cout << "Started client at " << std::to_string(8888 + id) << std::endl;
 
@@ -260,12 +261,12 @@ namespace server
     {
         stopped = true;
 
-        for (size_t i = 0; i < clients.size(); i++)
+        for (size_t i = 0; i < MAX_MODULES; i++)
         {
-            const std::unique_ptr<client::Client> &client = clients[i];
+            const std::optional<std::shared_ptr<client::Client>> client = client::get_client(i);
             if (client)
             {
-                client->stop();
+                client.value()->stop();
             }
         }
     }

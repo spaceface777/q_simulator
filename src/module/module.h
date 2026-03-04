@@ -75,7 +75,7 @@ namespace module
      * Adds a module.
      * @param ptr A unique_ptr to the module.
      */
-    void add_module(std::shared_ptr<module::Module> ptr);
+    void add_module(std::unique_ptr<module::Module> ptr);
 
     /**
      * Gets an optional module from its id.

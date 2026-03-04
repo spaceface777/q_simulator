@@ -91,6 +91,19 @@ namespace client
         void stop();
     };
 
+    /**
+     * Adds a module.
+     * @param ptr A unique_ptr to the client.
+     */
+    void add_client(std::unique_ptr<client::Client> ptr);
+
+    /**
+     * Gets an optional client from its id.
+     * @param id The id.
+     * @returns The client instance from the id.
+     */
+    std::optional<std::shared_ptr<client::Client>> get_client(uint8_t id);
+
 }
 
 #endif // CLIENT_H

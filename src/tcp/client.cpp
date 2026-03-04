@@ -7,6 +7,7 @@
 #include <cstring>
 #include <thread>
 #include <queue>
+#include <map>
 
 #include "../packet/packet.h"
 #include "../util.h"
@@ -82,4 +83,25 @@ namespace client
             _thread_ptr->join();
         }
     }
+
+    static std::map<uint8_t, std::unique_ptr<Client>> map;
+
+    void add_client(std::unique_ptr<Client> ptr)
+    {
+        if (map.count(ptr->id()))
+        {
+            throw std::invalid_argument("Attempted to double register clients");
+        }
+        map[ptr->id()] = std::move(ptr);
+    }
+
+    std::optional<std::shared_ptr<Client>> get_client(uint8_t id)
+    {
+        if (map.count(id))
+        {
+            return std::move(map.at(id));
+        }
+        return {};
+    }
+
 }

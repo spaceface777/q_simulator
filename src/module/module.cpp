@@ -73,22 +73,22 @@ namespace module
 		}
 	}
 
-	static std::map<uint8_t, std::shared_ptr<module::Module>> map;
+	static std::map<uint8_t, std::unique_ptr<module::Module>> map;
 
-	void add_module(std::shared_ptr<module::Module> ptr)
+	void add_module(std::unique_ptr<module::Module> ptr)
 	{
 		if (map.count(ptr->id()))
 		{
 			throw std::invalid_argument("Attempted to double register modules");
 		}
-		map[ptr->id()] = ptr;
+		map[ptr->id()] = std::move(ptr);
 	}
 
 	std::optional<std::shared_ptr<module::Module>> get_module(uint8_t id)
 	{
 		if (map.count(id))
 		{
-			return map.at(id);
+			return std::move(map.at(id));
 		}
 		return {};
 	}
