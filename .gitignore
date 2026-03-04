@@ -1,3 +1,6 @@
+*
+!*.*
+
 out/
 CMakeFiles/
 .vscode/
@@ -10,3 +13,4 @@ Temporary/
 Makefile
 *.cmake
 *.tcl
+lib/

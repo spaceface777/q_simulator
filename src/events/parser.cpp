@@ -216,7 +216,7 @@ events::TubEvent parse_tub(State &state)
         throw std::invalid_argument("Missing attributes for tub with id " + std::to_string(id));
     }
 
-    return events::Tub(time, id, safe, origin, destination);
+    return events::TubEvent(time, id, safe, origin, destination);
 }
 
 /**
