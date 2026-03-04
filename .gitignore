@@ -1,6 +1,3 @@
-*
-!*.*
-
 out/
 CMakeFiles/
 .vscode/
@@ -12,5 +9,7 @@ _deps/
 Temporary/
 Makefile
 *.cmake
+*/*.cmake
 *.tcl
 lib/
+bin/

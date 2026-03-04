@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.10.0)
 project(quercus-router-shadow VERSION 0.1.0 LANGUAGES C CXX)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # === Builds ===
 
 add_executable(main 
     src/main.cpp 
-    src/events/parser.cpp 
+    src/event/parser.cpp 
     src/tcp/server.cpp 
     src/tcp/client.cpp 
     src/util.cpp 
