@@ -38,13 +38,13 @@ namespace events
     /**
      * Contains the data required for a plane.
      */
-    class Plane : public Event
+    class PlaneEvent : public Event
     {
         uint8_t _module;
         uint8_t _leaves_in;
 
     public:
-        Plane(uint8_t time, uint8_t id, uint8_t module, uint8_t leaves_in)
+        PlaneEvent(uint8_t time, uint8_t id, uint8_t module, uint8_t leaves_in)
         {
             _time = time;
             _id = id;
@@ -84,14 +84,14 @@ namespace events
     /**
      * Contains the data required for a tub.
      */
-    class Tub : public Event
+    class TubEvent : public Event
     {
         bool _safe;
         TubData _origin;
         TubData _destination;
 
     public:
-        Tub(uint8_t time, uint8_t id, bool safe, TubData origin, TubData destination)
+        TubEvent(uint8_t time, uint8_t id, bool safe, TubData origin, TubData destination)
         {
             _time = time;
             _id = id;

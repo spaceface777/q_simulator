@@ -131,7 +131,7 @@ bool parse_bool(std::string_view sv, std::string_view name)
  * @param state The state of the parsing machine.
  * @return The parsed tub, or throws for invalid attributes or values.
  */
-events::Tub parse_tub(State &state)
+events::TubEvent parse_tub(State &state)
 {
     int time = -1, id = -1, safe = -1;
     events::TubData origin{events::LocationType::MODULE, -1};
@@ -224,7 +224,7 @@ events::Tub parse_tub(State &state)
  * @param state The state of the parsing machine.
  * @return The parsed plane, or throws for invalid attributes or values.
  */
-events::Plane parse_plane(State &state)
+events::PlaneEvent parse_plane(State &state)
 {
     int time = -1, id = -1, module = -1, leaves_at = -1;
 
@@ -281,7 +281,7 @@ events::Plane parse_plane(State &state)
         throw std::invalid_argument("Missing attributes for plane with id " + std::to_string(id));
     }
 
-    return events::Plane(time, id, module, leaves_at);
+    return events::PlaneEvent(time, id, module, leaves_at);
 }
 
 /**
