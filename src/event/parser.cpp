@@ -7,6 +7,7 @@
 #include <string>
 
 #include "../util.h"
+#include "../defs.h"
 #include "parser.h"
 
 parser::Attribute parser::parse_attribute(std::string_view line)

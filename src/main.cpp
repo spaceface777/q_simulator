@@ -6,6 +6,7 @@
 #include <thread>
 #include <csignal>
 #include "util.h"
+#include "defs.h"
 
 static std::thread server_thread;
 

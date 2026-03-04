@@ -10,6 +10,7 @@
 
 #include "../packet/packet.h"
 #include "../util.h"
+#include "../defs.h"
 #include "socket.h"
 #include "client.h"
 

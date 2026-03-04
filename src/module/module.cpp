@@ -56,4 +56,12 @@ namespace module
 		server::send(_id, packet);
 	}
 
+	void Module::receive(const packet::Packet &packet)
+	{
+		for (const std::unique_ptr<tub::Tub> &tub : tubs_) 
+		{
+			
+		}
+	}
+
 }

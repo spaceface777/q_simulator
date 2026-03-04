@@ -21,6 +21,7 @@
 #include "client.h"
 #include "../packet/packet.h"
 #include "../util.h"
+#include "../defs.h"
 
 namespace server
 {

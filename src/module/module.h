@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <filesystem>
 #include "../packet/packet.h"
+#include "../tub/tub.h"
+#include <vector>
+#include <memory>
 
 namespace module
 {
@@ -14,6 +17,7 @@ namespace module
         uint8_t _id;
         pid_t _pid = -1;
         bool _running = false;
+        std::vector<std::unique_ptr<tub::Tub>> tubs_;
 
     public:
         Module(uint8_t id)
@@ -50,6 +54,14 @@ namespace module
          * @param packet The packet to send.
          */
         void send(const packet::Packet &packet);
+
+        /**
+         * Runs when a packet has been sent to this module.
+         *
+         * @param packet The packet that was sent to this module.
+         */
+        void receive(const packet::Packet &packet);
+
     };
 }
 

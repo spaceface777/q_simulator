@@ -4,6 +4,7 @@
 
 #include "packet.h"
 #include "../util.h"
+#include "../defs.h"
 #include <optional>
 
 namespace packet
