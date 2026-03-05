@@ -9,368 +9,128 @@
 #include "../util.h"
 #include "../defs.h"
 #include "parser.h"
-
-parser::Attribute parser::parse_attribute(std::string_view line)
-{
-    const std::vector<std::string_view> parts = util::split(line, "=");
-
-    if (parts.size() != 2)
-    {
-        throw new std::runtime_error("Invalid attribute format");
-    }
-
-    const std::string_view type = util::trim(parts[0]);
-    const std::string_view value = util::trim(parts[1]);
-
-    // find last character that is not a comment
-    bool in_array = false;
-    bool in_string = false;
-    std::size_t last = value.length();
-    for (std::size_t i = 0; i < value.length(); i++)
-    {
-        const char c = value[i];
-        if (c == '"' && (i == 0 || value[i - 1] != '\\'))
-        {
-            in_string = !in_string;
-            continue;
-        }
-
-        if (in_array && c == ']')
-        {
-            in_array = false;
-            continue;
-        }
-
-        if (!in_array && !in_string && c == '[')
-        {
-            in_array = true;
-            continue;
-        }
-
-        if (!in_array && !in_string && c == '#')
-        {
-            last = i;
-            break;
-        }
-    }
-
-    // strip comment
-    const std::string_view stripped = value.substr(0, last);
-    const parser::Attribute attribute = {
-        .name = type,
-        .value = util::rtrim(stripped),
-    };
-
-    return attribute;
-};
-
-enum ParsableType
-{
-    NONE,
-    TUB,
-    PLANE
-};
-
-struct State
-{
-    /**
-     * The pointer to the file being read.
-     */
-    std::ifstream file;
-
-    /**
-     * The current line.
-     */
-    std::size_t idx;
-
-    /**
-     * The type being currently parsed.
-     */
-    ParsableType type;
-};
-
-/**
- * Parses an int from sv.
- * @param sv The string to parse as an int.
- * @param name The name of the attribute.
- * @return The parsed integer, or throws if invalid bounds.
- * @throws std::invalid_argument for out of bounds values.
- */
-int parse_int(std::string_view sv, std::string_view name)
-{
-    int value = std::stoi(std::string(sv));
-    if (value < 0 || value > UINT8_MAX)
-    {
-        throw std::invalid_argument("Invalid value for " + std::string(name) + ": " + std::to_string(value));
-    }
-    return value;
-}
-
-/**
- * Parses an bool from sv.
- * @param sv The string to parse as an bool.
- * @param name The name of the attribute.
- * @return The parsed bool, or throws if invalid bounds.
- * @throws std::invalid_argument for out of bounds values.
- */
-bool parse_bool(std::string_view sv, std::string_view name)
-{
-    if (sv == "true")
-    {
-        return true;
-    }
-    else if (sv == "false")
-    {
-        return false;
-    }
-
-    throw std::invalid_argument("Invalid value for " + std::string(name) + ": " + std::string(sv));
-}
-
-/**
- * Parses the attributes of a tub.
- * @param state The state of the parsing machine.
- * @return The parsed tub, or throws for invalid attributes or values.
- */
-events::TubEvent parse_tub(State &state)
-{
-    int time = -1, id = -1, safe = -1;
-    events::TubData origin{events::LocationType::MODULE, -1};
-    events::TubData destination{events::LocationType::MODULE, -1};
-
-    std::string line;
-    while (std::getline(state.file, line))
-    {
-        const std::string_view view = util::ltrim(line);
-
-        if (view.empty())
-        {
-            state.idx++;
-            continue;
-        }
-
-        if (view[0] == '#')
-        {
-            state.idx++;
-            continue;
-        }
-
-        if (view[0] == '[')
-        {
-            break;
-        }
-
-        // parse attributes
-        const parser::Attribute attribute = parser::parse_attribute(line);
-        if (attribute.name == "id")
-        {
-            id = parse_int(attribute.value, "id");
-        }
-        else if (attribute.name == "time")
-        {
-            time = parse_int(attribute.value, "name");
-        }
-        else if (attribute.name == "safe")
-        {
-            safe = parse_bool(attribute.value, "safe");
-        }
-        else if (attribute.name == "origin" || attribute.name == "destination")
-        {
-            const std::vector<std::string_view> parts = util::split(attribute.value, ",");
-            const std::string_view location_sv = util::trim(parts[0]).substr(1);
-            const std::string_view raw_id = parts[1];
-
-            events::TubData data;
-            data.id = std::stoi(std::string(raw_id.substr(0, raw_id.size())));
-            if (location_sv == "\"module\"")
-            {
-                data.type = events::LocationType::MODULE;
-            }
-            else if (location_sv == "\"plane\"")
-            {
-                data.type = events::LocationType::PLANE;
-            }
-            else
-            {
-                throw std::invalid_argument("Invalid location: " + std::string(location_sv));
-            }
-
-            if (attribute.name == "origin")
-            {
-                origin = data;
-            }
-            else if (attribute.name == "destination")
-            {
-                destination = data;
-            }
-        }
-        else
-        {
-            throw std::invalid_argument("Invalid attribute: " + std::string(attribute.name));
-        }
-
-        state.idx++;
-    }
-
-    if (time == -1 || id == -1 || safe == -1 || origin.id == -1 || destination.id == -1)
-    {
-        throw std::invalid_argument("Missing attributes for tub with id " + std::to_string(id));
-    }
-
-    return events::TubEvent(time, id, safe, origin, destination);
-}
-
-/**
- * Parses the attributes of a plane.
- * @param state The state of the parsing machine.
- * @return The parsed plane, or throws for invalid attributes or values.
- */
-events::PlaneEvent parse_plane(State &state)
-{
-    int time = -1, id = -1, module = -1, leaves_at = -1;
-
-    std::string line;
-    while (std::getline(state.file, line))
-    {
-        const std::string_view view = util::ltrim(line);
-
-        if (view.empty())
-        {
-            state.idx++;
-            continue;
-        }
-
-        if (view[0] == '#')
-        {
-            state.idx++;
-            continue;
-        }
-
-        if (view[0] == '[')
-        {
-            break;
-        }
-
-        // parse attributes
-        const parser::Attribute attribute = parser::parse_attribute(line);
-        if (attribute.name == "id")
-        {
-            id = parse_int(attribute.value, "id");
-        }
-        else if (attribute.name == "time")
-        {
-            time = parse_int(attribute.value, "name");
-        }
-        else if (attribute.name == "module")
-        {
-            module = parse_int(attribute.value, "module");
-        }
-        else if (attribute.name == "leaves_in")
-        {
-            leaves_at = parse_int(attribute.value, "leaves_in");
-        }
-        else
-        {
-            throw std::invalid_argument("Invalid attribute: " + std::string(attribute.name));
-        }
-
-        state.idx++;
-    }
-
-    if (time == -1 || id == -1 || module == -1 || leaves_at == -1)
-    {
-        throw std::invalid_argument("Missing attributes for plane with id " + std::to_string(id));
-    }
-
-    return events::PlaneEvent(time, id, module, leaves_at);
-}
+#include "../lib/toml.h"
 
 /**
  * Parses the events in the events.toml file.
- * @return A list of all events.
+ * @param result Vector to populate with parsed events.
  */
-std::vector<events::Event> parser::parse_events()
+void parser::parse_events(std::vector<events::Event> &result)
 {
-    State state;
-    state.file = std::ifstream("events.toml");
-    state.idx = 0;
-    state.type = ParsableType::NONE;
 
-    std::vector<events::Event> objects = std::vector<events::Event>();
-    objects.reserve(16);
-
-    if (!state.file.is_open())
+    toml::table table;
+    try
     {
-        throw new std::runtime_error("Failed to open events.toml");
+        table = toml::parse_file("events.toml");
+    }
+    catch (const toml::parse_error &err)
+    {
+        throw err;
     }
 
-    std::string line;
-    while (std::getline(state.file, line))
+    for (auto &&[key, event] : table)
     {
-        if (line.empty())
-        {
-            state.idx++;
+        std::string group = std::string(key.str());
+
+        if (!event.is_table())
             continue;
-        }
 
-        if (line[0] == '#')
+        auto &tbl = *event.as_table();
+
+        if (group == "tub")
         {
-            state.idx++;
-            continue;
-        }
+            for (auto &&[event_key, event_value] : tbl)
+            {
+                if (!event_value.is_table())
+                    continue;
 
-        if (line[0] == '[')
+                auto &event_tbl = *event_value.as_table();
+
+                int time = event_tbl["time"].value_or(-1);
+                int id = event_tbl["id"].value_or(-1);
+                bool safe = event_tbl["safe"].value_or(false);
+
+                // Parse origin
+                events::TubData origin{events::LocationType::MODULE, -1};
+                if (event_tbl.contains("origin") && event_tbl["origin"].is_array())
+                {
+                    auto &origin_arr = *event_tbl["origin"].as_array();
+                    if (origin_arr.size() >= 2)
+                    {
+                        std::string location_type = origin_arr[0].value_or("");
+                        int location_id = origin_arr[1].value_or(-1);
+
+                        if (location_type == "module")
+                        {
+                            origin.type = events::LocationType::MODULE;
+                        }
+                        else if (location_type == "plane")
+                        {
+                            origin.type = events::LocationType::PLANE;
+                        }
+                        else
+                        {
+                            throw std::invalid_argument("Invalid origin location type: " + location_type);
+                        }
+                        origin.id = location_id;
+                    }
+                }
+
+                // Parse destination
+                events::TubData destination{events::LocationType::MODULE, -1};
+                if (event_tbl.contains("destination") && event_tbl["destination"].is_array())
+                {
+                    auto &dest_arr = *event_tbl["destination"].as_array();
+                    if (dest_arr.size() == 2)
+                    {
+                        std::string location_type = dest_arr[0].value_or("");
+                        int location_id = dest_arr[1].value_or(-1);
+
+                        if (location_type == "module")
+                        {
+                            destination.type = events::LocationType::MODULE;
+                        }
+                        else if (location_type == "plane")
+                        {
+                            destination.type = events::LocationType::PLANE;
+                        }
+                        else
+                        {
+                            throw std::invalid_argument("Invalid destination location type: " + location_type);
+                        }
+                        destination.id = location_id;
+                    }
+                }
+
+                if (time == -1 || id == -1 || origin.id == -1 || destination.id == -1)
+                {
+                    throw std::invalid_argument("Tub event missing required fields");
+                }
+
+                result.push_back(events::TubEvent(time, id, safe, origin, destination));
+            }
+        }
+        else if (group == "plane")
         {
-            if (line.back() != ']')
+            for (auto &&[event_key, event_value] : tbl)
             {
-                state.file.close();
-                throw std::runtime_error("Invalid formatting in line " + std::to_string(state.idx));
-            }
+                if (!event_value.is_table())
+                    continue;
 
-            const std::vector<std::string_view> parts = util::split(line, ".");
-            if (parts.size() != 2)
-            {
-                state.file.close();
-                throw std::runtime_error("Invalid formatting in line " + std::to_string(state.idx));
-            }
+                auto &event_tbl = *event_value.as_table();
 
-            const std::string_view type = parts[0].substr(1);
-            if (type == "tub")
-            {
-                try
+                int time = event_tbl["time"].value_or(-1);
+                int id = event_tbl["id"].value_or(-1);
+                int module = event_tbl["module"].value_or(-1);
+                int leaves_in = event_tbl["leaves_in"].value_or(-1);
+
+                if (time == -1 || id == -1 || module == -1 || leaves_in == -1)
                 {
-                    state.type = ParsableType::TUB;
-                    objects.push_back(parse_tub(state));
-                    state.type = ParsableType::NONE;
+                    throw std::invalid_argument("Plane event missing required fields");
                 }
-                catch (std::invalid_argument ex)
-                {
-                    state.file.close();
-                }
-            }
-            else if (type == "plane")
-            {
-                try
-                {
-                    state.type = ParsableType::PLANE;
-                    objects.push_back(parse_plane(state));
-                    state.type = ParsableType::NONE;
-                }
-                catch (std::invalid_argument ex)
-                {
-                    state.file.close();
-                }
-            }
-            else
-            {
-                state.file.close();
-                throw std::runtime_error("Invalid type in line " + std::to_string(state.idx));
+
+                result.push_back(events::PlaneEvent(time, id, module, leaves_in));
             }
         }
-
-        state.idx++;
     }
-
-    state.file.close();
-    return objects;
 }

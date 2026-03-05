@@ -10,25 +10,9 @@ namespace parser
 
     /**
      * Parses the events in the events.toml file.
-     * @return All parsed objects.
+     * @param events Vector to populate with parsed events.
      */
-    std::vector<events::Event> parse_events();
-
-    /**
-     * Struct for parsing attributes.
-     */
-    typedef struct
-    {
-        std::string_view name;
-        std::string_view value;
-    } Attribute;
-
-    /**
-     * Parses a single attribute.
-     * @param line The line to parse.
-     * @return A struct detailing the values.
-     */
-    parser::Attribute parse_attribute(std::string_view line);
+    void parse_events(std::vector<events::Event> &events);
 
 }
 
