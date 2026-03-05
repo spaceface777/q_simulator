@@ -1,13 +1,16 @@
+#include <thread>
+#include <csignal>
+#include <map>
+#include <fstream>
+
 #include "event/parser.h"
 #include "tcp/server.h"
 #include "tcp/client.h"
 #include "packet/packet.h"
 #include "module/module.h"
-#include <thread>
-#include <csignal>
 #include "util.h"
 #include "defs.h"
-#include <map>
+#include "settings.h"
 
 static std::thread server_thread;
 
@@ -20,11 +23,14 @@ int main(int argc, char const *argv[])
 {
     ::signal(SIGINT, handle_close);
 
-    parser::parse_events();
+    settings::parse_settings();
+
+    std::vector<events::Event> events;
+    parser::parse_events(events);
 
     server_thread = std::thread(server::run, 7777);
 
-    const std::filesystem::path path = std::filesystem::path("/home/efy/Projects/airport-router/build/zephyr/zephyr.exe");
+    const std::filesystem::path path = std::filesystem::path(settings::get_setting<std::string>("router_path"));
 
     uint8_t module_index = 0;
     while (module_index < MODULE_COUNT)
