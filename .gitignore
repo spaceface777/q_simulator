@@ -11,6 +11,5 @@ Makefile
 *.cmake
 */*.cmake
 *.tcl
-lib/
 bin/
 build/

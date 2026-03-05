@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10.0)
 project(quercus-router-shadow VERSION 0.1.0 LANGUAGES C CXX)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_CXX_STANDARD 17)
 
 # === Builds ===
 
@@ -15,6 +16,7 @@ add_executable(main
 target_link_libraries(main pthread)
 
 configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/settings.toml ${CMAKE_BINARY_DIR}/settings.toml COPYONLY)
 
 # === Testing ===
 

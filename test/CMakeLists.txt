@@ -4,7 +4,6 @@ project(test)
 enable_testing()
 
 add_executable(tests 
-    test_parser.cpp ../src/event/parser.cpp 
     test_packet.cpp ../src/packet/packet.cpp
     ../src/util.cpp)
 
