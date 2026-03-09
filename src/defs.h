@@ -1,6 +1,8 @@
 #ifndef DEFS_H
 #define DEFS_H
 
+#include <chrono>
+
 /**
  * The max amount of modules supported.
  */

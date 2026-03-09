@@ -12,7 +12,8 @@ add_executable(main
     src/tcp/client.cpp 
     src/util.cpp 
     src/module/module.cpp
-    src/packet/packet.cpp)
+    src/packet/packet.cpp
+    src/tub/tub.cpp)
 target_link_libraries(main pthread)
 
 configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)

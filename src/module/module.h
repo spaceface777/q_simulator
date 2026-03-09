@@ -50,6 +50,30 @@ namespace module
         }
 
         /**
+         * @return The speed of the big belt.
+         */
+        uint8_t big_belt_speed() const noexcept
+        {
+            return big_speed_;
+        }
+
+        /**
+         * @return The speed of the small belt.
+         */
+        uint8_t small_belt_speed() const noexcept
+        {
+            return small_speed_;
+        }
+
+        /**
+         * @return The angle of the servo.
+         */
+        uint16_t servo_degrees() const noexcept
+        {
+            return servo_degrees_;
+        }
+
+        /**
          * Run this module as the executable found at path.
          *
          * @param path The file to execute.
@@ -69,6 +93,7 @@ namespace module
          * @param packet The packet that was sent to this module's simulation.
          */
         void update(const packet::Update &packet);
+
     };
 
     /**
