@@ -74,17 +74,12 @@ namespace client
             throw std::runtime_error("Double client instantiation");
         }
 
-        thread_ptr_ = std::make_unique<std::thread>(std::thread(_run));
+        thread_ptr_ = std::make_unique<std::thread>(&Client::_run, this);
     }
 
-    void Client::stop()
+    void Client::_stop()
     {
         stopped = true;
-
-        if (thread_ptr_ && thread_ptr_->joinable())
-        {
-            thread_ptr_->join();
-        }
     }
 
     static std::map<uint8_t, std::unique_ptr<Client>> map;
@@ -105,6 +100,14 @@ namespace client
             return std::move(map.at(id));
         }
         return {};
+    }
+
+    void close_clients()
+    {
+        for (auto &[key, val] : map)
+        {
+            val.release();
+        }
     }
 
 }

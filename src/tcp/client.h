@@ -21,10 +21,8 @@ namespace client
     public:
         Client() = default;
 
-        Client(unsigned int id, unsigned int port)
+        Client(unsigned int id, unsigned int port) : id_(id), port_(port)
         {
-            id_ = id;
-            port_ = port;
         }
 
         ~Client()
@@ -66,13 +64,13 @@ namespace client
             queue_.push(packet.clone());
         }
 
-private:   
+    private:
         void _run();
 
-public:
-        void run();
+        void _stop();
 
-        void stop();
+    public:
+        void run();
     };
 
     /**
@@ -87,6 +85,11 @@ public:
      * @returns The client instance from the id.
      */
     std::optional<std::shared_ptr<client::Client>> get_client(uint8_t id);
+
+    /**
+     * Closes all clients.
+     */
+    void close_clients();
 
 }
 

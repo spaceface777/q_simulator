@@ -261,14 +261,7 @@ namespace server
     {
         stopped = true;
 
-        for (size_t i = 0; i < MAX_MODULES; i++)
-        {
-            const std::optional<std::shared_ptr<client::Client>> client = client::get_client(i);
-            if (client)
-            {
-                client.value()->stop();
-            }
-        }
+        client::close_clients();
     }
 
     std::size_t size()
