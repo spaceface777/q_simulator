@@ -68,7 +68,7 @@ namespace module
         /**
          * @return The angle of the servo.
          */
-        uint16_t servo_degrees() const noexcept
+        uint16_t servo_angle() const noexcept
         {
             return servo_degrees_;
         }

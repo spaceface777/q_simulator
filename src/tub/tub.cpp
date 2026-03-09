@@ -19,7 +19,53 @@ namespace tub
 
         while (!stopped)
         {
-            if (location_progress_ < 100)
+            // assume if module is in T shape
+            // then servo is aimed at right by default
+            // angle > 90 = left
+            // angle <= 90 = right
+
+            if (location_progress_ > 100)
+            {
+                // transfer module
+            }
+            else if (location_progress_ < 0)
+            {
+                switch (location_)
+                {
+                case ModuleLocation::BOTTOM_BELT:
+                    if (module->servo_angle() > 90)
+                    {
+                        location_ = ModuleLocation::RIGHT_BELT;
+                    }
+                    else
+                    {
+                        location_ = ModuleLocation::LEFT_BELT;
+                    }
+                    break;
+                case ModuleLocation::LEFT_BELT:
+                    if (module->servo_angle() < 10)
+                    {
+                        location_ = ModuleLocation::RIGHT_BELT;
+                    }
+                    else
+                    {
+                        location_ = ModuleLocation::BOTTOM_BELT;
+                    }
+                    break;
+                case ModuleLocation::RIGHT_BELT:
+                    if (module->servo_angle() > 170)
+                    {
+                        location_ = ModuleLocation::LEFT_BELT;
+                    }
+                    else
+                    {
+                        location_ = ModuleLocation::BOTTOM_BELT;
+                    }
+                    break;
+                }
+                location_progress_ = 0;
+            }
+            else
             {
                 switch (location_)
                 {
@@ -33,20 +79,9 @@ namespace tub
                     location_progress_ += module->big_belt_speed() / 100.0f;
                     break;
                 }
-
-                std::this_thread::sleep_for(TIMEOUT);
-                continue;
             }
 
-            switch (location_)
-            {
-            case ModuleLocation::BOTTOM_BELT:
-                break;
-            case ModuleLocation::LEFT_BELT:
-                break;
-            case ModuleLocation::RIGHT_BELT:
-                break;
-            }
+            std::this_thread::sleep_for(TIMEOUT);
         }
     }
 

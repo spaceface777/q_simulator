@@ -52,7 +52,7 @@ namespace tub
 
         /**
          * @returns A number between 0 and 100 indicating how far along the module location this tub is.
-         * Measured from the center to the outskirts.
+         * 0 = at center, 100 = at outskirts.
          */
         float module_location_progress() const noexcept
         {
