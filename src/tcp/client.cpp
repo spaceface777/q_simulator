@@ -33,7 +33,7 @@ namespace client
         }
     }
 
-    static void _run(Client *client)
+    void Client::_run()
     {
         const Socket socket;
         if (!socket.is_valid())
@@ -41,46 +41,49 @@ namespace client
             throw std::runtime_error("Failed to bind socket");
         }
 
-        client->set_fd(socket.fd());
-        setup_connection(socket.fd(), client->port(), client->id());
+        fd_ = socket.fd();
+        setup_connection(socket.fd(), port_, id_);
 
-        std::cout << "Connected to module " << std::to_string(client->id()) << std::endl;
+        std::cout << "Connected to module " << std::to_string(id_) << std::endl;
 
         while (!stopped)
         {
-            if (client->empty())
+            if (queue_.empty())
             {
                 std::this_thread::sleep_for(TIMEOUT);
                 continue;
             }
 
-            const packet::Packet &packet = client->next();
+            std::unique_ptr<packet::Packet> packet = std::move(queue_.front());
+            queue_.pop();
 
-            std::cout << "Size " << std::to_string(client->size()) << std::endl;
-            std::cout << "Sending " << packet.to_toml() << std::endl;
-            const std::string toml = packet.to_toml();
-            if (::write(client->fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
+            std::cout << "Size " << std::to_string(queue_.size()) << std::endl;
+            std::cout << "Sending " << packet->to_toml() << std::endl;
+            const std::string toml = packet->to_toml();
+            if (::write(fd_, toml.c_str(), toml.length() + 1) < 0) // include '\0'
             {
                 std::this_thread::sleep_for(TIMEOUT);
-                continue;
             }
-
-            client->pop();
         }
     }
 
     void Client::run()
     {
-        _thread_ptr = std::make_unique<std::thread>(std::thread(_run, this));
+        if (thread_ptr_)
+        {
+            throw std::runtime_error("Double client instantiation");
+        }
+
+        thread_ptr_ = std::make_unique<std::thread>(std::thread(_run));
     }
 
     void Client::stop()
     {
         stopped = true;
 
-        if (_thread_ptr && _thread_ptr->joinable())
+        if (thread_ptr_ && thread_ptr_->joinable())
         {
-            _thread_ptr->join();
+            thread_ptr_->join();
         }
     }
 

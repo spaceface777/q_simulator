@@ -12,80 +12,64 @@ namespace client
     class Client
     {
     private:
-        int _fd = -1;
-        unsigned int _id = 0;
-        unsigned int _port = 0;
-        std::queue<std::unique_ptr<packet::Packet>> _queue;
-        std::unique_ptr<std::thread> _thread_ptr;
+        int fd_ = -1;
+        unsigned int id_ = 0;
+        unsigned int port_ = 0;
+        std::queue<std::unique_ptr<packet::Packet>> queue_;
+        std::unique_ptr<std::thread> thread_ptr_;
 
     public:
         Client() = default;
 
         Client(unsigned int id, unsigned int port)
         {
-            _id = id;
-            _port = port;
+            id_ = id;
+            port_ = port;
         }
 
         ~Client()
         {
-            ::close(_fd);
-            if (_thread_ptr && _thread_ptr->joinable())
+            ::close(fd_);
+            if (thread_ptr_ && thread_ptr_->joinable())
             {
-                _thread_ptr->join();
+                thread_ptr_->join();
             }
         }
 
         unsigned int id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         unsigned int port() const noexcept
         {
-            return _port;
+            return port_;
         }
 
         int fd() const noexcept
         {
-            return _fd;
+            return fd_;
         }
 
         void set_fd(int fd) noexcept
         {
-            _fd = fd;
+            fd_ = fd;
         }
 
         bool is_valid() const noexcept
         {
-            return _fd >= 0;
+            return fd_ >= 0;
         }
 
         void queue(const packet::Packet &packet) noexcept
         {
-            _queue.push(packet.clone());
+            queue_.push(packet.clone());
         }
 
-        void pop() noexcept
-        {
-            _queue.pop();
-        }
+private:   
+        void _run();
 
-        bool empty() const noexcept
-        {
-            return _queue.empty();
-        }
-
-        std::size_t size() const noexcept
-        {
-            return _queue.size();
-        }
-
-        const packet::Packet &next() const noexcept
-        {
-            return *(_queue.front());
-        }
-
+public:
         void run();
 
         void stop();
