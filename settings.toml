@@ -1,2 +1,7 @@
 # The path to the router Zephyr executable.
 router_path = "/home/efy/Projects/airport-router/build/zephyr/zephyr.exe"
+
+[module.1]
+left = 1
+right = 1
+bottom = 0
