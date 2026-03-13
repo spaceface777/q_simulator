@@ -355,28 +355,6 @@ namespace packet
         std::string to_toml() const noexcept override;
     };
 
-    class ShutdownConfirm : public Packet
-    {
-    private:
-        uint8_t _id;
-
-    public:
-        ShutdownConfirm(uint8_t id)
-        {
-            _id = id;
-        }
-
-        /**
-         * @return The id of the module.
-         */
-        uint8_t id() const noexcept
-        {
-            return _id;
-        }
-
-        bool is_valid() const noexcept override;
-        std::string to_toml() const noexcept override;
-    };
 };
 
 #endif // PACKET_H

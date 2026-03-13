@@ -388,18 +388,4 @@ namespace packet
         return buf;
     }
 
-    bool ShutdownConfirm::is_valid() const noexcept
-    {
-        return true;
-    }
-
-    std::string ShutdownConfirm::to_toml() const noexcept
-    {
-        std::string buf = create_buffer();
-        append_header(buf, "shutdown.confirm");
-        append_value(buf, "id", _id);
-        trim_trailing_nl(buf);
-        return buf;
-    }
-
 }
