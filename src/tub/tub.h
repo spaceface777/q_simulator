@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <thread>
+#include <optional>
 
 #include "../defs.h"
 
@@ -13,14 +14,18 @@ namespace tub
     class Tub
     {
     private:
-        uint8_t id_;
-        uint8_t module_;
+        id_t id_;
+        id_t module_;
         ModuleLocation location_;
+
+        id_t target_module_;
+        ModuleLocation target_module_location_;
+
         float location_progress_ = 0;
         std::unique_ptr<std::thread> thread_ptr_;
 
     public:
-        Tub(uint8_t id, uint8_t module) : id_(id), module_(module)
+        Tub(id_t id, id_t module, id_t target_module, ModuleLocation target_module_location) : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location)
         {
         }
 
@@ -32,12 +37,12 @@ namespace tub
             }
         }
 
-        uint8_t id() const noexcept
+        id_t id() const noexcept
         {
             return id_;
         }
 
-        uint8_t module() const noexcept
+        id_t module() const noexcept
         {
             return module_;
         }
@@ -48,6 +53,19 @@ namespace tub
         ModuleLocation module_location() const noexcept
         {
             return location_;
+        }
+
+        id_t target_module() const noexcept
+        {
+            return target_module_;
+        }
+
+        /**
+         * @returns The target module location of the current tub.
+         */
+        ModuleLocation target_module_location() const noexcept
+        {
+            return target_module_location_;
         }
 
         /**
@@ -78,14 +96,14 @@ namespace tub
      * Adds a tub.
      * @param ptr A unique_ptr to the tub.
      */
-    void add_tub(std::unique_ptr<module::Module> ptr);
+    void add_tub(std::unique_ptr<tub::Tub> ptr);
 
     /**
      * Gets an optional tub from its id.
      * @param id The id.
      * @returns The tub instance from the id.
      */
-    std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id);
+    std::optional<std::shared_ptr<tub::Tub>> get_tub(id_t id);
 
 }
 

@@ -17,6 +17,7 @@ static std::thread server_thread;
 static void handle_close(int sign)
 {
     server::stop();
+    tub::stop();
 }
 
 int main(int argc, char const *argv[])
