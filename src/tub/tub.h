@@ -70,6 +70,20 @@ namespace tub
          */
         void run();
     };
+
+    /**
+     * Adds a tub.
+     * @param ptr A unique_ptr to the tub.
+     */
+    void add_tub(std::unique_ptr<module::Module> ptr);
+
+    /**
+     * Gets an optional tub from its id.
+     * @param id The id.
+     * @returns The tub instance from the id.
+     */
+    std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id);
+
 }
 
 #endif

@@ -1,5 +1,6 @@
 #include "tub.h"
 #include "../module/module.h"
+#include "../settings.h"
 
 #include <thread>
 #include <atomic>
@@ -26,7 +27,41 @@ namespace tub
 
             if (location_progress_ > 100)
             {
-                // transfer module
+                const uint8_t old_module = module_;
+                const settings::ModuleSettings settings = settings::get_module_settings(module_);
+                switch (location_)
+                {
+                case ModuleLocation::BOTTOM_BELT:
+                    module_ = settings.bottom;
+                    break;
+                case ModuleLocation::LEFT_BELT:
+                    module_ = settings.left;
+                    break;
+                case ModuleLocation::RIGHT_BELT:
+                    module_ = settings.right;
+                    break;
+                }
+
+                const settings::ModuleSettings other_settings = settings::get_module_settings(module_);
+
+                if (other_settings.bottom == module_)
+                {
+                    location_ = ModuleLocation::BOTTOM_BELT;
+                }
+                else if (other_settings.left == module_)
+                {
+                    location_ = ModuleLocation::LEFT_BELT;
+                }
+                else if (other_settings.right == module_)
+                {
+                    location_ = ModuleLocation::RIGHT_BELT;
+                }
+                else
+                {
+                    throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(module_) + " are not connected in settings.toml");
+                }
+
+                location_progress_ = 99;
             }
             else if (location_progress_ < 0)
             {
@@ -98,6 +133,26 @@ namespace tub
     void Tub::_stop()
     {
         stopped = true;
+    }
+
+    static std::map<uint8_t, std::unique_ptr<tub::Tub>> map;
+
+    void add_tub(std::unique_ptr<tub::Tub> ptr)
+    {
+        if (map.count(ptr->id()))
+        {
+            throw std::invalid_argument("Attempted to double register tubs");
+        }
+        map[ptr->id()] = std::move(ptr);
+    }
+
+    std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id)
+    {
+        if (map.count(id))
+        {
+            return std::move(map.at(id));
+        }
+        return {};
     }
 
 }

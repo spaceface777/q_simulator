@@ -20,7 +20,6 @@ namespace module
         uint8_t id_;
         pid_t pid_ = -1;
         bool running_ = false;
-        std::vector<std::unique_ptr<tub::Tub>> tubs_;
         std::unique_ptr<std::thread> thread_ptr_;
 
         uint8_t big_speed_;
