@@ -1,0 +1,7 @@
+@startuml Overview
+
+package "Hi" {
+    [main.cpp] as Main
+}
+
+@enduml
