@@ -27,7 +27,7 @@ namespace tub
 
             if (location_progress_ > 100)
             {
-                const id_t old_module = module_;
+                const uint8_t old_module = module_;
                 const settings::ModuleSettings settings = settings::get_module_settings(module_);
                 switch (location_)
                 {
@@ -146,7 +146,7 @@ namespace tub
         map[ptr->id()] = std::move(ptr);
     }
 
-    std::optional<std::shared_ptr<tub::Tub>> get_tub(id_t id)
+    std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id)
     {
         if (map.count(id))
         {

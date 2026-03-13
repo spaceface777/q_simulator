@@ -19,6 +19,7 @@
 
 #include "server.h"
 #include "client.h"
+#include "socket.h"
 #include "../packet/packet.h"
 #include "../util.h"
 #include "../defs.h"
@@ -32,34 +33,24 @@ namespace server
     /**
      * Sets up the port for a server connection.
      */
-    static int setup_port(unsigned int port)
+    static void setup_port(const Socket &socket, unsigned int port)
     {
-        int fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (fd < 0)
-        {
-            throw new std::runtime_error("Failed to initialize socket");
-        }
-
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
             .sin_port = ::htons(port),
             .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
 
         // assign fd to port
-        if (::bind(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
+        if (::bind(socket.fd(), (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
-            ::close(fd);
             throw new std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
         // enable listening
-        if (::listen(fd, MAX_TCP_BACKLOG) != 0)
+        if (::listen(socket.fd(), MAX_TCP_BACKLOG) != 0)
         {
-            ::close(fd);
             throw new std::runtime_error("Failed to set listening mode");
         }
-
-        return fd;
     }
 
     /**
@@ -243,13 +234,18 @@ namespace server
 
     void run(unsigned int port)
     {
-        const int fd = setup_port(port);
+        const Socket socket;
+        if (!socket.is_valid())
+        {
+            throw new std::runtime_error("Failed to initialize socket");
+        }
+        setup_port(socket, port);
 
         fds.reserve(MAX_MODULES);
 
         while (!stopped)
         {
-            handle_connection_requests(fd);
+            handle_connection_requests(socket.fd());
 
             handle_packets();
 
@@ -259,9 +255,9 @@ namespace server
 
     void stop()
     {
-        stopped = true;
-
         client::close_clients();
+
+        stopped = true;
     }
 
     std::size_t size()

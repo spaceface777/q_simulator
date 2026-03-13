@@ -18,7 +18,6 @@ namespace module
     {
     private:
         uint8_t id_;
-        pid_t pid_ = -1;
         bool running_ = false;
 
         uint8_t big_speed_;

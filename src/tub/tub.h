@@ -14,18 +14,18 @@ namespace tub
     class Tub
     {
     private:
-        id_t id_;
-        id_t module_;
+        uint8_t id_;
+        uint8_t module_;
         ModuleLocation location_;
 
-        id_t target_module_;
+        uint8_t target_module_;
         ModuleLocation target_module_location_;
 
         float location_progress_ = 0;
         std::unique_ptr<std::thread> thread_ptr_;
 
     public:
-        Tub(id_t id, id_t module, id_t target_module, ModuleLocation target_module_location) : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location)
+        Tub(uint8_t id, uint8_t module, uint8_t target_module, ModuleLocation target_module_location) : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location)
         {
         }
 
@@ -37,12 +37,12 @@ namespace tub
             }
         }
 
-        id_t id() const noexcept
+        uint8_t id() const noexcept
         {
             return id_;
         }
 
-        id_t module() const noexcept
+        uint8_t module() const noexcept
         {
             return module_;
         }
@@ -55,7 +55,7 @@ namespace tub
             return location_;
         }
 
-        id_t target_module() const noexcept
+        uint8_t target_module() const noexcept
         {
             return target_module_;
         }
@@ -103,7 +103,7 @@ namespace tub
      * @param id The id.
      * @returns The tub instance from the id.
      */
-    std::optional<std::shared_ptr<tub::Tub>> get_tub(id_t id);
+    std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id);
 
 }
 

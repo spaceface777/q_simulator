@@ -3,8 +3,6 @@
 
 #include <chrono>
 
-typedef uint8_t id_t;
-
 /**
  * The max amount of modules supported.
  */

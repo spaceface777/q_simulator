@@ -15,7 +15,7 @@ namespace module
 
 	void Module::run(std::filesystem::path path)
 	{
-		pid_ = ::fork();
+		pid_t pid_ = ::fork();
 		if (pid_ == -1)
 		{
 			throw std::runtime_error("Failed to fork: " + std::string(std::strerror(errno)));

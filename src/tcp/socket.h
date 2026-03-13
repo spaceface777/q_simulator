@@ -11,24 +11,24 @@
 class Socket
 {
 private:
-    int _fd = -1;
+    int fd_ = -1;
 
 public:
     Socket()
     {
-        _fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        fd_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     }
 
     Socket(int fd)
     {
-        _fd = fd;
+        fd_ = fd;
     }
 
     ~Socket()
     {
         if (is_valid())
         {
-            ::close(_fd);
+            ::close(fd_);
         }
     }
 
@@ -37,7 +37,7 @@ public:
      */
     bool is_valid() const noexcept
     {
-        return _fd >= 0;
+        return fd_ >= 0;
     }
 
     /**
@@ -45,7 +45,7 @@ public:
      */
     int fd() const noexcept
     {
-        return _fd;
+        return fd_;
     }
 
     /**
@@ -53,8 +53,8 @@ public:
      */
     int release() noexcept
     {
-        int _ = _fd;
-        _fd = -1;
+        int _ = fd_;
+        fd_ = -1;
         return _;
     }
 
@@ -65,7 +65,7 @@ public:
     // disallow transfer
     Socket(Socket &&other) noexcept
     {
-        _fd = other.release();
+        fd_ = other.release();
     }
     Socket &operator=(Socket &&other) noexcept
     {
@@ -73,9 +73,9 @@ public:
         {
             if (is_valid())
             {
-                ::close(_fd);
+                ::close(fd_);
             }
-            _fd = other.release();
+            fd_ = other.release();
         }
         return *this;
     }
