@@ -1,0 +1,27 @@
+@startuml Overview
+
+package "Router process" {
+    [Router]
+    [TCP Client]
+    
+    [Router] <--> [TCP Client]
+}
+
+package "Simulation process" {
+    [TCP Server]
+    [Tub]
+    [Module]
+    [main]
+
+    [TCP Server] <--> [TCP Client] : receives/sends
+    [TCP Server] --> [Module] : update values 
+    [main] --> [Tub] : creates
+    [main] --> [Module] : creates
+    [main] --> [TCP Server] : creates
+    [Module] --> [Router process] : starts
+    [Tub] --> [Module] : gets stats
+    [Module] --> [Tub] : on move owner
+}
+
+
+@enduml
