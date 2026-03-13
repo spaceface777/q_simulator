@@ -1,12 +1,24 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
+#include <cassert>
 #include <filesystem>
 
+#include "defs.h"
 #include "lib/toml.h"
 
 namespace settings
 {
+
+    typedef struct
+    {
+        bool active;
+        uint8_t left;
+        uint8_t right;
+        uint8_t bottom;
+    } ModuleSettings;
+
+    static ModuleSettings module_settings[MAX_MODULES];
     static toml::table table;
 
     /**
@@ -21,6 +33,31 @@ namespace settings
         catch (const toml::parse_error &err)
         {
             throw err;
+        }
+
+        for (uint8_t id = 0; id < MAX_MODULES; id++)
+        {
+            toml::node *module_node = table.get("module");
+            if (!module_node || !module_node->is_table())
+            {
+                throw std::invalid_argument("Invalid setting module");
+            }
+
+            toml::table module_table = *module_node->as_table();
+            toml::node *node = module_table.get(std::to_string(id + 1));
+            if (!node || !node->is_table())
+            {
+                break;
+            }
+
+            toml::table table = *node->as_table();
+
+            module_settings[id] = {
+                table["active"].value_or(false),
+                (uint8_t)table["left"].value_or(0),
+                (uint8_t)table["right"].value_or(0),
+                (uint8_t)table["bottom"].value_or(0),
+            };
         }
     }
 
@@ -40,6 +77,36 @@ namespace settings
         }
 
         return table[setting].value<T>().value();
+    }
+
+    /**
+     * @return The amount of active modules.
+     */
+    inline uint8_t get_modules_active()
+    {
+        uint8_t count = 0;
+        for (uint8_t id = 0; id < MAX_MODULES; id++)
+        {
+            if (module_settings[id].active)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * Gets the settings of a specific module.
+     * @param name The id of the module.
+     * @returns The values of the module.
+     * @throws if the module is not found.
+     */
+    inline ModuleSettings get_module_settings(uint8_t id)
+    {
+        assert(id < MAX_MODULES);
+
+        return module_settings[id];
     }
 
 }

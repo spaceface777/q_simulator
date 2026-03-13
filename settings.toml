@@ -2,6 +2,25 @@
 router_path = "/home/efy/Projects/airport-router/build/zephyr/zephyr.exe"
 
 [module.1]
+active = true
+left = 0
+right = 2
+bottom = 4
+
+[module.2]
+active = true
 left = 1
-right = 1
-bottom = 0
+right = 0
+bottom = 3
+
+[module.3]
+active = true
+left = 0
+right = 4
+bottom = 2
+
+[module.4]
+active = true
+left = 3
+right = 0
+bottom = 1
