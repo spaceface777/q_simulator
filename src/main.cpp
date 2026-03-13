@@ -52,6 +52,7 @@ int main(int argc, char const *argv[])
         server_thread.join();
     }
     server::stop();
+    tub::stop();
 
     return 0;
 }

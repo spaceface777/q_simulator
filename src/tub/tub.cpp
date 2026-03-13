@@ -61,7 +61,7 @@ namespace tub
                     throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(module_) + " are not connected in settings.toml");
                 }
 
-                location_progress_ = 99;
+                location_progress_ = 100;
             }
             else if (location_progress_ < 0)
             {
@@ -130,7 +130,7 @@ namespace tub
         thread_ptr_ = std::make_unique<std::thread>(&Tub::_run, this);
     }
 
-    void Tub::_stop()
+    void stop()
     {
         stopped = true;
     }

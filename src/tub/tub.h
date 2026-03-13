@@ -62,14 +62,17 @@ namespace tub
     private:
         void _run();
 
-        void _stop();
-
     public:
         /**
          * Starts the update process of this tub.
          */
         void run();
     };
+
+    /**
+     * Stops all tubs.
+     */
+    void stop();
 
     /**
      * Adds a tub.
