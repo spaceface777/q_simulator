@@ -5,7 +5,6 @@
 
 #include "event/parser.h"
 #include "tcp/server.h"
-#include "tcp/client.h"
 #include "packet/packet.h"
 #include "module/module.h"
 #include "util.h"
