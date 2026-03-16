@@ -106,7 +106,7 @@ namespace client
     {
         for (auto &[key, val] : map)
         {
-            val.release();
+            val->queue(packet::Shutdown());
         }
     }
 

@@ -17,6 +17,7 @@ static std::thread server_thread;
 static void handle_close(int sign)
 {
     server::stop();
+    tub::stop();
 }
 
 int main(int argc, char const *argv[])
@@ -33,7 +34,7 @@ int main(int argc, char const *argv[])
     const std::filesystem::path path = std::filesystem::path(settings::get_setting<std::string>("router_path"));
 
     uint8_t module_index = 0;
-    while (module_index < MODULE_COUNT)
+    while (module_index < settings::get_modules_active())
     {
         std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
         module->run(path);
@@ -52,6 +53,7 @@ int main(int argc, char const *argv[])
         server_thread.join();
     }
     server::stop();
+    tub::stop();
 
     return 0;
 }
