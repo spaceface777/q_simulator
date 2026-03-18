@@ -18,6 +18,7 @@
 #include <errno.h>
 
 #include "server.h"
+#include "client.h"
 #include "socket.h"
 #include "../packet/packet.h"
 #include "../util.h"
@@ -32,8 +33,6 @@ namespace server
     static std::exception_ptr exception_ptr;
     static std::atomic_bool stopped = false;
     static std::vector<unsigned int> fds;
-    static std::array<uint8_t, MAX_MODULES> id_to_fd;
-    static std::queue<std::pair<uint8_t, std::unique_ptr<packet::Packet>>> queue;
 
     /**
      * Sets up the port for a server connection.
@@ -103,7 +102,22 @@ namespace server
     static void remove(int fd)
     {
         fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
-        close(fd);
+    }
+
+    void send(unsigned int id, const packet::Packet &packet)
+    {
+        if (stopped || id > MAX_MODULES)
+        {
+            return;
+        }
+
+        const std::optional<std::shared_ptr<client::Client>> client = client::get_client(id);
+        if (!client)
+        {
+            return;
+        }
+
+        client.value()->queue(packet);
     }
 
     /**
@@ -117,13 +131,19 @@ namespace server
             const packet::Introduction packet = intro.value();
             const unsigned int id = packet.id();
 
-            if (id_to_fd[id] > 0)
+            const std::optional<std::shared_ptr<client::Client>> existing_client = client::get_client(id);
+            if (existing_client)
             {
                 std::cout << "Attempted to double up client creation at " << std::to_string(8888 + id) << std::endl;
                 return;
             }
 
-            id_to_fd[id] = fd;
+            std::unique_ptr<client::Client> ptr = std::make_unique<client::Client>(id, 8888 + id);
+            ptr->run();
+            client::add_client(std::move(ptr));
+
+            std::cout << "Started client at " << std::to_string(8888 + id) << std::endl;
+
             return;
         }
 
@@ -155,7 +175,7 @@ namespace server
     /**
      * Handles incoming packets.
      */
-    static void handle_incoming_packets()
+    static void handle_packets()
     {
         struct pollfd pfds[fds.size()];
 
@@ -216,41 +236,6 @@ namespace server
         }
     }
 
-    static void handle_outbound_packets()
-    {
-        while (!queue.empty())
-        {
-            std::pair<uint8_t, std::unique_ptr<packet::Packet>> pair = std::move(queue.front());
-
-            if (id_to_fd[pair.first] == 0)
-            {
-                continue;
-            }
-
-            queue.pop();
-
-            const unsigned int fd = id_to_fd[pair.first];
-            const std::string toml = pair.second->to_toml();
-            const ssize_t size = ::write(fd, toml.c_str(), toml.length() + 1); // include '\0'
-            if (size <= 0)
-            {
-                remove(fd);
-                std::cout << "Closed connection with " << std::to_string(fd) << std::endl;
-                continue;
-            }
-        }
-    }
-
-    void send(unsigned int id, const packet::Packet &packet)
-    {
-        if (stopped || id > MAX_MODULES)
-        {
-            return;
-        }
-
-        queue.push({id, std::make_unique<packet::Packet>(packet)});
-    }
-
     static void _run()
     {
         const Socket socket;
@@ -268,9 +253,7 @@ namespace server
         {
             handle_connection_requests(socket.fd());
 
-            handle_incoming_packets();
-
-            handle_outbound_packets();
+            handle_packets();
 
             std::this_thread::sleep_for(TIMEOUT);
         }
@@ -299,6 +282,8 @@ namespace server
 
     void stop()
     {
+        client::close_clients();
+
         stopped = true;
 
         if (thread_ptr_->joinable())

@@ -9,6 +9,7 @@ add_executable(main
     src/main.cpp 
     src/event/parser.cpp 
     src/tcp/server.cpp 
+    src/tcp/client.cpp 
     src/util.cpp 
     src/module/module.cpp
     src/packet/packet.cpp
