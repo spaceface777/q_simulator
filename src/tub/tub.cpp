@@ -140,6 +140,8 @@ namespace tub
                     exception_ptr = std::current_exception();
                 }
             });
+
+        printf("Started tub %d\n", id_);
     }
 
     void stop()

@@ -247,6 +247,8 @@ namespace server
 
         fds.reserve(MAX_MODULES);
 
+        printf("Server waiting for connections\n");
+
         while (!stopped)
         {
             handle_connection_requests(socket.fd());

@@ -86,6 +86,8 @@ namespace client
                     exception_ptr = std::current_exception();
                 }
             });
+
+        printf("Started client %d\n", id_);
     }
 
     void Client::_stop()

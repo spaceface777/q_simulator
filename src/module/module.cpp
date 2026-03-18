@@ -48,6 +48,7 @@ namespace module
 			{
 				throw std::runtime_error("Failed to execl: " + std::string(::strerror(errno)));
 			}
+			printf("Ran module %d\n", id_);
 		}
 
 		running_ = true;
