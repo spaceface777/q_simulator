@@ -124,7 +124,7 @@ namespace tub
     {
         if (thread_ptr_)
         {
-            throw std::runtime_error("Double tub instantiation");
+            throw std::runtime_error("Double client instantiation");
         }
 
         thread_ptr_ = std::make_unique<std::thread>(&Tub::_run, this);
