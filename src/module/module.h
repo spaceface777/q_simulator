@@ -75,7 +75,7 @@ namespace module
          *
          * @param path The file to execute.
          */
-        void run(std::filesystem::path path);
+        void run(std::string path);
 
         /**
          * Sends a packet to this module.

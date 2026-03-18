@@ -13,7 +13,7 @@
 namespace module
 {
 
-	void Module::run(std::filesystem::path path)
+	void Module::run(std::string path)
 	{
 		pid_t pid_ = ::fork();
 		if (pid_ == -1)
