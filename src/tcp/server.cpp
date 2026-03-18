@@ -27,8 +27,9 @@
 
 namespace server
 {
-    std::atomic_bool stopped = false;
-    std::vector<unsigned int> fds;
+    static std::exception_ptr exception_ptr;
+    static std::atomic_bool stopped = false;
+    static std::vector<unsigned int> fds;
 
     /**
      * Sets up the port for a server connection.
@@ -263,6 +264,14 @@ namespace server
     std::size_t size()
     {
         return fds.size();
+    }
+
+    void rethrow()
+    {
+        if (exception_ptr)
+        {
+            std::rethrow_exception(exception_ptr);
+        }
     }
 
 }

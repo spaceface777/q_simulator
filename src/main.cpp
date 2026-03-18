@@ -54,21 +54,26 @@ int main(int argc, char const *argv[])
             module_index++;
         }
     }
-    catch (const std::runtime_error &err)
+    catch (const std::exception &ex)
     {
         if (server_thread.joinable())
         {
             server_thread.join();
         }
-        throw err;
+        throw ex;
     }
 
     if (server_thread.joinable())
     {
         server_thread.join();
     }
+    
     server::stop();
     tub::stop();
+
+    server::rethrow();
+    client::rethrow();
+    tub::rethrow();
 
     return 0;
 }

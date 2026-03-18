@@ -31,6 +31,11 @@ namespace server
      */
     std::size_t size();
 
+    /**
+     * Throws any exceptions that may have occurred during the execution of the thread.
+     */
+    void rethrow();
+
 }
 
 #endif // SERVER_H

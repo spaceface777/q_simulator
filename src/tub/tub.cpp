@@ -7,6 +7,7 @@
 
 namespace tub
 {
+    static std::exception_ptr exception_ptr;
     static std::atomic_bool stopped = false;
 
     void Tub::_run()
@@ -155,4 +156,11 @@ namespace tub
         return {};
     }
 
+    void rethrow()
+    {
+        if (exception_ptr)
+        {
+            std::rethrow_exception(exception_ptr);
+        }
+    }
 }

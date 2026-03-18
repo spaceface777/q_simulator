@@ -17,6 +17,7 @@
 
 namespace client
 {
+    static std::exception_ptr exception_ptr;
     static std::atomic_bool stopped = false;
 
     static void setup_connection(int fd, unsigned int port, unsigned int id)
@@ -73,7 +74,18 @@ namespace client
             throw std::runtime_error("Double client instantiation");
         }
 
-        thread_ptr_ = std::make_unique<std::thread>(&Client::_run, this);
+        thread_ptr_ = std::make_unique<std::thread>(
+            [this]
+            {
+                try
+                {
+                    this->_run();
+                }
+                catch (const std::exception &ex)
+                {
+                    exception_ptr = std::current_exception();
+                }
+            });
     }
 
     void Client::_stop()
@@ -106,6 +118,14 @@ namespace client
         for (auto &[key, val] : map)
         {
             val->queue(packet::Shutdown());
+        }
+    }
+
+    void rethrow()
+    {
+        if (exception_ptr)
+        {
+            std::rethrow_exception(exception_ptr);
         }
     }
 

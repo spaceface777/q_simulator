@@ -91,6 +91,11 @@ namespace client
      */
     void close_clients();
 
+    /**
+     * Throws any exceptions that may have occurred during the execution of the thread.
+     */
+    void rethrow();
+
 }
 
 #endif // CLIENT_H
