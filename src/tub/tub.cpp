@@ -171,6 +171,7 @@ namespace tub
     {
         if (exception_ptr)
         {
+            fprintf(stderr, "Rethrowing exception from server thread\n");
             std::rethrow_exception(exception_ptr);
         }
     }

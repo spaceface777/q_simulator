@@ -44,16 +44,6 @@ namespace client
             return port_;
         }
 
-        int fd() const noexcept
-        {
-            return fd_;
-        }
-
-        void set_fd(int fd) noexcept
-        {
-            fd_ = fd;
-        }
-
         bool is_valid() const noexcept
         {
             return fd_ >= 0;

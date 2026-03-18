@@ -61,10 +61,10 @@ namespace server
      * Handles incoming connection requests.
      * @param self_fd The fd of the current process.
      */
-    static void handle_connection_requests(int self_fd)
+    static void handle_connection_requests(const Socket &socket)
     {
         struct pollfd pfd = {
-            .fd = self_fd,
+            .fd = socket.fd(),
             .events = POLLIN | POLLERR | POLLNVAL,
             .revents = 0,
         };
@@ -87,7 +87,7 @@ namespace server
 
         sockaddr other_addr;
         socklen_t other_len = sizeof(other_addr);
-        int other = ::accept(self_fd, &other_addr, &other_len);
+        int other = ::accept(socket.fd(), &other_addr, &other_len);
         if (other < 0)
         {
             return;
@@ -299,6 +299,7 @@ namespace server
     {
         if (exception_ptr)
         {
+            fprintf(stderr, "Rethrowing exception from server thread\n");
             std::rethrow_exception(exception_ptr);
         }
     }

@@ -20,14 +20,14 @@ namespace client
     static std::exception_ptr exception_ptr;
     static std::atomic_bool stopped = false;
 
-    static void setup_connection(int fd, unsigned int port, unsigned int id)
+    static void setup_connection(const Socket &socket, unsigned int port, unsigned int id)
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
             .sin_port = htons(port),
             .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
 
-        if (::connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
+        if (::connect(socket.fd(), (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
             throw std::runtime_error("Failed to connect to socket");
         }
@@ -41,8 +41,8 @@ namespace client
             throw std::runtime_error("Failed to bind socket");
         }
 
+        setup_connection(socket, port_, id_);
         fd_ = socket.fd();
-        setup_connection(socket.fd(), port_, id_);
 
         std::cout << "Connected to module " << std::to_string(id_) << std::endl;
 
@@ -60,7 +60,7 @@ namespace client
             std::cout << "Size " << std::to_string(queue_.size()) << std::endl;
             std::cout << "Sending " << packet->to_toml() << std::endl;
             const std::string toml = packet->to_toml();
-            if (::write(fd_, toml.c_str(), toml.length() + 1) < 0) // include '\0'
+            if (::write(socket.fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
             {
                 std::this_thread::sleep_for(TIMEOUT);
             }
@@ -125,6 +125,7 @@ namespace client
     {
         if (exception_ptr)
         {
+            fprintf(stderr, "Rethrowing exception from server thread\n");
             std::rethrow_exception(exception_ptr);
         }
     }
