@@ -28,8 +28,7 @@ namespace client
 
         if (::connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
-            throw new std::runtime_error("Failed to connect to socket");
-            return;
+            throw std::runtime_error("Failed to connect to socket");
         }
     }
 
