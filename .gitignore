@@ -13,3 +13,5 @@ Makefile
 *.tcl
 bin/
 build/
+settings.toml
+events.toml

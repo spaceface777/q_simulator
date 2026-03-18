@@ -6,6 +6,8 @@ before_script:
 
 build:
   script:
+    - mv settings_example.toml settings.toml
+    - mv events_example.toml events.toml
     - cmake .
     - cmake --build .
     - ./tests
