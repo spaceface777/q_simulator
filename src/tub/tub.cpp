@@ -4,6 +4,7 @@
 
 #include <thread>
 #include <atomic>
+#include <iostream>
 
 namespace tub
 {
@@ -141,7 +142,7 @@ namespace tub
                 }
             });
 
-        printf("Started tub %d\n", id_);
+        std::cerr << "Started tub " << std::to_string(id_) << std::endl;
     }
 
     void stop()

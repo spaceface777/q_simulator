@@ -262,7 +262,7 @@ namespace server
 
         fds.reserve(MAX_MODULES);
 
-        printf("Server waiting for connections\n");
+        std::cerr << "Server waiting for connections" << std::endl;
 
         while (!stopped)
         {

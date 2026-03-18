@@ -65,7 +65,6 @@ int main(int argc, char const *argv[])
     server::stop();
 
     server::rethrow();
-    client::rethrow();
     tub::rethrow();
 
     return 0;
