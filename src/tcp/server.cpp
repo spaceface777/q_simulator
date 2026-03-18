@@ -27,6 +27,9 @@
 
 namespace server
 {
+    constexpr int PORT = 7777;
+
+    static std::unique_ptr<std::thread> thread_ptr_;
     static std::exception_ptr exception_ptr;
     static std::atomic_bool stopped = false;
     static std::vector<unsigned int> fds;
@@ -34,11 +37,11 @@ namespace server
     /**
      * Sets up the port for a server connection.
      */
-    static void setup_port(const Socket &socket, unsigned int port)
+    static void setup_port(const Socket &socket)
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
-            .sin_port = ::htons(port),
+            .sin_port = ::htons(PORT),
             .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
 
         // assign fd to port
@@ -233,14 +236,14 @@ namespace server
         }
     }
 
-    void run(unsigned int port)
+    static void _run()
     {
         const Socket socket;
         if (!socket.is_valid())
         {
             throw std::runtime_error("Failed to initialize socket");
         }
-        setup_port(socket, port);
+        setup_port(socket);
 
         fds.reserve(MAX_MODULES);
 
@@ -254,11 +257,37 @@ namespace server
         }
     }
 
+    void run()
+    {
+        if (thread_ptr_)
+        {
+            throw std::runtime_error("Double tub instantiation");
+        }
+
+        thread_ptr_ = std::make_unique<std::thread>(
+            []
+            {
+                try
+                {
+                    _run();
+                }
+                catch (const std::exception &ex)
+                {
+                    exception_ptr = std::current_exception();
+                }
+            });
+    }
+
     void stop()
     {
         client::close_clients();
 
         stopped = true;
+
+        if (thread_ptr_->joinable())
+        {
+            thread_ptr_->join();
+        }
     }
 
     std::size_t size()

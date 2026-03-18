@@ -12,12 +12,14 @@
 #include "defs.h"
 #include "settings.h"
 
-static std::thread server_thread;
-
 static void handle_close(int sign)
 {
     server::stop();
     tub::stop();
+
+    server::rethrow();
+    client::rethrow();
+    tub::rethrow();
 }
 
 int main(int argc, char const *argv[])
@@ -34,8 +36,6 @@ int main(int argc, char const *argv[])
 
     std::vector<events::Event> events;
     parser::parse_events(events);
-
-    server_thread = std::thread(server::run, 7777);
 
     try
     {
@@ -56,18 +56,12 @@ int main(int argc, char const *argv[])
     }
     catch (const std::exception &ex)
     {
-        if (server_thread.joinable())
-        {
-            server_thread.join();
-        }
+        server::stop();
+        tub::stop();
+
         throw ex;
     }
 
-    if (server_thread.joinable())
-    {
-        server_thread.join();
-    }
-    
     server::stop();
     tub::stop();
 
