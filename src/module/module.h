@@ -17,6 +17,7 @@ namespace module
     class Module
     {
     private:
+        pid_t pid_;
         uint8_t id_;
         bool running_ = false;
 
@@ -28,6 +29,14 @@ namespace module
         Module(uint8_t id)
         {
             id_ = id;
+        }
+
+        /**
+         * @return The pid of this module.
+         */
+        pid_t pid() const noexcept
+        {
+            return pid_;
         }
 
         /**
@@ -90,7 +99,6 @@ namespace module
          * @param packet The packet that was sent to this module's simulation.
          */
         void update(const packet::Update &packet);
-
     };
 
     /**
@@ -105,6 +113,11 @@ namespace module
      * @returns The module instance from the id.
      */
     std::optional<std::shared_ptr<module::Module>> get_module(uint8_t id);
+
+    /**
+     * Closes all module processes.
+     */
+    void stop();
 
 }
 

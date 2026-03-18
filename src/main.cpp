@@ -14,17 +14,16 @@
 
 static void handle_close(int sign)
 {
+    module::stop();
     server::stop();
     tub::stop();
-
-    server::rethrow();
-    client::rethrow();
-    tub::rethrow();
 }
 
 int main(int argc, char const *argv[])
 {
     settings::parse_settings();
+    std::vector<events::Event> events;
+    parser::parse_events(events);
 
     const std::string path = settings::get_setting<std::string>("router_path");
     if (!std::filesystem::exists(path))
@@ -34,36 +33,37 @@ int main(int argc, char const *argv[])
 
     ::signal(SIGINT, handle_close);
 
-    std::vector<events::Event> events;
-    parser::parse_events(events);
+    server::run();
 
-    try
+    uint8_t module_index = 0;
+    while (module_index < settings::get_modules_active())
     {
-        uint8_t module_index = 0;
-        while (module_index < settings::get_modules_active())
-        {
-            std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
-            module->run(path);
-            module::add_module(std::move(module));
+        std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
+        module->run(path);
+        module::add_module(std::move(module));
 
-            while (server::size() < module_index + 1)
+        int attempts = 0;
+        while (server::size() < module_index + 1)
+        {
+            if (attempts > 200)
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                server::stop();
+                tub::stop();
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                module::stop();
+                throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after 2 seconds");
             }
 
-            module_index++;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            attempts++;
         }
-    }
-    catch (const std::exception &ex)
-    {
-        server::stop();
-        tub::stop();
 
-        throw ex;
+        module_index++;
     }
 
-    server::stop();
+    module::stop();
     tub::stop();
+    server::stop();
 
     server::rethrow();
     client::rethrow();

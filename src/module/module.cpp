@@ -5,6 +5,7 @@
 #include <string>
 #include <cstring>
 #include <fstream>
+#include <csignal>
 
 #include "module.h"
 #include "../tcp/server.h"
@@ -15,7 +16,7 @@ namespace module
 
 	void Module::run(std::string path)
 	{
-		pid_t pid_ = ::fork();
+		pid_ = ::fork();
 		if (pid_ == -1)
 		{
 			throw std::runtime_error("Failed to fork: " + std::string(std::strerror(errno)));
@@ -91,6 +92,14 @@ namespace module
 			return std::move(map.at(id));
 		}
 		return {};
+	}
+
+	void stop()
+	{
+		for (auto &[key, val] : map)
+		{
+			kill(val->pid(), SIGTERM);
+		}
 	}
 
 }

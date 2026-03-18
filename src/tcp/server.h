@@ -15,11 +15,9 @@ namespace server
     void send(unsigned int id, const packet::Packet &packet);
 
     /**
-     * Runs a TCP server on the designated port.
-     *
-     * @param port The port to run the server on.
+     * Runs the server.
      */
-    void run(unsigned int port);
+    void run();
 
     /**
      * Signals the server thread to stop execution.

@@ -27,7 +27,7 @@
 
 namespace server
 {
-    constexpr int PORT = 7777;
+    inline constexpr int PORT = 7777;
 
     static std::unique_ptr<std::thread> thread_ptr_;
     static std::exception_ptr exception_ptr;
