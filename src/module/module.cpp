@@ -5,6 +5,7 @@
 #include <string>
 #include <cstring>
 #include <fstream>
+#include <csignal>
 
 #include "module.h"
 #include "../tcp/server.h"
@@ -13,9 +14,9 @@
 namespace module
 {
 
-	void Module::run(std::filesystem::path path)
+	void Module::run(std::string path)
 	{
-		pid_t pid_ = ::fork();
+		pid_ = ::fork();
 		if (pid_ == -1)
 		{
 			throw std::runtime_error("Failed to fork: " + std::string(std::strerror(errno)));
@@ -28,15 +29,20 @@ namespace module
 
 			// file for id
 
-			const std::filesystem::path id_path = "/tmp/qaid";
+			const std::string id_path = "/tmp/qaid";
 			std::ofstream id_of(id_path);
 			if (!id_of.is_open())
 			{
-				throw std::runtime_error("Failed to create file for " + std::to_string(id_));
+				throw std::runtime_error("Failed to create ofstream for " + std::to_string(id_));
 			}
 			id_of << std::to_string(id_);
 			id_of.flush();
 			id_of.close();
+
+			if (!std::filesystem::exists(id_path))
+			{
+				throw std::runtime_error("Failed to create file for " + std::to_string(id_));
+			}
 
 			// exec
 
@@ -47,6 +53,7 @@ namespace module
 			{
 				throw std::runtime_error("Failed to execl: " + std::string(::strerror(errno)));
 			}
+			std::cerr << "Started module " << std::to_string(id_) << std::endl;
 		}
 
 		running_ = true;
@@ -91,6 +98,15 @@ namespace module
 			return std::move(map.at(id));
 		}
 		return {};
+	}
+
+	void stop()
+	{
+		for (auto &[key, val] : map)
+		{
+			std::cout << "Killed " << std::to_string(val->id()) << std::endl;
+			kill(val->pid(), SIGTERM);
+		}
 	}
 
 }

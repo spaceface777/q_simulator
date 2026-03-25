@@ -105,6 +105,11 @@ namespace tub
      */
     std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id);
 
+    /**
+     * Throws any exceptions that may have occurred during the execution of the thread.
+     */
+    void rethrow();
+
 }
 
 #endif

@@ -27,29 +27,33 @@
 
 namespace server
 {
-    std::atomic_bool stopped = false;
-    std::vector<unsigned int> fds;
+    inline constexpr int PORT = 7777;
+
+    static std::unique_ptr<std::thread> thread_ptr_;
+    static std::exception_ptr exception_ptr;
+    static std::atomic_bool stopped = false;
+    static std::vector<unsigned int> fds;
 
     /**
      * Sets up the port for a server connection.
      */
-    static void setup_port(const Socket &socket, unsigned int port)
+    static void setup_port(const Socket &socket)
     {
         const struct sockaddr_in addr_in = {
             .sin_family = AF_INET,
-            .sin_port = ::htons(port),
+            .sin_port = ::htons(PORT),
             .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
 
         // assign fd to port
         if (::bind(socket.fd(), (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
-            throw new std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
+            throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
         // enable listening
         if (::listen(socket.fd(), MAX_TCP_BACKLOG) != 0)
         {
-            throw new std::runtime_error("Failed to set listening mode");
+            throw std::runtime_error("Failed to set listening mode");
         }
     }
 
@@ -57,10 +61,10 @@ namespace server
      * Handles incoming connection requests.
      * @param self_fd The fd of the current process.
      */
-    static void handle_connection_requests(int self_fd)
+    static void handle_connection_requests(const Socket &socket)
     {
         struct pollfd pfd = {
-            .fd = self_fd,
+            .fd = socket.fd(),
             .events = POLLIN | POLLERR | POLLNVAL,
             .revents = 0,
         };
@@ -83,7 +87,7 @@ namespace server
 
         sockaddr other_addr;
         socklen_t other_len = sizeof(other_addr);
-        int other = ::accept(self_fd, &other_addr, &other_len);
+        int other = ::accept(socket.fd(), &other_addr, &other_len);
         if (other < 0)
         {
             return;
@@ -232,20 +236,22 @@ namespace server
         }
     }
 
-    void run(unsigned int port)
+    static void _run()
     {
         const Socket socket;
         if (!socket.is_valid())
         {
-            throw new std::runtime_error("Failed to initialize socket");
+            throw std::runtime_error("Failed to initialize socket");
         }
-        setup_port(socket, port);
+        setup_port(socket);
 
         fds.reserve(MAX_MODULES);
 
+        std::cerr << "Server waiting for connections" << std::endl;
+
         while (!stopped)
         {
-            handle_connection_requests(socket.fd());
+            handle_connection_requests(socket);
 
             handle_packets();
 
@@ -253,16 +259,51 @@ namespace server
         }
     }
 
+    void run()
+    {
+        if (thread_ptr_)
+        {
+            throw std::runtime_error("Double tub instantiation");
+        }
+
+        thread_ptr_ = std::make_unique<std::thread>(
+            []
+            {
+                try
+                {
+                    _run();
+                }
+                catch (const std::exception &ex)
+                {
+                    exception_ptr = std::current_exception();
+                }
+            });
+    }
+
     void stop()
     {
+        stopped = true;
+
         client::close_clients();
 
-        stopped = true;
+        if (thread_ptr_->joinable())
+        {
+            thread_ptr_->join();
+        }
     }
 
     std::size_t size()
     {
         return fds.size();
+    }
+
+    void rethrow()
+    {
+        if (exception_ptr)
+        {
+            fprintf(stderr, "Rethrowing exception from server thread\n");
+            std::rethrow_exception(exception_ptr);
+        }
     }
 
 }

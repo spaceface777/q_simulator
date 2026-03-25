@@ -11,12 +11,13 @@ The repository for the Quercus Airport Router Simulation.
 2. Clone this repo locally. 
 3. Rename `events_example.toml` to `events.toml` and rename `settings_example.toml` to `settings.toml`.
 4. Change the `router_path` value in the settings to the absolute path of the `zephyr.exe` executable.
+5. Run `cmake build/ -DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
 
 ## Usage
 Run the project with the `Run` button when using the C/C++ VSCode extension, or use: 
 
 ```sh
-make && ./main
+make -C build -j && ./build/main
 ```
 
 ## Support

@@ -15,11 +15,9 @@ namespace server
     void send(unsigned int id, const packet::Packet &packet);
 
     /**
-     * Runs a TCP server on the designated port.
-     *
-     * @param port The port to run the server on.
+     * Runs the server.
      */
-    void run(unsigned int port);
+    void run();
 
     /**
      * Signals the server thread to stop execution.
@@ -30,6 +28,11 @@ namespace server
      * @return The amount of connections this server is handling.
      */
     std::size_t size();
+
+    /**
+     * Throws any exceptions that may have occurred during the execution of the thread.
+     */
+    void rethrow();
 
 }
 
