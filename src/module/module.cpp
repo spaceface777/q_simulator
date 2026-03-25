@@ -29,15 +29,20 @@ namespace module
 
 			// file for id
 
-			const std::filesystem::path id_path = "/tmp/qaid";
+			const std::string id_path = "/tmp/qaid";
 			std::ofstream id_of(id_path);
 			if (!id_of.is_open())
 			{
-				throw std::runtime_error("Failed to create file for " + std::to_string(id_));
+				throw std::runtime_error("Failed to create ofstream for " + std::to_string(id_));
 			}
 			id_of << std::to_string(id_);
 			id_of.flush();
 			id_of.close();
+
+			if (!std::filesystem::exists(id_path))
+			{
+				throw std::runtime_error("Failed to create file for " + std::to_string(id_));
+			}
 
 			// exec
 
@@ -99,6 +104,7 @@ namespace module
 	{
 		for (auto &[key, val] : map)
 		{
+			std::cout << "Killed " << std::to_string(val->id()) << std::endl;
 			kill(val->pid(), SIGTERM);
 		}
 	}

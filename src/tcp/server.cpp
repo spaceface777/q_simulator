@@ -251,7 +251,7 @@ namespace server
 
         while (!stopped)
         {
-            handle_connection_requests(socket.fd());
+            handle_connection_requests(socket);
 
             handle_packets();
 
@@ -282,9 +282,9 @@ namespace server
 
     void stop()
     {
-        client::close_clients();
-
         stopped = true;
+
+        client::close_clients();
 
         if (thread_ptr_->joinable())
         {

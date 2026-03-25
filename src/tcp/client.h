@@ -51,7 +51,7 @@ namespace client
 
         void queue(const packet::Packet &packet) noexcept
         {
-            queue_.push(packet.clone());
+            queue_.push(std::make_unique<packet::Packet>(packet));
         }
 
     private:

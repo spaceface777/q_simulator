@@ -2,6 +2,7 @@
 #include <csignal>
 #include <map>
 #include <fstream>
+#include <atomic>
 
 #include "event/parser.h"
 #include "tcp/server.h"
@@ -12,11 +13,23 @@
 #include "defs.h"
 #include "settings.h"
 
+/**
+ * The amount of seconds before a module connection times out.
+ */
+static constexpr int MODULE_CONNECT_TIMEOUT_SECONDS = 3;
+
+static std::atomic_bool stopped = false;
+
 static void handle_close(int sign)
 {
-    module::stop();
-    server::stop();
     tub::stop();
+    server::stop();
+    module::stop();
+
+    server::rethrow();
+    tub::rethrow();
+
+    stopped = true;
 }
 
 int main(int argc, char const *argv[])
@@ -45,11 +58,10 @@ int main(int argc, char const *argv[])
         int attempts = 0;
         while (server::size() < module_index + 1)
         {
-            if (attempts > 200)
+            if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 100)
             {
-                server::stop();
                 tub::stop();
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                server::stop();
                 module::stop();
                 throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after 2 seconds");
             }
@@ -59,14 +71,27 @@ int main(int argc, char const *argv[])
         }
 
         module_index++;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    module::stop();
-    tub::stop();
-    server::stop();
+    while (!stopped)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    server::rethrow();
-    tub::rethrow();
+        try
+        {
+            server::rethrow();
+            tub::rethrow();
+        }
+        catch (const std::exception &ex)
+        {
+            tub::stop();
+            server::stop();
+            module::stop();
+
+            throw ex;
+        }
+    }
 
     return 0;
 }
