@@ -27,6 +27,7 @@ static void handle_close(int sign)
     module::stop();
 
     server::rethrow();
+    client::rethrow();
     tub::rethrow();
 
     stopped = true;
@@ -81,6 +82,7 @@ int main(int argc, char const *argv[])
         try
         {
             server::rethrow();
+            client::rethrow();
             tub::rethrow();
         }
         catch (const std::exception &ex)
@@ -89,7 +91,9 @@ int main(int argc, char const *argv[])
             server::stop();
             module::stop();
 
-            throw ex;
+            server::rethrow();
+            client::rethrow();
+            tub::rethrow();
         }
     }
 
