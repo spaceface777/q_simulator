@@ -17,6 +17,7 @@
 
 namespace client
 {
+    static std::exception_ptr exception_ptr;
     static std::atomic_bool stopped = false;
 
     static void setup_connection(int fd, unsigned int port, unsigned int id)
@@ -26,10 +27,10 @@ namespace client
             .sin_port = htons(port),
             .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
 
+        std::cout << "Connecting to module " << std::to_string(id) << " at port " << std::to_string(port) << std::endl;
         if (::connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
-            throw new std::runtime_error("Failed to connect to socket");
-            return;
+            throw std::runtime_error("Failed to connect to socket");
         }
     }
 
@@ -41,26 +42,35 @@ namespace client
             throw std::runtime_error("Failed to bind socket");
         }
 
-        fd_ = socket.fd();
         setup_connection(socket.fd(), port_, id_);
+        fd_ = socket.fd();
 
         std::cout << "Connected to module " << std::to_string(id_) << std::endl;
 
         while (!stopped)
         {
-            if (queue_.empty())
+            std::unique_ptr<packet::Packet> packet;
+            size_t current_size = 0;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (!queue_.empty())
+                {
+                    packet = std::move(queue_.front());
+                    queue_.pop();
+                    current_size = queue_.size();
+                }
+            }
+
+            if (!packet)
             {
                 std::this_thread::sleep_for(TIMEOUT);
                 continue;
             }
 
-            std::unique_ptr<packet::Packet> packet = std::move(queue_.front());
-            queue_.pop();
-
-            std::cout << "Size " << std::to_string(queue_.size()) << std::endl;
+            std::cout << "Size " << std::to_string(current_size) << std::endl;
             std::cout << "Sending " << packet->to_toml() << std::endl;
             const std::string toml = packet->to_toml();
-            if (::write(fd_, toml.c_str(), toml.length() + 1) < 0) // include '\0'
+            if (::write(socket.fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
             {
                 std::this_thread::sleep_for(TIMEOUT);
             }
@@ -74,7 +84,18 @@ namespace client
             throw std::runtime_error("Double client instantiation");
         }
 
-        thread_ptr_ = std::make_unique<std::thread>(&Client::_run, this);
+        thread_ptr_ = std::make_unique<std::thread>(
+            [this]
+            {
+                try
+                {
+                    this->_run();
+                }
+                catch (const std::exception &ex)
+                {
+                    exception_ptr = std::current_exception();
+                }
+            });
     }
 
     void Client::_stop()
@@ -107,6 +128,15 @@ namespace client
         for (auto &[key, val] : map)
         {
             val->queue(packet::Shutdown());
+        }
+    }
+
+    void rethrow()
+    {
+        if (exception_ptr)
+        {
+            fprintf(stderr, "Rethrowing exception from client thread\n");
+            std::rethrow_exception(exception_ptr);
         }
     }
 

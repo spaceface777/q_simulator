@@ -5,6 +5,7 @@
 #include <memory>
 #include <queue>
 #include <thread>
+#include <mutex>
 
 // only used for testing
 namespace client
@@ -16,6 +17,7 @@ namespace client
         unsigned int id_ = 0;
         unsigned int port_ = 0;
         std::queue<std::unique_ptr<packet::Packet>> queue_;
+        std::mutex mutex_;
         std::unique_ptr<std::thread> thread_ptr_;
 
     public:
@@ -44,16 +46,6 @@ namespace client
             return port_;
         }
 
-        int fd() const noexcept
-        {
-            return fd_;
-        }
-
-        void set_fd(int fd) noexcept
-        {
-            fd_ = fd;
-        }
-
         bool is_valid() const noexcept
         {
             return fd_ >= 0;
@@ -61,6 +53,7 @@ namespace client
 
         void queue(const packet::Packet &packet) noexcept
         {
+            std::lock_guard<std::mutex> lock(mutex_);
             queue_.push(packet.clone());
         }
 
@@ -90,6 +83,11 @@ namespace client
      * Closes all clients.
      */
     void close_clients();
+
+    /**
+     * Throws any exceptions that may have occurred during the execution of the thread.
+     */
+    void rethrow();
 
 }
 

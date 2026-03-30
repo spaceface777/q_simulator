@@ -21,7 +21,7 @@ namespace events
         /**
          * Returns the arrival time of the object.
          */
-        uint8_t time() const
+        uint8_t time() const noexcept
         {
             return _time;
         }
@@ -29,7 +29,7 @@ namespace events
         /**
          * Returns the id of the object.
          */
-        uint8_t id() const
+        uint8_t id() const noexcept
         {
             return _id;
         }
@@ -55,7 +55,7 @@ namespace events
         /**
          * Returns the module that this plane is at.
          */
-        uint8_t module() const
+        uint8_t module() const noexcept
         {
             return _module;
         }
@@ -63,7 +63,7 @@ namespace events
         /**
          * The time until leaving for this plane.
          */
-        uint8_t leaves_in() const
+        uint8_t leaves_in() const noexcept
         {
             return _leaves_in;
         }
@@ -103,7 +103,7 @@ namespace events
         /**
          * Returns whether this tub is safe.
          */
-        bool safe() const
+        bool safe() const noexcept
         {
             return _safe;
         }
@@ -111,7 +111,7 @@ namespace events
         /**
          * Returns the origin information for this tub.
          */
-        TubData origin() const
+        TubData origin() const noexcept
         {
             return _origin;
         }
@@ -119,7 +119,7 @@ namespace events
         /**
          * Returns the destination information for this tub.
          */
-        TubData destination() const
+        TubData destination() const noexcept
         {
             return _destination;
         }
