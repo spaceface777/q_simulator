@@ -19,6 +19,9 @@ Run the project with the `Run` button when using the C/C++ VSCode extension, or 
 make && ./main
 ```
 
+If any errors appear about addresses already being in use, make sure to kill any potential runaway Zephyr processes.
+You can usually find these in a task manager or system monitor.
+
 ## Support
 In case you encounter any problems, send an email to `r.verstappen@student.tue.nl`. This email should contain as much relevant information as possible, including your implementation of the router.
 

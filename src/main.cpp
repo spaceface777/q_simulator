@@ -42,18 +42,61 @@ int main(int argc, char const *argv[])
 
         while (server::size() < module_index + 1)
         {
+            if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 100)
+            {
+                tub::stop();
+                server::stop();
+                module::stop();
+                throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after 2 seconds");
+            }
+
+            try
+            {
+                server::rethrow();
+                client::rethrow();
+                tub::rethrow();
+            }
+            catch (const std::exception &ex)
+            {
+                tub::stop();
+                server::stop();
+                module::stop();
+
+                server::rethrow();
+                client::rethrow();
+                tub::rethrow();
+                return EXIT_FAILURE;
+            }
+
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            attempts++;
         }
 
         module_index++;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    if (server_thread.joinable())
+    while (!stopped)
     {
-        server_thread.join();
-    }
-    server::stop();
-    tub::stop();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    return 0;
+        try
+        {
+            server::rethrow();
+            client::rethrow();
+            tub::rethrow();
+        }
+        catch (const std::exception &ex)
+        {
+            tub::stop();
+            server::stop();
+            module::stop();
+
+            server::rethrow();
+            client::rethrow();
+            tub::rethrow();
+        }
+    }
+
+    return EXIT_SUCCESS;
 }
