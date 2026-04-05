@@ -27,7 +27,7 @@ namespace client
             .sin_port = htons(port),
             .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
 
-        std::cout << "Connecting to module " << std::to_string(id) << " at port " << std::to_string(port) << std::endl;
+        std::cout << "Connecting to module " << std::to_string(id) << " at port " << std::to_string(port) << " and fd " << std::to_string(fd) << std::endl;
         if (::connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
             throw std::runtime_error("Failed to connect to socket");
@@ -68,7 +68,7 @@ namespace client
             }
 
             std::cout << "Size " << std::to_string(current_size) << std::endl;
-            std::cout << "Sending " << packet->to_toml() << std::endl;
+            std::cout << "Sending " << packet->to_toml() << " to " << std::to_string(socket.fd()) << std::endl;
             const std::string toml = packet->to_toml();
             if (::write(socket.fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
             {
@@ -103,9 +103,9 @@ namespace client
         stopped = true;
     }
 
-    static std::map<uint8_t, std::unique_ptr<Client>> map;
+    static std::map<uint8_t, std::shared_ptr<Client>> map;
 
-    void add_client(std::unique_ptr<Client> ptr)
+    void add_client(std::shared_ptr<Client> ptr)
     {
         if (map.count(ptr->id()))
         {
@@ -118,7 +118,7 @@ namespace client
     {
         if (map.count(id))
         {
-            return std::move(map.at(id));
+            return map.at(id);
         }
         return {};
     }

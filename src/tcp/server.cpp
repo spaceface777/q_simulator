@@ -138,9 +138,9 @@ namespace server
                 return;
             }
 
-            std::unique_ptr<client::Client> ptr = std::make_unique<client::Client>(id, 8888 + id);
+            std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id);
             ptr->run();
-            client::add_client(std::move(ptr));
+            client::add_client(ptr);
 
             std::cout << "Started client at " << std::to_string(8888 + id) << std::endl;
 

@@ -68,9 +68,9 @@ namespace client
 
     /**
      * Adds a module.
-     * @param ptr A unique_ptr to the client.
+     * @param ptr A shared_ptr to the client.
      */
-    void add_client(std::unique_ptr<client::Client> ptr);
+    void add_client(std::shared_ptr<client::Client> ptr);
 
     /**
      * Gets an optional client from its id.
