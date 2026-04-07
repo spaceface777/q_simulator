@@ -3,15 +3,15 @@ The repository for the Quercus Airport Router Simulation.
 
 ## Requirements
 - Ubuntu 24 or higher, Debian 13 or higher
-- CMake, Make
 - Internet connection
 
 ## Installation
-1. Clone the router repo locally. Set up Zephyr and West. If done correctly, you should be able to build a native `zephyr.exe` file using the run/build script present.
-2. Clone this repo locally. 
-3. Rename `events_example.toml` to `events.toml` and rename `settings_example.toml` to `settings.toml`.
-4. Change the `router_path` value in the settings to the absolute path of the `zephyr.exe` executable.
-5. Run `cmake build/ -DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
+1. Run `sudo apt install build-essential libsdl2-dev git`.
+2. Clone the router repo locally. Set up Zephyr and West. If done correctly, you should be able to build a native `zephyr.exe` file using the run/build script present.
+3. Clone this repo locally. 
+4. Rename `events_example.toml` to `events.toml` and rename `settings_example.toml` to `settings.toml`.
+5. Change the `router_path` value in the settings to the absolute path of the `zephyr.exe` executable.
+6. Run `cmake build/ -DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
 
 ## Usage
 Run the project with the `Run` button when using the C/C++ VSCode extension, or use: 
