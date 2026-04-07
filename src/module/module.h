@@ -24,6 +24,7 @@ namespace module
         uint8_t big_speed_;
         uint8_t small_speed_;
         uint16_t servo_degrees_;
+        int led_color_;
 
     public:
         Module(uint8_t id)
@@ -80,6 +81,14 @@ namespace module
         }
 
         /**
+         * @return The color of the led.
+         */
+        int led_color() const noexcept
+        {
+            return led_color_;
+        }
+
+        /**
          * Run this module as the executable found at path.
          *
          * @param path The file to execute.
@@ -113,6 +122,11 @@ namespace module
      * @returns The module instance from the id.
      */
     std::optional<std::shared_ptr<module::Module>> get_module(uint8_t id);
+
+    /**
+     * @returns All modules.
+     */
+    std::vector<std::shared_ptr<module::Module>> get_modules();
 
     /**
      * Closes all module processes.

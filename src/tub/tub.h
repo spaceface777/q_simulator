@@ -21,7 +21,7 @@ namespace tub
         uint8_t target_module_;
         ModuleLocation target_module_location_;
 
-        float location_progress_ = 0;
+        double location_progress_ = 0;
         std::unique_ptr<std::thread> thread_ptr_;
 
     public:
@@ -69,10 +69,10 @@ namespace tub
         }
 
         /**
-         * @returns A number between 0 and 100 indicating how far along the module location this tub is.
-         * 0 = at center, 100 = at outskirts.
+         * @returns A number between 0 and 1 indicating how far along the module location this tub is.
+         * 0 = at center, 1 = at outskirts.
          */
-        float module_location_progress() const noexcept
+        double module_location_progress() const noexcept
         {
             return location_progress_;
         }
@@ -104,6 +104,11 @@ namespace tub
      * @returns The tub instance from the id.
      */
     std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id);
+
+    /**
+     * @returns All tubs.
+     */
+    std::vector<std::shared_ptr<tub::Tub>> get_tubs();
 
     /**
      * Throws any exceptions that may have occurred during the execution of the thread.

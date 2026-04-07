@@ -79,9 +79,13 @@ namespace module
 		{
 			servo_degrees_ = packet.value();
 		}
+		else if (packet.device() == "led")
+		{
+			led_color_ = packet.value();
+		}
 	}
 
-	static std::map<uint8_t, std::unique_ptr<module::Module>> map;
+	static std::map<uint8_t, std::shared_ptr<module::Module>> map;
 
 	void add_module(std::unique_ptr<module::Module> ptr)
 	{
@@ -99,6 +103,16 @@ namespace module
 			return std::move(map.at(id));
 		}
 		return {};
+	}
+
+	std::vector<std::shared_ptr<module::Module>> get_modules()
+	{
+		std::vector<std::shared_ptr<module::Module>> modules;
+		for (const auto &pair : map)
+		{
+			modules.push_back(pair.second);
+		}
+		return modules;
 	}
 
 	void stop()

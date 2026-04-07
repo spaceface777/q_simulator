@@ -27,7 +27,7 @@ namespace tub
             // angle > 90 = left
             // angle <= 90 = right
 
-            if (location_progress_ > 100)
+            if (location_progress_ > 1)
             {
                 const uint8_t old_module = module_;
                 const settings::ModuleSettings settings = settings::get_module_settings(module_);
@@ -63,7 +63,7 @@ namespace tub
                     throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(module_) + " are not connected in settings.toml");
                 }
 
-                location_progress_ = 100;
+                location_progress_ = 1;
             }
             else if (location_progress_ < 0)
             {
@@ -107,13 +107,13 @@ namespace tub
                 switch (location_)
                 {
                 case ModuleLocation::BOTTOM_BELT:
-                    location_progress_ += module->small_belt_speed() / 100.0f;
+                    location_progress_ += module->small_belt_speed() / 1000.0f;
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    location_progress_ += -module->big_belt_speed() / 100.0f;
+                    location_progress_ += -module->big_belt_speed() / 1000.0f;
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    location_progress_ += module->big_belt_speed() / 100.0f;
+                    location_progress_ += module->big_belt_speed() / 1000.0f;
                     break;
                 }
             }
@@ -150,7 +150,7 @@ namespace tub
         stopped = true;
     }
 
-    static std::map<uint8_t, std::unique_ptr<tub::Tub>> map;
+    static std::map<uint8_t, std::shared_ptr<tub::Tub>> map;
 
     void add_tub(std::unique_ptr<tub::Tub> ptr)
     {
@@ -165,9 +165,19 @@ namespace tub
     {
         if (map.count(id))
         {
-            return std::move(map.at(id));
+            return map.at(id);
         }
         return {};
+    }
+
+    std::vector<std::shared_ptr<tub::Tub>> get_tubs()
+    {
+        std::vector<std::shared_ptr<tub::Tub>> tubs;
+        for (const auto &pair : map)
+        {
+            tubs.push_back(pair.second);
+        }
+        return tubs;
     }
 
     void rethrow()
