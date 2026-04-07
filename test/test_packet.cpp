@@ -4,7 +4,7 @@
 
 TEST(Packet, ToToml)
 {
-    packet::Update update(1, "2", 3);
+    packet::ModuleUpdate update(1, "2", 3);
     const std::string toml = update.to_toml();
     const std::vector<std::string_view> parts = util::split(toml, "\n");
 
@@ -17,7 +17,7 @@ TEST(Packet, ToToml)
 
 TEST(Packet, ToTomlPacket)
 {
-    packet::PacketSend packet(1, 4, "heyy");
+    packet::ModulePacket packet(1, 4, "heyy");
     const std::string toml = packet.to_toml();
     const std::vector<std::string_view> parts = util::split(toml, "\n");
 

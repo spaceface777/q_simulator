@@ -107,7 +107,7 @@ namespace module
          *
          * @param packet The packet that was sent to this module's simulation.
          */
-        void update(const packet::Update &packet);
+        void update(const packet::ModuleUpdate &packet);
     };
 
     /**

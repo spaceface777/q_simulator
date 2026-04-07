@@ -111,9 +111,57 @@ namespace tub
                     break;
                 case ModuleLocation::LEFT_BELT:
                     location_progress_ += -module->big_belt_speed() / 1000.0f;
+
+                    if (in_laser_ && (location_progress_ < 0.8 || location_progress_ > 1))
+                    {
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        if (!module)
+                        {
+                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                        }
+
+                        (*module)->send(packet::SimulationUpdate(module_, "left belt", false));
+                        in_laser_ = false;
+                    }
+
+                    if (!in_laser_ && location_progress_ > 0.8 && location_progress_ < 1)
+                    {
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        if (!module)
+                        {
+                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                        }
+
+                        (*module)->send(packet::SimulationUpdate(module_, "left belt", true));
+                        in_laser_ = true;
+                    }
                     break;
                 case ModuleLocation::RIGHT_BELT:
                     location_progress_ += module->big_belt_speed() / 1000.0f;
+
+                    if (in_laser_ && (location_progress_ < 0.8 || location_progress_ > 1))
+                    {
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        if (!module)
+                        {
+                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                        }
+
+                        (*module)->send(packet::SimulationUpdate(module_, "right belt", false));
+                        in_laser_ = false;
+                    }
+
+                    if (!in_laser_ && location_progress_ > 0.8 && location_progress_ < 1)
+                    {
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        if (!module)
+                        {
+                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                        }
+
+                        (*module)->send(packet::SimulationUpdate(module_, "right belt", true));
+                        in_laser_ = true;
+                    }
                     break;
                 }
             }

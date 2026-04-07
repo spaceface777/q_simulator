@@ -147,10 +147,10 @@ namespace server
             return;
         }
 
-        std::optional<packet::Update> update = packet::Update::from_toml(buff);
+        std::optional<packet::ModuleUpdate> update = packet::ModuleUpdate::from_toml(buff);
         if (update)
         {
-            const packet::Update packet = update.value();
+            const packet::ModuleUpdate packet = update.value();
             std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
 
             std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(packet.id());
@@ -162,10 +162,10 @@ namespace server
             return;
         }
 
-        std::optional<packet::PacketSend> sent = packet::PacketSend::from_toml(buff);
+        std::optional<packet::ModulePacket> sent = packet::ModulePacket::from_toml(buff);
         if (sent)
         {
-            const packet::PacketSend packet = sent.value();
+            const packet::ModulePacket packet = sent.value();
             std::cout << "Received packet send request to " << std::to_string(packet.module()) << " with content " << packet.content() << std::endl;
             send(packet.module(), packet);
             return;

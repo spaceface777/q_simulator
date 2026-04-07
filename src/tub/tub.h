@@ -21,6 +21,7 @@ namespace tub
         uint8_t target_module_;
         ModuleLocation target_module_location_;
 
+        bool in_laser_ = false;
         double location_progress_ = 0;
         std::unique_ptr<std::thread> thread_ptr_;
 

@@ -65,7 +65,7 @@ namespace module
 		server::send(id_, packet);
 	}
 
-	void Module::update(const packet::Update &packet)
+	void Module::update(const packet::ModuleUpdate &packet)
 	{
 		if (packet.device() == "big belt")
 		{
