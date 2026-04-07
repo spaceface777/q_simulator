@@ -16,6 +16,7 @@ namespace settings
         uint8_t left;
         uint8_t right;
         uint8_t bottom;
+        uint16_t angle;
     } ModuleSettings;
 
     static ModuleSettings module_settings[MAX_MODULES];
@@ -40,7 +41,7 @@ namespace settings
             toml::node *module_node = table.get("module");
             if (!module_node || !module_node->is_table())
             {
-                throw std::invalid_argument("Invalid setting module");
+                throw std::invalid_argument("Invalid setting 'module' in settings.yml");
             }
 
             toml::table module_table = *module_node->as_table();
@@ -53,11 +54,17 @@ namespace settings
             toml::table table = *node->as_table();
 
             module_settings[id] = {
-                table["active"].value_or(false),
-                (uint8_t)table["left"].value_or(0),
-                (uint8_t)table["right"].value_or(0),
-                (uint8_t)table["bottom"].value_or(0),
+                .active = static_cast<bool>(table["active"].value_or(false)),
+                .left = static_cast<uint8_t>(table["left"].value_or(0)),
+                .right = static_cast<uint8_t>(table["right"].value_or(0)),
+                .bottom = static_cast<uint8_t>(table["bottom"].value_or(0)),
+                .angle = static_cast<uint16_t>(table["angle"].value_or(0)),
             };
+
+            if (module_settings[id].angle >= 360)
+            {
+                throw std::invalid_argument("Invalid angle '" + std::to_string(module_settings[id].angle) + "' for module " + std::to_string(id));
+            }
         }
     }
 

@@ -6,21 +6,25 @@ active = true
 left = 0
 right = 2
 bottom = 4
+angle = 0
 
 [module.2]
 active = true
 left = 1
 right = 0
 bottom = 3
+angle = 0
 
 [module.3]
 active = true
 left = 0
 right = 4
 bottom = 2
+angle = 180
 
 [module.4]
 active = true
 left = 3
 right = 0
 bottom = 1
+angle = 180
