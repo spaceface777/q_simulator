@@ -140,7 +140,7 @@ namespace packet
         return Introduction(id);
     }
 
-    bool Update::is_valid() const noexcept
+    bool ModuleUpdate::is_valid() const noexcept
     {
         if (_device.empty())
         {
@@ -150,7 +150,7 @@ namespace packet
         return true;
     }
 
-    std::string Update::to_toml() const noexcept
+    std::string ModuleUpdate::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "update");
@@ -161,12 +161,12 @@ namespace packet
         return buf;
     }
 
-    std::unique_ptr<Packet> Update::clone() const
+    std::unique_ptr<Packet> ModuleUpdate::clone() const
     {
-        return std::make_unique<Update>(*this);
+        return std::make_unique<ModuleUpdate>(*this);
     }
 
-    std::optional<Update> Update::from_toml(std::string_view toml)
+    std::optional<ModuleUpdate> ModuleUpdate::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
@@ -218,10 +218,10 @@ namespace packet
             return {};
         }
 
-        return Update(module, device, value);
+        return ModuleUpdate(module, device, value);
     }
 
-    bool PacketSend::is_valid() const noexcept
+    bool ModulePacket::is_valid() const noexcept
     {
         if (_content.length() != _length)
         {
@@ -231,7 +231,7 @@ namespace packet
         return true;
     }
 
-    std::string PacketSend::to_toml() const noexcept
+    std::string ModulePacket::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "packet");
@@ -242,12 +242,12 @@ namespace packet
         return buf;
     }
 
-    std::unique_ptr<Packet> PacketSend::clone() const
+    std::unique_ptr<Packet> ModulePacket::clone() const
     {
-        return std::make_unique<PacketSend>(*this);
+        return std::make_unique<ModulePacket>(*this);
     }
 
-    std::optional<PacketSend> PacketSend::from_toml(std::string_view toml)
+    std::optional<ModulePacket> ModulePacket::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
@@ -299,7 +299,7 @@ namespace packet
             return {};
         }
 
-        return PacketSend(module, length, content);
+        return ModulePacket(module, length, content);
     }
 
     bool TubArrival::is_valid() const noexcept

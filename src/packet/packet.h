@@ -80,7 +80,7 @@ namespace packet
         static std::optional<Introduction> from_toml(std::string_view toml);
     };
 
-    class Update : public Packet
+    class ModuleUpdate : public Packet
     {
     private:
         uint8_t _id;
@@ -88,7 +88,7 @@ namespace packet
         int _value;
 
     public:
-        Update(uint8_t id, std::string device, int value)
+        ModuleUpdate(uint8_t id, std::string device, int value)
         {
             _id = id;
             _device = device;
@@ -128,10 +128,54 @@ namespace packet
          * @param toml The TOML info.
          * @return A new Update instance.
          */
-        static std::optional<Update> from_toml(std::string_view toml);
+        static std::optional<ModuleUpdate> from_toml(std::string_view toml);
     };
 
-    class PacketSend : public Packet
+    class SimulationUpdate : public Packet
+    {
+    private:
+        uint8_t _id;
+        std::string _device;
+        int _value;
+
+    public:
+        SimulationUpdate(uint8_t id, std::string device, int value)
+        {
+            _id = id;
+            _device = device;
+            _value = value;
+        }
+
+        /**
+         * @return The id of the module.
+         */
+        uint8_t id() const noexcept
+        {
+            return _id;
+        }
+
+        /**
+         * @return The device that had its value updated.
+         */
+        std::string device() const noexcept
+        {
+            return _device;
+        }
+
+        /**
+         * @return The updated value.
+         */
+        int value() const noexcept
+        {
+            return _value;
+        }
+
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
+        std::unique_ptr<Packet> clone() const override;
+    };
+
+    class ModulePacket : public Packet
     {
     private:
         uint8_t _module;
@@ -139,7 +183,7 @@ namespace packet
         std::string _content;
 
     public:
-        PacketSend(uint8_t module, std::size_t length, std::string content)
+        ModulePacket(uint8_t module, std::size_t length, std::string content)
         {
             _module = module;
             _length = length;
@@ -177,9 +221,9 @@ namespace packet
         /**
          * Creates a new instance on this class based on the passed TOML info.
          * @param toml The TOML info.
-         * @return A new PacketSend instance.
+         * @return A new ModulePacket instance.
          */
-        static std::optional<PacketSend> from_toml(std::string_view toml);
+        static std::optional<ModulePacket> from_toml(std::string_view toml);
     };
 
     class TubArrival : public Packet

@@ -17,7 +17,7 @@ id = 12
 ```
 
 ### `[update]`
-Used to indicate the value of a hardware component.
+Used to indicate the value of a hardware component, sent from a module.
 
 Required elements:
 - `module = <uint>`: The module that this component belongs to.
@@ -30,6 +30,22 @@ Example:
 module = 12
 device = "led"
 value = 2298889
+```
+
+### `[update.simulation]`
+Used to indicate the value of a hardware component sent from the simulation, not a module.
+
+Required elements:
+- `module = <uint>`: The module that this component belongs to.
+- `device = <string>`: The changed device. Currently accepted: `"left laser", "right laser", "rfid"`.
+- `value = <num>`: The updated value.
+
+Example:
+```toml
+[update.simulation]
+module = 12
+device = "left laser"
+value = 1
 ```
 
 ### `[packet]`
