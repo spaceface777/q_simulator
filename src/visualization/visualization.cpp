@@ -1,11 +1,27 @@
+// Visualization code written by Ali, adapted to code standards
+
 #include "visualization.h"
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <map>
+#include <SDL.h>
+#include <atomic>
+#include <memory>
+#include <vector>
+
 #include "../module/module.h"
+#include "../settings.h"
 
 namespace visualization
 {
+
+    static std::atomic<bool> running_;
+
+    static SDL_Window *window_ = nullptr;
+    static SDL_Renderer *renderer_ = nullptr;
+
+    static double big_belt_offset_ = 0.0;
 
     // Simple 3x5 pixel font for digits 0-9
     const uint16_t PIXEL_FONT[10] = {
@@ -89,14 +105,7 @@ namespace visualization
         y = margin + row * (module_height + margin);
     }
 
-    Visualizer::Visualizer(SimulationServer *server) : server_(server), running_(false) {}
-
-    Visualizer::~Visualizer()
-    {
-        stop();
-    }
-
-    void Visualizer::run()
+    void run()
     {
         if (running_)
             return;
@@ -143,7 +152,6 @@ namespace visualization
                 if (e.type == SDL_QUIT)
                 {
                     running_ = false;
-                    server_->stop(); // Stop the whole simulation if window is closed
                 }
             }
 
@@ -154,7 +162,7 @@ namespace visualization
             SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
             SDL_RenderClear(renderer_);
 
-            for (int i = 1; i <= 18; ++i)
+            for (int i = 1; i <= settings::get_modules_active(); ++i)
             {
                 int x, y;
                 get_module_coords(i, x, y);
@@ -166,6 +174,7 @@ namespace visualization
             big_belt_offset_ += dt * 50.0;
 
             SDL_RenderPresent(renderer_);
+            SDL_Delay(16);
         }
 
         SDL_DestroyRenderer(renderer_);
@@ -173,17 +182,22 @@ namespace visualization
         SDL_Quit();
     }
 
-    void Visualizer::stop()
+    void stop()
     {
         running_ = false;
     }
 
-    void Visualizer::render_module(int module_id, int x, int y)
+    static void render_module(int module_id, int x, int y)
     {
 
-        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_id);
-        if (!module)
+        const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(module_id);
+        if (!module_opt)
+        {
             return;
+        }
+
+        const std::shared_ptr<module::Module> module = module_opt.value();
+        const settings::ModuleSettings module_settings = settings::get_module_settings(module_id);
 
         // Draw module background
         SDL_Rect bg = {x, y, 180, 180};
@@ -199,47 +213,50 @@ namespace visualization
         draw_number(renderer_, x + 5, y + 5, module_id, 2);
 
         // Render Big Belt
-        render_big_belt(x, y, (*module)->big_belt_speed(), (*module)->big_belt_speed() != 0, module.rotation);
+        render_big_belt(x, y, module->big_belt_speed(), module->big_belt_speed() != 0, module_settings.angle);
 
         // Render Small Belt
-        render_small_belt(x, y, (*module)->small_belt_speed(), (*module)->small_belt_speed() != 0, module.rotation);
+        render_small_belt(x, y, module->small_belt_speed(), module->small_belt_speed() != 0, module_settings.angle);
 
         // Render LED
-        render_led(x, y, (*module)->led_color(), module.rotation);
+        render_led(x, y, module->led_color(), module_settings.angle);
 
         // Render RFID
-        render_rfid(x, y, module.rfid_state, module.rotation);
+        render_rfid(x, y, module.rfid_state, module_settings.angle);
 
         // Render Servo
-        render_servo(x, y, (*module)->servo_angle(), module.rotation);
+        render_servo(x, y, module->servo_angle(), module_settings.angle);
 
         // Render Lasers
-        render_laser(x, y, module.left_laser_power, module.left_laser_detection, true, module.rotation);
-        render_laser(x, y, module.right_laser_power, module.right_laser_detection, false, module.rotation);
+        render_laser(x, y, module.left_laser_power, module.left_laser_detection, true, module_settings.angle);
+        render_laser(x, y, module.right_laser_power, module.right_laser_detection, false, module_settings.angle);
     }
 
-    void Visualizer::render_led(int module_x, int module_y, uint32_t color, RotationState rotation)
+    static void render_led(int module_x, int module_y, uint32_t color, int rotation)
     {
         int led_rel_x, led_rel_y;
         int offset = 20;
         switch (rotation)
         {
-        case RotationState::ROT_0:
+        case 0:
             led_rel_x = 90 + offset;
             led_rel_y = 90 + offset;
             break;
-        case RotationState::ROT_90:
+        case 90:
             led_rel_x = 90 - offset;
             led_rel_y = 90 + offset;
             break;
-        case RotationState::ROT_180:
+        case 180:
             led_rel_x = 90 - offset;
             led_rel_y = 90 - offset;
             break;
-        case RotationState::ROT_270:
+        case 270:
             led_rel_x = 90 + offset;
             led_rel_y = 90 - offset;
             break;
+
+        default:
+            throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         }
 
         int x = module_x + led_rel_x;
@@ -273,7 +290,7 @@ namespace visualization
         SDL_RenderDrawPoint(renderer_, x - 2, y - 2);
     }
 
-    void Visualizer::render_rfid(int module_x, int module_y, int rfid_state, RotationState rotation)
+    static void render_rfid(int module_x, int module_y, int rfid_state, int rotation)
     {
         if (rfid_state == 0)
             return; // Invisible when IDLE
@@ -290,22 +307,24 @@ namespace visualization
         // ROT_270: (142, 90)
         switch (rotation)
         {
-        case RotationState::ROT_0:
+        case 0:
             rfid_rel_x = 90;
             rfid_rel_y = 142;
             break;
-        case RotationState::ROT_90:
+        case 90:
             rfid_rel_x = 37;
             rfid_rel_y = 90;
             break;
-        case RotationState::ROT_180:
+        case 180:
             rfid_rel_x = 90;
             rfid_rel_y = 37;
             break;
-        case RotationState::ROT_270:
+        case 270:
             rfid_rel_x = 142;
             rfid_rel_y = 90;
             break;
+        default:
+            throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         }
 
         SDL_Rect rfid_rect = {module_x + rfid_rel_x - 10, module_y + rfid_rel_y - 10, 20, 20};
@@ -313,26 +332,29 @@ namespace visualization
         SDL_RenderFillRect(renderer_, &rfid_rect);
     }
 
-    void Visualizer::render_big_belt(int module_x, int module_y, int speed, bool is_running, RotationState rotation)
+    static void render_big_belt(int module_x, int module_y, int speed, bool is_running, int rotation)
     {
         int width, height, belt_x, belt_y;
 
         switch (rotation)
         {
-        case RotationState::ROT_0:
-        case RotationState::ROT_180:
+        case 0:
+        case 180:
             width = 180;
             height = 30;
             belt_x = module_x;
             belt_y = module_y + 75;
             break;
-        case RotationState::ROT_90:
-        case RotationState::ROT_270:
+        case 90:
+        case 270:
             width = 30;
             height = 180;
             belt_x = module_x + 75;
             belt_y = module_y;
             break;
+
+        default:
+            throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         };
 
         // Belt surface
@@ -370,63 +392,68 @@ namespace visualization
             {
                 switch (rotation)
                 {
-                case RotationState::ROT_0:
-                case RotationState::ROT_180:
+                case 0:
+                case 180:
                 {
-                    int draw_x = belt_x + (rotation == RotationState::ROT_0 ? static_cast<int>(l + offset)
-                                                                            : width - static_cast<int>(l + offset));
+                    int draw_x = belt_x + (rotation == 0 ? static_cast<int>(l + offset)
+                                                         : width - static_cast<int>(l + offset));
                     if (draw_x >= belt_x && draw_x < belt_x + width)
                     {
                         SDL_RenderDrawLine(renderer_, draw_x, belt_y, draw_x, belt_y + height - 1);
                     };
                     break;
                 }
-                case RotationState::ROT_90:
-                case RotationState::ROT_270:
+                case 90:
+                case 270:
                 {
-                    int draw_y = belt_y + (rotation == RotationState::ROT_90 ? static_cast<int>(l + offset)
-                                                                             : height - static_cast<int>(l + offset));
+                    int draw_y = belt_y + (rotation == 90 ? static_cast<int>(l + offset)
+                                                          : height - static_cast<int>(l + offset));
                     if (draw_y >= belt_y && draw_y < belt_y + height)
                     {
                         SDL_RenderDrawLine(renderer_, belt_x, draw_y, belt_x + width - 1, draw_y);
                     };
                     break;
                 }
+                default:
+                    throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
                 }
             }
         }
     }
 
-    void Visualizer::render_small_belt(int module_x, int module_y, int speed, bool is_running, RotationState rotation)
+    static void render_small_belt(int module_x, int module_y, int speed, bool is_running, int rotation)
     {
         int width, height, belt_x, belt_y;
 
         switch (rotation)
         {
-        case RotationState::ROT_0:
+        case 0:
             belt_x = module_x + 75;
             belt_y = module_y + 105;
             width = 30;
             height = 75;
             break;
-        case RotationState::ROT_90:
+        case 90:
             belt_x = module_x;
             belt_y = module_y + 75;
             width = 75;
             height = 30;
             break;
-        case RotationState::ROT_180:
+        case 180:
             belt_x = module_x + 75;
             belt_y = module_y;
             width = 30;
             height = 75;
             break;
-        case RotationState::ROT_270:
+        case 270:
             belt_x = module_x + 105;
             belt_y = module_y + 75;
             width = 75;
             height = 30;
             break;
+
+        default:
+            throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         }
 
         // Belt surface
@@ -464,35 +491,38 @@ namespace visualization
             {
                 switch (rotation)
                 {
-                case RotationState::ROT_0:
-                case RotationState::ROT_180:
+                case 0:
+                case 180:
                 {
-                    int draw_y = belt_y + (rotation == RotationState::ROT_0 ? static_cast<int>(l + offset)
-                                                                            : height - static_cast<int>(l + offset));
+                    int draw_y = belt_y + (rotation == 0 ? static_cast<int>(l + offset)
+                                                         : height - static_cast<int>(l + offset));
                     if (draw_y >= belt_y && draw_y < belt_y + height)
                     {
                         SDL_RenderDrawLine(renderer_, belt_x, draw_y, belt_x + width - 1, draw_y);
                     }
                     break;
                 }
-                case RotationState::ROT_90:
-                case RotationState::ROT_270:
+                case 90:
+                case 270:
                 {
-                    int draw_x = belt_x + (rotation == RotationState::ROT_270 ? static_cast<int>(l + offset)
-                                                                              : width - static_cast<int>(l + offset));
+                    int draw_x = belt_x + (rotation == 270 ? static_cast<int>(l + offset)
+                                                           : width - static_cast<int>(l + offset));
                     if (draw_x >= belt_x && draw_x < belt_x + width)
                     {
                         SDL_RenderDrawLine(renderer_, draw_x, belt_y, draw_x, belt_y + height - 1);
                     }
                     break;
                 }
+
+                default:
+                    throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
                 }
             }
         }
     }
 
-    void Visualizer::render_laser(
-        int module_x, int module_y, int power, int detection, bool is_left, RotationState rotation)
+    static void render_laser(
+        int module_x, int module_y, int power, int detection, bool is_left, int rotation)
     {
         if (power == 0)
             return;
@@ -509,26 +539,29 @@ namespace visualization
 
         switch (rotation)
         {
-        case RotationState::ROT_0:
+        case 0:
             x1 = x2 = module_x + (is_left ? margin : 180 - margin);
             y1 = module_y + 75;
             y2 = module_y + 105;
             break;
-        case RotationState::ROT_90:
+        case 90:
             x1 = module_x + 75;
             x2 = module_x + 105;
             y1 = y2 = module_y + (is_left ? margin : 180 - margin);
             break;
-        case RotationState::ROT_180:
+        case 180:
             x1 = x2 = module_x + (is_left ? 180 - margin : margin);
             y1 = module_y + 75;
             y2 = module_y + 105;
             break;
-        case RotationState::ROT_270:
+        case 270:
             x1 = module_x + 75;
             x2 = module_x + 105;
             y1 = y2 = module_y + (is_left ? 180 - margin : margin);
             break;
+
+        default:
+            throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         }
 
         SDL_SetRenderDrawColor(renderer_, 255, 0, 0, 255); // Red
@@ -552,7 +585,7 @@ namespace visualization
         SDL_RenderFillRect(renderer_, &dot2);
     }
 
-    void Visualizer::render_servo(int module_x, int module_y, int angle, RotationState rotation)
+    static void render_servo(int module_x, int module_y, int angle, int rotation)
     {
         // Pivot at (90, 75) relative to module (top-middle of big belt)
         double pivot_rel_x = 90.0;
@@ -562,24 +595,27 @@ namespace visualization
         double base_angle_rad = 0.0;
         switch (rotation)
         {
-        case RotationState::ROT_0:
+        case 0:
             base_angle_rad = 0.0;
             break;
-        case RotationState::ROT_90:
+        case 90:
             base_angle_rad = M_PI / 2.0;
             pivot_rel_x = 105.0;
             pivot_rel_y = 90.0;
             break;
-        case RotationState::ROT_180:
+        case 180:
             base_angle_rad = M_PI;
             pivot_rel_x = 90.0;
             pivot_rel_y = 105.0;
             break;
-        case RotationState::ROT_270:
+        case 270:
             base_angle_rad = 3.0 * M_PI / 2.0;
             pivot_rel_x = 75.0;
             pivot_rel_y = 90.0;
             break;
+
+        default:
+            throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         }
 
         // angle 0: parallel to big belt (right), 90: perpendicular (towards small belt)
@@ -615,62 +651,70 @@ namespace visualization
         SDL_RenderFillRect(renderer_, &pivot_rect);
     }
 
-    void Visualizer::render_tubs()
+    static void render_tubs()
     {
         for (const std::shared_ptr<tub::Tub> &tub : tub::get_tubs())
         {
             std::optional<std::shared_ptr<module::Module>> module = module::get_module(tub->module());
             if (!module)
+            {
                 continue;
+            }
 
-            RotationState rotation = module->rotation;
+            const settings::ModuleSettings module_settings = settings::get_module_settings((*module)->id());
 
             int module_x, module_y;
             get_module_coords(tub->module(), module_x, module_y);
 
             double rel_x = 0, rel_y = 0;
-            if (tub.belt_type == BeltType::BIG)
+            if (tub->module_location() == ModuleLocation::LEFT_BELT || tub->module_location() == ModuleLocation::RIGHT_BELT)
             {
-                switch (rotation)
+                switch (module_settings.angle)
                 {
-                case RotationState::ROT_0:
-                    rel_x = tub->module_location_progress * 180.0;
+                case 0:
+                    rel_x = tub->module_location_progress() * 180.0;
                     rel_y = 90.0;
                     break;
-                case RotationState::ROT_90:
+                case 90:
                     rel_x = 90.0;
-                    rel_y = tub.position * 180.0;
+                    rel_y = tub->module_location_progress() * 180.0;
                     break;
-                case RotationState::ROT_180:
-                    rel_x = (1.0 - tub.position) * 180.0;
+                case 180:
+                    rel_x = (1.0 - tub->module_location_progress()) * 180.0;
                     rel_y = 90.0;
                     break;
-                case RotationState::ROT_270:
+                case 270:
                     rel_x = 90.0;
-                    rel_y = (1.0 - tub.position) * 180.0;
+                    rel_y = (1.0 - tub->module_location_progress()) * 180.0;
                     break;
+
+                default:
+                    throw std::invalid_argument("Invalid module angle " + std::to_string(module_settings.angle));
                 }
             }
             else
             {
-                switch (rotation)
+                switch (module_settings.angle)
                 {
-                case RotationState::ROT_0:
+                case 0:
                     rel_x = 90.0;
-                    rel_y = 105.0 + tub.position * 75.0;
+                    rel_y = 105.0 + tub->module_location_progress() * 75.0;
                     break;
-                case RotationState::ROT_90:
-                    rel_x = 75.0 - tub.position * 75.0;
+                case 90:
+                    rel_x = 75.0 - tub->module_location_progress() * 75.0;
                     rel_y = 90.0;
                     break;
-                case RotationState::ROT_180:
+                case 180:
                     rel_x = 90.0;
-                    rel_y = 75.0 - tub.position * 75.0;
+                    rel_y = 75.0 - tub->module_location_progress() * 75.0;
                     break;
-                case RotationState::ROT_270:
-                    rel_x = 105.0 + tub.position * 75.0;
+                case 270:
+                    rel_x = 105.0 + tub->module_location_progress() * 75.0;
                     rel_y = 90.0;
                     break;
+
+                default:
+                    throw std::invalid_argument("Invalid module angle " + std::to_string(module_settings.angle));
                 }
             }
 
