@@ -47,12 +47,14 @@ namespace server
         // assign fd to port
         if (::bind(socket.fd(), (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
+            stop();
             throw std::runtime_error("Failed to bind socket: " + std::string(::strerror(errno)));
         }
 
         // enable listening
         if (::listen(socket.fd(), MAX_TCP_BACKLOG) != 0)
         {
+            stop();
             throw std::runtime_error("Failed to set listening mode");
         }
     }
@@ -241,6 +243,7 @@ namespace server
         const Socket socket;
         if (!socket.is_valid())
         {
+            stop();
             throw std::runtime_error("Failed to initialize socket");
         }
         setup_port(socket);
@@ -301,6 +304,7 @@ namespace server
     {
         if (exception_ptr)
         {
+            stop();
             fprintf(stderr, "Rethrowing exception from server thread\n");
             std::rethrow_exception(exception_ptr);
         }

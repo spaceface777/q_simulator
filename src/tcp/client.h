@@ -60,8 +60,6 @@ namespace client
     private:
         void _run();
 
-        void _stop();
-
     public:
         void run();
     };

@@ -30,6 +30,7 @@ namespace client
         std::cout << "Connecting to module " << std::to_string(id) << " at port " << std::to_string(port) << " and fd " << std::to_string(fd) << std::endl;
         if (::connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
+            stop();
             throw std::runtime_error("Failed to connect to socket");
         }
     }
@@ -39,6 +40,7 @@ namespace client
         const Socket socket;
         if (!socket.is_valid())
         {
+            stop();
             throw std::runtime_error("Failed to bind socket");
         }
 
@@ -81,6 +83,7 @@ namespace client
     {
         if (thread_ptr_)
         {
+            stop();
             throw std::runtime_error("Double client instantiation");
         }
 
@@ -98,7 +101,7 @@ namespace client
             });
     }
 
-    void Client::_stop()
+    void stop()
     {
         stopped = true;
     }
@@ -129,12 +132,14 @@ namespace client
         {
             val->queue(packet::Shutdown());
         }
+        map.clear();
     }
 
     void rethrow()
     {
         if (exception_ptr)
         {
+            stop();
             fprintf(stderr, "Rethrowing exception from client thread\n");
             std::rethrow_exception(exception_ptr);
         }

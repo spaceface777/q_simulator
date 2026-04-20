@@ -60,6 +60,7 @@ namespace tub
                 }
                 else
                 {
+                    stop();
                     throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(module_) + " are not connected in settings.toml");
                 }
 
@@ -114,6 +115,7 @@ namespace tub
                         const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
                         if (!module)
                         {
+                            stop();
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
@@ -127,6 +129,7 @@ namespace tub
                         const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
                         if (!module)
                         {
+                            stop();
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
@@ -143,6 +146,7 @@ namespace tub
                         const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
                         if (!module)
                         {
+                            stop();
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
@@ -156,6 +160,7 @@ namespace tub
                         const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
                         if (!module)
                         {
+                            stop();
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
@@ -172,6 +177,7 @@ namespace tub
                         const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
                         if (!module)
                         {
+                            stop();
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
@@ -185,6 +191,7 @@ namespace tub
                         const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
                         if (!module)
                         {
+                            stop();
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
@@ -234,6 +241,7 @@ namespace tub
     {
         if (map.count(ptr->id()))
         {
+            stop();
             throw std::invalid_argument("Attempted to double register tubs");
         }
         map[ptr->id()] = std::move(ptr);
@@ -262,6 +270,7 @@ namespace tub
     {
         if (exception_ptr)
         {
+            stop();
             fprintf(stderr, "Rethrowing exception from tub thread\n");
             std::rethrow_exception(exception_ptr);
         }
