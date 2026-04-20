@@ -302,6 +302,28 @@ namespace packet
         return ModulePacket(module, length, content);
     }
 
+    bool SimulationUpdate::is_valid() const noexcept
+    {
+        // Device name must not be empty
+        return !_device.empty();
+    }
+
+    std::string SimulationUpdate::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "update.simulation");
+        append_value(buf, "id", _id);
+        append_value(buf, "device", _device);
+        append_value(buf, "value", _value);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::unique_ptr<Packet> SimulationUpdate::clone() const
+    {
+        return std::make_unique<SimulationUpdate>(*this);
+    }
+
     bool TubArrival::is_valid() const noexcept
     {
         return true;

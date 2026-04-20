@@ -105,142 +105,6 @@ namespace visualization
         y = margin + row * (module_height + margin);
     }
 
-    void init()
-    {
-        if (running_)
-            return;
-        running_ = true;
-
-        if (SDL_Init(SDL_INIT_VIDEO) < 0)
-        {
-            std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
-            running_ = false;
-            return;
-        }
-
-        window_ = SDL_CreateWindow("Quercus Airport Visualization",
-                                   SDL_WINDOWPOS_UNDEFINED,
-                                   SDL_WINDOWPOS_UNDEFINED,
-                                   1020,
-                                   1020,
-                                   SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-        if (!window_)
-        {
-            std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-            SDL_Quit();
-            running_ = false;
-            return;
-        }
-
-        renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-        if (!renderer_)
-        {
-            std::cerr << "Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-            SDL_DestroyWindow(window_);
-            SDL_Quit();
-            running_ = false;
-            return;
-        }
-    }
-
-    void update()
-    {
-        uint32_t last_time = SDL_GetTicks();
-
-        if (!running_)
-        {
-            return;
-        }
-
-        SDL_Event e;
-        while (SDL_PollEvent(&e) != 0)
-        {
-            if (e.type == SDL_QUIT)
-            {
-                running_ = false;
-            }
-        }
-
-        uint32_t current_time = SDL_GetTicks();
-        double dt = (current_time - last_time) / 1000.0;
-        last_time = current_time;
-
-        SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
-        SDL_RenderClear(renderer_);
-
-        for (int i = 1; i <= settings::get_modules_active(); ++i)
-        {
-            int x, y;
-            get_module_coords(i, x, y);
-            render_module(i, x, y);
-        }
-
-        render_tubs();
-
-        big_belt_offset_ += dt * 50.0;
-
-        SDL_RenderPresent(renderer_);
-        SDL_Delay(16);
-    }
-
-    void stop()
-    {
-        running_ = false;
-
-        SDL_DestroyRenderer(renderer_);
-        SDL_DestroyWindow(window_);
-        SDL_Quit();
-    }
-
-    bool is_running()
-    {
-        return running_;
-    }
-
-    static void render_module(int module_id, int x, int y)
-    {
-
-        const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(module_id);
-        if (!module_opt)
-        {
-            return;
-        }
-
-        const std::shared_ptr<module::Module> module = module_opt.value();
-        const settings::ModuleSettings module_settings = settings::get_module_settings(module_id);
-
-        // Draw module background
-        SDL_Rect bg = {x, y, 180, 180};
-        SDL_SetRenderDrawColor(renderer_, 60, 60, 60, 255);
-        SDL_RenderFillRect(renderer_, &bg);
-
-        // Draw module ID border
-        SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
-        SDL_RenderDrawRect(renderer_, &bg);
-
-        // Draw module ID text
-        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-        draw_number(renderer_, x + 5, y + 5, module_id, 2);
-
-        // Render Big Belt
-        render_big_belt(x, y, module->big_belt_speed(), module->big_belt_speed() != 0, module_settings.angle);
-
-        // Render Small Belt
-        render_small_belt(x, y, module->small_belt_speed(), module->small_belt_speed() != 0, module_settings.angle);
-
-        // Render LED
-        render_led(x, y, module->led_color(), module_settings.angle);
-
-        // Render RFID
-        render_rfid(x, y, module->is_rfid_active(), module_settings.angle);
-
-        // Render Servo
-        render_servo(x, y, module->servo_angle(), module_settings.angle);
-
-        // Render Lasers
-        render_laser(x, y, module->is_left_laser_active(), true, true, module_settings.angle);
-        render_laser(x, y, module->is_right_laser_active(), true, false, module_settings.angle);
-    }
 
     static void render_led(int module_x, int module_y, uint32_t color, int rotation)
     {
@@ -749,6 +613,143 @@ namespace visualization
             SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
             draw_number(renderer_, x - 4, y - 6, tub->id(), 1);
         }
+    }
+
+    static void render_module(int module_id, int x, int y)
+    {
+
+        const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(module_id);
+        if (!module_opt)
+        {
+            return;
+        }
+
+        const std::shared_ptr<module::Module> module = module_opt.value();
+        const settings::ModuleSettings module_settings = settings::get_module_settings(module_id);
+
+        // Draw module background
+        SDL_Rect bg = {x, y, 180, 180};
+        SDL_SetRenderDrawColor(renderer_, 60, 60, 60, 255);
+        SDL_RenderFillRect(renderer_, &bg);
+
+        // Draw module ID border
+        SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
+        SDL_RenderDrawRect(renderer_, &bg);
+
+        // Draw module ID text
+        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+        draw_number(renderer_, x + 5, y + 5, module_id, 2);
+
+        // Render Big Belt
+        render_big_belt(x, y, module->big_belt_speed(), module->big_belt_speed() != 0, module_settings.angle);
+
+        // Render Small Belt
+        render_small_belt(x, y, module->small_belt_speed(), module->small_belt_speed() != 0, module_settings.angle);
+
+        // Render LED
+        render_led(x, y, module->led_color(), module_settings.angle);
+
+        // Render RFID
+        render_rfid(x, y, module->is_rfid_active(), module_settings.angle);
+
+        // Render Servo
+        render_servo(x, y, module->servo_angle(), module_settings.angle);
+
+        // Render Lasers
+        render_laser(x, y, module->is_left_laser_active(), true, true, module_settings.angle);
+        render_laser(x, y, module->is_right_laser_active(), true, false, module_settings.angle);
+    }
+
+    void init()
+    {
+        if (running_)
+            return;
+        running_ = true;
+
+        if (SDL_Init(SDL_INIT_VIDEO) < 0)
+        {
+            std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
+            running_ = false;
+            return;
+        }
+
+        window_ = SDL_CreateWindow("Quercus Airport Visualization",
+                                   SDL_WINDOWPOS_UNDEFINED,
+                                   SDL_WINDOWPOS_UNDEFINED,
+                                   1020,
+                                   1020,
+                                   SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+        if (!window_)
+        {
+            std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
+            SDL_Quit();
+            running_ = false;
+            return;
+        }
+
+        renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        if (!renderer_)
+        {
+            std::cerr << "Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
+            SDL_DestroyWindow(window_);
+            SDL_Quit();
+            running_ = false;
+            return;
+        }
+    }
+
+    void update()
+    {
+        uint32_t last_time = SDL_GetTicks();
+
+        if (!running_)
+        {
+            return;
+        }
+
+        SDL_Event e;
+        while (SDL_PollEvent(&e) != 0)
+        {
+            if (e.type == SDL_QUIT)
+            {
+                running_ = false;
+            }
+        }
+
+        uint32_t current_time = SDL_GetTicks();
+        double dt = (current_time - last_time) / 1000.0;
+        last_time = current_time;
+
+        SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
+        SDL_RenderClear(renderer_);
+
+        for (int i = 1; i <= settings::get_modules_active(); ++i)
+        {
+            int x, y;
+            get_module_coords(i, x, y);
+            render_module(i, x, y);
+        }
+
+        render_tubs();
+
+        big_belt_offset_ += dt * 50.0;
+
+        SDL_RenderPresent(renderer_);
+        SDL_Delay(16);
+    }
+
+    void stop()
+    {
+        running_ = false;
+
+        SDL_DestroyRenderer(renderer_);
+        SDL_DestroyWindow(window_);
+        SDL_Quit();
+    }
+
+    bool is_running()
+    {
+        return running_;
     }
 
 }

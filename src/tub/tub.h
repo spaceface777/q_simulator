@@ -5,6 +5,7 @@
 #include <memory>
 #include <thread>
 #include <optional>
+#include <vector>
 
 #include "../defs.h"
 

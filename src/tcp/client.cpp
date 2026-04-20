@@ -20,6 +20,11 @@ namespace client
     static std::exception_ptr exception_ptr;
     static std::atomic_bool stopped = false;
 
+    void stop()
+    {
+        stopped = true;
+    }
+
     static void setup_connection(int fd, unsigned int port, unsigned int id)
     {
         const struct sockaddr_in addr_in = {
@@ -99,11 +104,6 @@ namespace client
                     exception_ptr = std::current_exception();
                 }
             });
-    }
-
-    void stop()
-    {
-        stopped = true;
     }
 
     static std::map<uint8_t, std::shared_ptr<Client>> map;

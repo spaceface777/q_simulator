@@ -1,6 +1,7 @@
 #include "tub.h"
 #include "../module/module.h"
 #include "../settings.h"
+#include "../packet/packet.h"
 
 #include <thread>
 #include <atomic>
