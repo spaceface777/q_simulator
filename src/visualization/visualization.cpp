@@ -105,7 +105,6 @@ namespace visualization
         y = margin + row * (module_height + margin);
     }
 
-
     static void render_led(int module_x, int module_y, uint32_t color, int rotation)
     {
         int led_rel_x, led_rel_y;
@@ -660,6 +659,15 @@ namespace visualization
         render_laser(x, y, module->is_right_laser_active(), true, false, module_settings.angle);
     }
 
+    void stop()
+    {
+        running_ = false;
+
+        SDL_DestroyRenderer(renderer_);
+        SDL_DestroyWindow(window_);
+        SDL_Quit();
+    }
+
     void init()
     {
         if (running_)
@@ -696,11 +704,15 @@ namespace visualization
             running_ = false;
             return;
         }
+
+        ::atexit(stop);
     }
+
+    uint32_t last_time = 0;
 
     void update()
     {
-        uint32_t last_time = SDL_GetTicks();
+        last_time = SDL_GetTicks();
 
         if (!running_)
         {
@@ -712,7 +724,8 @@ namespace visualization
         {
             if (e.type == SDL_QUIT)
             {
-                running_ = false;
+                stop();
+                return;
             }
         }
 
@@ -736,15 +749,6 @@ namespace visualization
 
         SDL_RenderPresent(renderer_);
         SDL_Delay(16);
-    }
-
-    void stop()
-    {
-        running_ = false;
-
-        SDL_DestroyRenderer(renderer_);
-        SDL_DestroyWindow(window_);
-        SDL_Quit();
     }
 
     bool is_running()

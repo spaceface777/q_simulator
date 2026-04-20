@@ -19,7 +19,7 @@
  */
 static constexpr int MODULE_CONNECT_TIMEOUT_SECONDS = 3;
 
-static void handle_close(int sign)
+static void handle_close()
 {
     tub::stop();
     server::stop();
@@ -43,7 +43,7 @@ int main(int argc, char const *argv[])
         throw std::runtime_error("No zephyr.exe found at router_path in settings.toml");
     }
 
-    ::signal(SIGINT, handle_close);
+    ::atexit(handle_close);
 
     server::run();
 
