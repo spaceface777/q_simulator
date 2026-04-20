@@ -105,7 +105,7 @@ namespace visualization
         y = margin + row * (module_height + margin);
     }
 
-    void run()
+    void init()
     {
         if (running_)
             return;
@@ -141,50 +141,60 @@ namespace visualization
             running_ = false;
             return;
         }
+    }
 
-        SDL_Event e;
+    void update()
+    {
         uint32_t last_time = SDL_GetTicks();
 
-        while (running_)
+        if (!running_)
         {
-            while (SDL_PollEvent(&e) != 0)
-            {
-                if (e.type == SDL_QUIT)
-                {
-                    running_ = false;
-                }
-            }
-
-            uint32_t current_time = SDL_GetTicks();
-            double dt = (current_time - last_time) / 1000.0;
-            last_time = current_time;
-
-            SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
-            SDL_RenderClear(renderer_);
-
-            for (int i = 1; i <= settings::get_modules_active(); ++i)
-            {
-                int x, y;
-                get_module_coords(i, x, y);
-                render_module(i, x, y);
-            }
-
-            render_tubs();
-
-            big_belt_offset_ += dt * 50.0;
-
-            SDL_RenderPresent(renderer_);
-            SDL_Delay(16);
+            return;
         }
+
+        SDL_Event e;
+        while (SDL_PollEvent(&e) != 0)
+        {
+            if (e.type == SDL_QUIT)
+            {
+                running_ = false;
+            }
+        }
+
+        uint32_t current_time = SDL_GetTicks();
+        double dt = (current_time - last_time) / 1000.0;
+        last_time = current_time;
+
+        SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
+        SDL_RenderClear(renderer_);
+
+        for (int i = 1; i <= settings::get_modules_active(); ++i)
+        {
+            int x, y;
+            get_module_coords(i, x, y);
+            render_module(i, x, y);
+        }
+
+        render_tubs();
+
+        big_belt_offset_ += dt * 50.0;
+
+        SDL_RenderPresent(renderer_);
+        SDL_Delay(16);
+    }
+
+    void stop()
+    {
+        running_ = false;
 
         SDL_DestroyRenderer(renderer_);
         SDL_DestroyWindow(window_);
         SDL_Quit();
     }
 
-    void stop()
+    bool is_running()
     {
-        running_ = false;
+        return running_;
     }
 
     static void render_module(int module_id, int x, int y)

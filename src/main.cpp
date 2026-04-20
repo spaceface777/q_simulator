@@ -9,6 +9,7 @@
 #include "tcp/client.h"
 #include "packet/packet.h"
 #include "module/module.h"
+#include "visualization/visualization.h"
 #include "util.h"
 #include "defs.h"
 #include "settings.h"
@@ -18,19 +19,16 @@
  */
 static constexpr int MODULE_CONNECT_TIMEOUT_SECONDS = 3;
 
-static std::atomic_bool stopped = false;
-
 static void handle_close(int sign)
 {
     tub::stop();
     server::stop();
     module::stop();
+    visualization::stop();
 
     server::rethrow();
     client::rethrow();
     tub::rethrow();
-
-    stopped = true;
 }
 
 int main(int argc, char const *argv[])
@@ -64,6 +62,7 @@ int main(int argc, char const *argv[])
                 tub::stop();
                 server::stop();
                 module::stop();
+                visualization::stop();
                 throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after 2 seconds");
             }
 
@@ -78,6 +77,7 @@ int main(int argc, char const *argv[])
                 tub::stop();
                 server::stop();
                 module::stop();
+                visualization::stop();
 
                 server::rethrow();
                 client::rethrow();
@@ -94,9 +94,10 @@ int main(int argc, char const *argv[])
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    while (!stopped)
+    visualization::init();
+    while (visualization::is_running())
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        visualization::update();
 
         try
         {
@@ -109,6 +110,7 @@ int main(int argc, char const *argv[])
             tub::stop();
             server::stop();
             module::stop();
+            visualization::stop();
 
             server::rethrow();
             client::rethrow();

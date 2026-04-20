@@ -7,14 +7,24 @@ namespace visualization
 {
 
     /**
-     * @brief Runs the visualization loop. This call is blocking.
+     * Initializes the visualization.
      */
-    void run();
+    void init();
 
     /**
-     * @brief Signals the visualization loop to stop.
+     * Updates the visualization.
+     */
+    void update();
+
+    /**
+     * Signals the visualization loop to stop.
      */
     void stop();
+
+    /**
+     * @return Whether the visualization is still running or whether it has been closed/finished.
+     */
+    bool is_running();
 
 }
 
