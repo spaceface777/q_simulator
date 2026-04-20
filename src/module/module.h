@@ -25,6 +25,9 @@ namespace module
         uint8_t small_speed_;
         uint16_t servo_degrees_;
         int led_color_;
+        bool left_laser_active_;
+        bool right_laser_active_;
+        bool rfid_active_;
 
     public:
         Module(uint8_t id)
@@ -86,6 +89,57 @@ namespace module
         int led_color() const noexcept
         {
             return led_color_;
+        }
+
+        /**
+         * @return Whether the left laser is active.
+         */
+        bool is_left_laser_active() const noexcept
+        {
+            return left_laser_active_;
+        }
+
+        /**
+         * Sets the state of the left laser.
+         * @param active Whether it is active.
+         */
+        void set_left_laser_active(bool active) noexcept
+        {
+            left_laser_active_ = active;
+        }
+
+        /**
+         * @return Whether the right laser is active.
+         */
+        bool is_right_laser_active() const noexcept
+        {
+            return right_laser_active_;
+        }
+
+        /**
+         * Sets the state of the right laser.
+         * @param active Whether it is active.
+         */
+        void set_right_laser_active(bool active) noexcept
+        {
+            right_laser_active_ = active;
+        }
+
+        /**
+         * @return Whether the RFID reader is active.
+         */
+        bool is_rfid_active() const noexcept
+        {
+            return rfid_active_;
+        }
+
+        /**
+         * Sets the state of the RFID reader.
+         * @param active Whether it is active.
+         */
+        void set_rfid_active(bool active) noexcept
+        {
+            rfid_active_ = active;
         }
 
         /**

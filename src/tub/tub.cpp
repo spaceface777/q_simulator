@@ -108,6 +108,32 @@ namespace tub
                 {
                 case ModuleLocation::BOTTOM_BELT:
                     location_progress_ += module->small_belt_speed() / 1000.0f;
+
+                    if (in_rfid_ && (location_progress_ < 0.2 || location_progress_ > 0.8))
+                    {
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        if (!module)
+                        {
+                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                        }
+
+                        (*module)->send(packet::SimulationUpdate(module_, "rfid", false));
+                        (*module)->set_rfid_active(false);
+                        in_rfid_ = false;
+                    }
+
+                    if (!in_rfid_ && location_progress_ > 0.2 && location_progress_ < 0.8)
+                    {
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        if (!module)
+                        {
+                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                        }
+
+                        (*module)->send(packet::SimulationUpdate(module_, "rfid", true));
+                        (*module)->set_rfid_active(true);
+                        in_rfid_ = true;
+                    }
                     break;
                 case ModuleLocation::LEFT_BELT:
                     location_progress_ += -module->big_belt_speed() / 1000.0f;
@@ -120,7 +146,8 @@ namespace tub
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "left belt", false));
+                        (*module)->send(packet::SimulationUpdate(module_, "left laser", false));
+                        (*module)->set_left_laser_active(false);
                         in_laser_ = false;
                     }
 
@@ -132,7 +159,8 @@ namespace tub
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "left belt", true));
+                        (*module)->send(packet::SimulationUpdate(module_, "left laser", true));
+                        (*module)->set_left_laser_active(true);
                         in_laser_ = true;
                     }
                     break;
@@ -147,7 +175,8 @@ namespace tub
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "right belt", false));
+                        (*module)->send(packet::SimulationUpdate(module_, "right laser", false));
+                        (*module)->set_right_laser_active(false);
                         in_laser_ = false;
                     }
 
@@ -159,7 +188,8 @@ namespace tub
                             throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "right belt", true));
+                        (*module)->send(packet::SimulationUpdate(module_, "right laser", true));
+                        (*module)->set_right_laser_active(true);
                         in_laser_ = true;
                     }
                     break;

@@ -22,6 +22,7 @@ namespace tub
         ModuleLocation target_module_location_;
 
         bool in_laser_ = false;
+        bool in_rfid_ = false;
         double location_progress_ = 0;
         std::unique_ptr<std::thread> thread_ptr_;
 

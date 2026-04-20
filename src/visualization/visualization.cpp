@@ -222,14 +222,14 @@ namespace visualization
         render_led(x, y, module->led_color(), module_settings.angle);
 
         // Render RFID
-        render_rfid(x, y, module.rfid_state, module_settings.angle);
+        render_rfid(x, y, module->is_rfid_active(), module_settings.angle);
 
         // Render Servo
         render_servo(x, y, module->servo_angle(), module_settings.angle);
 
         // Render Lasers
-        render_laser(x, y, module.left_laser_power, module.left_laser_detection, true, module_settings.angle);
-        render_laser(x, y, module.right_laser_power, module.right_laser_detection, false, module_settings.angle);
+        render_laser(x, y, module->is_left_laser_active(), true, true, module_settings.angle);
+        render_laser(x, y, module->is_right_laser_active(), true, false, module_settings.angle);
     }
 
     static void render_led(int module_x, int module_y, uint32_t color, int rotation)
