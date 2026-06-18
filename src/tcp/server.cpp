@@ -276,7 +276,7 @@ namespace server
                 {
                     _run();
                 }
-                catch (const std::exception &ex)
+                catch (...)
                 {
                     exception_ptr = std::current_exception();
                 }
@@ -305,7 +305,7 @@ namespace server
         if (exception_ptr)
         {
             stop();
-            fprintf(stderr, "Rethrowing exception from server thread\n");
+            std::cerr << "Rethrowing exception from server thread" << std::endl;
             std::rethrow_exception(exception_ptr);
         }
     }

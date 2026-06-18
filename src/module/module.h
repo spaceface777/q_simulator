@@ -21,13 +21,13 @@ namespace module
         uint8_t id_;
         bool running_ = false;
 
-        uint8_t big_speed_;
-        uint8_t small_speed_;
-        uint16_t servo_degrees_;
-        int led_color_;
-        bool left_laser_active_;
-        bool right_laser_active_;
-        bool rfid_active_;
+        uint8_t big_speed_ = 0;
+        uint8_t small_speed_ = 0;
+        uint16_t servo_degrees_ = 0;
+        int led_color_ = 0;
+        bool left_laser_active_ = false;
+        bool right_laser_active_ = false;
+        bool rfid_active_ = false;
 
     public:
         Module(uint8_t id)
@@ -161,7 +161,7 @@ namespace module
          *
          * @param packet The packet that was sent to this module's simulation.
          */
-        void update(const packet::ModuleUpdate &packet);
+        void update(const packet::ModuleUpdate packet);
     };
 
     /**
@@ -181,11 +181,6 @@ namespace module
      * @returns All modules.
      */
     std::vector<std::shared_ptr<module::Module>> get_modules();
-
-    /**
-     * Closes all module processes.
-     */
-    void stop();
 
 }
 
