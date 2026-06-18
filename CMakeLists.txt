@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.10.0)
 project(quercus-router-shadow VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_BUILD_TYPE Debug)
 
 # === Libraries ===
 
@@ -33,7 +34,8 @@ add_executable(main
     src/module/module.cpp
     src/packet/packet.cpp
     src/tub/tub.cpp
-    src/visualization/visualization.cpp)
+    src/visualization/visualization.cpp
+    src/settings.cpp)
 
 target_link_libraries(main pthread 
     tomlplusplus::tomlplusplus
