@@ -222,7 +222,7 @@ namespace tub
                 {
                     this->_run();
                 }
-                catch (const std::exception &ex)
+                catch (...)
                 {
                     exception_ptr = std::current_exception();
                 }
@@ -272,7 +272,7 @@ namespace tub
         if (exception_ptr)
         {
             stop();
-            fprintf(stderr, "Rethrowing exception from tub thread\n");
+            std::cerr << "Rethrowing exception from tub thread" << std::endl;
             std::rethrow_exception(exception_ptr);
         }
     }

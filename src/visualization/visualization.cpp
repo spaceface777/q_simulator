@@ -20,6 +20,7 @@ namespace visualization
 
     static SDL_Window *window_ = nullptr;
     static SDL_Renderer *renderer_ = nullptr;
+    static std::exception_ptr exception_ptr_ = nullptr;
 
     static double big_belt_offset_ = 0.0;
 
@@ -69,26 +70,26 @@ namespace visualization
 
     static void get_module_coords(int module_id, int &x, int &y)
     {
-        static const int coords[19][2] = {
+        int coords[settings::get_modules_active()][2] = {
             {0, 0}, // padding
-            {0, 4},
-            {1, 4},
-            {2, 4},
-            {3, 4}, // 1-4
-            {0, 3},
-            {3, 3}, // 5-6
-            {0, 2},
-            {1, 2},
-            {2, 2},
-            {3, 2}, // 7-10
+            {1, 0},
             {0, 1},
             {1, 1},
-            {2, 1},
-            {3, 1},
-            {4, 1}, // 11-15
-            {2, 0},
-            {3, 0},
-            {4, 0} // 16-18
+            // {3, 4}, // 1-4
+            // {0, 3},
+            // {3, 3}, // 5-6
+            // {0, 2},
+            // {1, 2},
+            // {2, 2},
+            // {3, 2}, // 7-10
+            // {0, 1},
+            // {1, 1},
+            // {2, 1},
+            // {3, 1},
+            // {4, 1}, // 11-15
+            // {2, 0},
+            // {3, 0},
+            // {4, 0} // 16-18
         };
         int module_width = 180;
         int module_height = 180;
@@ -96,7 +97,7 @@ namespace visualization
 
         int col = 0;
         int row = 0;
-        if (module_id >= 1 && module_id <= 18)
+        if (module_id >= 0 && module_id <= settings::get_modules_active())
         {
             col = coords[module_id][0];
             row = coords[module_id][1];
@@ -395,9 +396,9 @@ namespace visualization
     }
 
     static void render_laser(
-        int module_x, int module_y, int power, int detection, bool is_left, int rotation)
+        int module_x, int module_y, bool power, int detection, bool is_left, int rotation)
     {
-        if (power == 0)
+        if (power == false)
             return;
 
         // Blinking logic if detecting: 100ms ON, 100ms OFF
@@ -712,48 +713,66 @@ namespace visualization
 
     void update()
     {
-        last_time = SDL_GetTicks();
-
-        if (!running_)
+        if (!running_ || exception_ptr_)
         {
             return;
         }
 
-        SDL_Event e;
-        while (SDL_PollEvent(&e) != 0)
+        try
         {
-            if (e.type == SDL_QUIT)
+            last_time = SDL_GetTicks();
+
+            SDL_Event e;
+            while (SDL_PollEvent(&e) != 0)
             {
-                stop();
-                return;
+                if (e.type == SDL_QUIT)
+                {
+                    stop();
+                    return;
+                }
             }
+
+            uint32_t current_time = SDL_GetTicks();
+            double dt = (current_time - last_time) / 1000.0;
+            last_time = current_time;
+
+            SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
+            SDL_RenderClear(renderer_);
+
+            for (int i = 0; i <= settings::get_modules_active(); ++i)
+            {
+                int x, y;
+                get_module_coords(i, x, y);
+                render_module(i, x, y);
+            }
+
+            render_tubs();
+
+            big_belt_offset_ += dt * 50.0;
+
+            SDL_RenderPresent(renderer_);
+            SDL_Delay(16);
         }
-
-        uint32_t current_time = SDL_GetTicks();
-        double dt = (current_time - last_time) / 1000.0;
-        last_time = current_time;
-
-        SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
-        SDL_RenderClear(renderer_);
-
-        for (int i = 1; i <= settings::get_modules_active(); ++i)
+        catch (...)
         {
-            int x, y;
-            get_module_coords(i, x, y);
-            render_module(i, x, y);
+            exception_ptr_ = std::current_exception();
         }
-
-        render_tubs();
-
-        big_belt_offset_ += dt * 50.0;
-
-        SDL_RenderPresent(renderer_);
-        SDL_Delay(16);
     }
 
     bool is_running()
     {
-        return running_;
+        return running_ && !exception_ptr_;
+    }
+
+    // === Added rethrow management ===
+    void rethrow()
+    {
+        if (exception_ptr_)
+        {
+            stop();
+            std::cerr << "Rethrowing exception from visualization execution loop" << std::endl;
+            std::rethrow_exception(exception_ptr_);
+        }
     }
 
 }

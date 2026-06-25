@@ -3,6 +3,7 @@
 #include <map>
 #include <fstream>
 #include <atomic>
+#include <iostream>
 
 #include "event/parser.h"
 #include "tcp/server.h"
@@ -19,16 +20,16 @@
  */
 static constexpr int MODULE_CONNECT_TIMEOUT_SECONDS = 3;
 
-static void handle_close()
+static void handle_close(int code)
 {
     tub::stop();
     server::stop();
-    module::stop();
     visualization::stop();
 
     server::rethrow();
     client::rethrow();
     tub::rethrow();
+    visualization::rethrow();
 }
 
 int main(int argc, char const *argv[])
@@ -42,8 +43,6 @@ int main(int argc, char const *argv[])
     {
         throw std::runtime_error("No zephyr.exe found at router_path in settings.toml");
     }
-
-    ::atexit(handle_close);
 
     server::run();
 
@@ -61,7 +60,6 @@ int main(int argc, char const *argv[])
             {
                 tub::stop();
                 server::stop();
-                module::stop();
                 visualization::stop();
                 throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after 2 seconds");
             }
@@ -76,7 +74,6 @@ int main(int argc, char const *argv[])
             {
                 tub::stop();
                 server::stop();
-                module::stop();
                 visualization::stop();
 
                 server::rethrow();
@@ -104,17 +101,18 @@ int main(int argc, char const *argv[])
             server::rethrow();
             client::rethrow();
             tub::rethrow();
+            visualization::rethrow();
         }
-        catch (const std::exception &ex)
+        catch (...)
         {
             tub::stop();
             server::stop();
-            module::stop();
             visualization::stop();
 
             server::rethrow();
             client::rethrow();
             tub::rethrow();
+            visualization::rethrow();
         }
     }
 

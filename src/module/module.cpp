@@ -6,6 +6,8 @@
 #include <cstring>
 #include <fstream>
 #include <csignal>
+#include <sys/prctl.h>
+#include <mutex>
 
 #include "module.h"
 #include "../tcp/server.h"
@@ -25,6 +27,8 @@ namespace module
 		const bool child = pid_ == 0;
 		if (child)
 		{
+			::prctl(PR_SET_PDEATHSIG, SIGKILL);
+
 			std::cout << "Starting process " << path << " at " << ::getpid() << std::endl;
 
 			// file for id
@@ -65,7 +69,7 @@ namespace module
 		server::send(id_, packet);
 	}
 
-	void Module::update(const packet::ModuleUpdate &packet)
+	void Module::update(const packet::ModuleUpdate packet)
 	{
 		if (packet.device() == "big belt")
 		{
@@ -86,42 +90,39 @@ namespace module
 	}
 
 	static std::map<uint8_t, std::shared_ptr<module::Module>> map;
+	static std::mutex map_mutex;
 
 	void add_module(std::unique_ptr<module::Module> ptr)
 	{
+		std::lock_guard<std::mutex> lock(map_mutex);
 		if (map.count(ptr->id()))
 		{
 			throw std::invalid_argument("Attempted to double register modules");
 		}
-		map[ptr->id()] = std::move(ptr);
+
+		uint8_t id = ptr->id();
+		map[id] = std::move(ptr);
 	}
 
 	std::optional<std::shared_ptr<module::Module>> get_module(uint8_t id)
 	{
+		std::lock_guard<std::mutex> lock(map_mutex);
 		if (map.count(id))
 		{
-			return std::move(map.at(id));
+			return map.at(id);
 		}
 		return {};
 	}
 
 	std::vector<std::shared_ptr<module::Module>> get_modules()
 	{
+		std::lock_guard<std::mutex> lock(map_mutex);
 		std::vector<std::shared_ptr<module::Module>> modules;
 		for (const auto &pair : map)
 		{
 			modules.push_back(pair.second);
 		}
 		return modules;
-	}
-
-	void stop()
-	{
-		for (auto &[key, val] : map)
-		{
-			std::cout << "Killed " << std::to_string(val->id()) << std::endl;
-			kill(val->pid(), SIGTERM);
-		}
 	}
 
 }

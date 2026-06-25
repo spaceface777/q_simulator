@@ -206,7 +206,7 @@ namespace packet
             }
             else if (left == "device" && stage == 1)
             {
-                device = right;
+                device = right.substr(1, right.length() - 2);
                 continue;
             }
             else if (left == "value" && stage == 1)
@@ -292,7 +292,7 @@ namespace packet
             }
             else if (left == "content" && stage == 1)
             {
-                content = right;
+                content = right.substr(1, right.length() - 2);
                 continue;
             }
 
