@@ -23,5 +23,4 @@ package "Simulation process" {
     [Module] --> [Tub] : on move owner
 }
 
-
 @enduml

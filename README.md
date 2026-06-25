@@ -1,3 +1,10 @@
+## todo
+- write processes/threads for objects in digital twin
+- update diagrams 
+- add synchronization for processes
+- format for gitlab issues
+- analyze implementing scheduler process that communicates to the router processes
+
 # Quercus Simulation
 The repository for the Quercus Airport Router Simulation.
 
@@ -24,7 +31,7 @@ If any errors appear about addresses already being in use, make sure to kill any
 You can usually find these in a task manager or system monitor.
 
 ## Support
-In case you encounter any problems, send an email to `r.verstappen@student.tue.nl`. This email should contain as much relevant information as possible, including your implementation of the router.
+In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
 
 ## Contributing
 If you make improvements to the digital simulation for your project, you are free to contribute these changes to this repo. Any merge requests will be thoroughly reviewed before merging, so make sure you are willing to change your code before opening a merge request.
