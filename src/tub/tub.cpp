@@ -2,6 +2,7 @@
 #include "../module/module.h"
 #include "../settings.h"
 #include "../packet/packet.h"
+#include "../util.h"
 
 #include <thread>
 #include <atomic>
@@ -15,10 +16,8 @@ namespace tub
     void Tub::_run()
     {
         const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(module_);
-        if (!module_opt)
-        {
-            throw std::runtime_error("Failed to get module");
-        }
+        util::require(module_opt.has_value(), "Failed to get module");
+
         const std::shared_ptr<module::Module> module = module_opt.value();
 
         while (!stopped)

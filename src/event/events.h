@@ -1,27 +1,32 @@
 #ifndef EVENTS_H
 #define EVENTS_H
 
+#include <list>
 #include <cstdint>
 #include <string_view>
+#include "../synchronization/virtual_clock.h"
 
 namespace events
 {
+
     /**
      * Generic event class.
      */
     class Event
     {
     protected:
-        uint8_t _time;
-        uint8_t _id;
+        unsigned int _time;
+        unsigned int _id;
 
     public:
         virtual ~Event() {}
 
+        virtual void fire() const;
+
         /**
          * Returns the arrival time of the object.
          */
-        uint8_t time() const noexcept
+        unsigned int time() const noexcept
         {
             return _time;
         }
@@ -29,7 +34,7 @@ namespace events
         /**
          * Returns the id of the object.
          */
-        uint8_t id() const noexcept
+        unsigned int id() const noexcept
         {
             return _id;
         }
@@ -41,10 +46,10 @@ namespace events
     class PlaneEvent : public Event
     {
         uint8_t _module;
-        uint8_t _leaves_in;
+        unsigned int _leaves_in;
 
     public:
-        PlaneEvent(uint8_t time, uint8_t id, uint8_t module, uint8_t leaves_in)
+        PlaneEvent(uint8_t time, uint8_t id, uint8_t module, unsigned int leaves_in)
         {
             _time = time;
             _id = id;
@@ -63,10 +68,12 @@ namespace events
         /**
          * The time until leaving for this plane.
          */
-        uint8_t leaves_in() const noexcept
+        unsigned int leaves_in() const noexcept
         {
             return _leaves_in;
         }
+
+        virtual void fire() const override;
     };
 
     enum LocationType
@@ -91,7 +98,7 @@ namespace events
         TubData _destination;
 
     public:
-        TubEvent(uint8_t time, uint8_t id, bool safe, TubData origin, TubData destination)
+        TubEvent(unsigned int time, uint8_t id, bool safe, TubData origin, TubData destination)
         {
             _time = time;
             _id = id;
@@ -123,7 +130,17 @@ namespace events
         {
             return _destination;
         }
+
+        virtual void fire() const override;
     };
+
+    /**
+     * Checks which events to fire based on the time and list of remaining events.
+     * @param vclock The current clock.
+     * @param events The remaining events.
+     */
+    void fire_events(virtual_clock::VirtualClock &vclock, std::list<events::Event> &events);
+
 };
 
 #endif // EVENTS_H

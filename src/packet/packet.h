@@ -319,10 +319,10 @@ namespace packet
     private:
         uint8_t _id;
         uint8_t _module;
-        uint16_t _leaves_in;
+        unsigned int _leaves_in;
 
     public:
-        PlaneArrival(uint8_t id, uint8_t module, uint16_t leaves_in)
+        PlaneArrival(uint8_t id, uint8_t module, unsigned int leaves_in)
         {
             _id = id;
             _module = module;
@@ -348,7 +348,7 @@ namespace packet
         /**
          * @return The amount of time until the plane leaves.
          */
-        uint16_t leaves_in() const noexcept
+        unsigned int leaves_in() const noexcept
         {
             return _leaves_in;
         }
