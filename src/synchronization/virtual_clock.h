@@ -4,13 +4,13 @@
 #include "../util.h"
 #include <chrono>
 
-namespace clock
+namespace virtual_clock
 {
 
     /**
      * Simulation clock.
      */
-    class Clock 
+    class VirtualClock 
     {
     private:
         std::chrono::milliseconds _virtual_time = std::chrono::milliseconds(0);
@@ -18,7 +18,7 @@ namespace clock
         double _simulation_speed = 1.0;
 
     public:
-        Clock() noexcept 
+        VirtualClock() noexcept 
             : _last_time_point(std::chrono::steady_clock::now()) {}
     
         /**

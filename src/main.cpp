@@ -12,6 +12,7 @@
 #include "packet/packet.h"
 #include "module/module.h"
 #include "visualization/visualization.h"
+#include "synchronization/virtual_clock.h"
 #include "util.h"
 #include "defs.h"
 #include "settings.h"
@@ -92,10 +93,12 @@ int main(int argc, char const *argv[])
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
+    virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();
     visualization::init();
     while (visualization::is_running())
     {
         visualization::update();
+        vclock.tick();
 
         try
         {
