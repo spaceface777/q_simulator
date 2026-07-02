@@ -1,0 +1,61 @@
+@startuml Class diagram
+package Simulation {
+
+hide empty members
+class mainS as "main" {}
+
+class "TCP Server" {
+ void send(int, Packet)
+ void run()
+ void stop()
+ int size()
+}
+
+class Module {
+ pid pid()
+ void run(string)
+
+ int id()
+ bool is_running()
+ int big_belt_speed()
+ int small_belt_speed()
+ int led_color()
+ bool is_left_laser_active()
+ bool is_right_laser_active()
+ void set_left_laser_active(bool)
+ void set_right_laser_active(bool)
+ void send(Packet)
+} 
+
+class Tub {
+ int id()
+ int module()
+ int target_module()
+ ModuleLocation target_module_location()
+ double module_location_progress()
+ void run()
+} 
+
+class Visualization {
+ void update()
+}
+
+}
+
+package Router {
+ hide empty members
+ class mainR as "main" {  }
+ class "TCP Client" {
+  void setup_connection()
+  void send(Packet)
+ }
+}
+
+mainS "1" o-- "TCP Server" : > starts as thread
+mainS "1..n" o-- Module : > starts n threads
+mainS "0..m" o-- Tub : > starts m threads
+mainS "1" *-- Visualization : > updates periodically
+
+Module -- Router : > starts as process
+mainR "1" *-- "TCP Client"
+@enduml
