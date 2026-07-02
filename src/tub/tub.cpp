@@ -109,7 +109,7 @@ namespace tub
                 switch (location_)
                 {
                 case ModuleLocation::BOTTOM_BELT:
-                    location_progress_ += module->small_belt_speed() / 1000.0f;
+                    location_progress_ += settings::get_setting<double>("simulation_speed") * module->small_belt_speed() / 1000.0f;
 
                     if (in_rfid_ && (location_progress_ < 0.2 || location_progress_ > 0.8))
                     {
@@ -140,7 +140,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    location_progress_ += -module->big_belt_speed() / 1000.0f;
+                    location_progress_ += settings::get_setting<double>("simulation_speed") * -module->big_belt_speed() / 1000.0f;
 
                     if (in_laser_ && (location_progress_ < 0.8 || location_progress_ > 1))
                     {
@@ -171,7 +171,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    location_progress_ += module->big_belt_speed() / 1000.0f;
+                    location_progress_ += settings::get_setting<double>("simulation_speed") * module->big_belt_speed() / 1000.0f;
 
                     if (in_laser_ && (location_progress_ < 0.8 || location_progress_ > 1))
                     {

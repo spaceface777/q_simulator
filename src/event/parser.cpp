@@ -1,4 +1,4 @@
-#include <vector>
+#include <list>
 #include <cstdint>
 #include <iostream>
 #include <fstream>
@@ -15,7 +15,7 @@
  * Parses the events in the events.toml file.
  * @param result Vector to populate with parsed events.
  */
-void parser::parse_events(std::vector<events::Event> &result)
+void parser::parse_events(std::list<events::Event> &result)
 {
 
     toml::table table;

@@ -19,6 +19,15 @@ namespace settings
             throw err;
         }
 
+        toml::node *ss_node = table.get("simulation_speed");
+        if (!ss_node) {
+            throw std::invalid_argument("Missing simulation speed in settings.yml");
+        }
+        double ss = static_cast<double>(ss_node->value_or(-1));
+        if (ss <= 0) {
+            throw std::invalid_argument("Invalid simulation speed in settings.yml");
+        }
+
         for (uint8_t id = 0; id < MAX_MODULES; id++)
         {
             toml::node *module_node = table.get("module");
@@ -62,6 +71,18 @@ namespace settings
         return table[setting].value<T>().value();
     }
 
+
+    template <typename T>
+    void set_setting(std::string_view setting, T value)
+    {
+        if (!table.contains(setting))
+        {
+            throw std::invalid_argument("Invalid setting " + std::string(setting));
+        }
+
+        table[setting].value<T>() = value;
+    }
+
     uint8_t get_modules_active()
     {
         uint8_t count = 0;
@@ -86,5 +107,6 @@ namespace settings
 }
 
 template int settings::get_setting<int>(std::string_view setting);
+template double settings::get_setting<double>(std::string_view setting);
 template bool settings::get_setting<bool>(std::string_view setting);
 template std::string settings::get_setting<std::string>(std::string_view setting);

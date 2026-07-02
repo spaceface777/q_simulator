@@ -35,6 +35,15 @@ namespace settings
     T get_setting(std::string_view setting);
 
     /**
+     * Sets the value of a setting.
+     * @param setting The name of the setting,.
+     * @param value The value to set the setting to.
+     * @throws If the setting is not found. 
+     */
+    template <typename T>
+    void set_setting(std::string_view setting, T value);
+
+    /**
      * @return The amount of active modules.
      */
     uint8_t get_modules_active();

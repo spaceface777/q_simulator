@@ -4,6 +4,7 @@
 #include <fstream>
 #include <atomic>
 #include <iostream>
+#include <list>
 
 #include "event/parser.h"
 #include "tcp/server.h"
@@ -35,7 +36,7 @@ static void handle_close(int code)
 int main(int argc, char const *argv[])
 {
     settings::parse_settings();
-    std::vector<events::Event> events;
+    std::list<events::Event> events;
     parser::parse_events(events);
 
     const std::string path = settings::get_setting<std::string>("router_path");

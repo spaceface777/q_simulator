@@ -748,7 +748,7 @@ namespace visualization
 
             render_tubs();
 
-            big_belt_offset_ += dt * 50.0;
+            big_belt_offset_ += settings::get_setting<double>("simulation_speed") * dt * 50.0;
 
             SDL_RenderPresent(renderer_);
             SDL_Delay(16);
