@@ -9,6 +9,12 @@ namespace util
 {
 
     /**
+     * Throws exception with message message if !predicate.
+     * @throws If !predicate.
+     */
+    void require(bool predicate, std::string_view message);
+
+    /**
      * Splits a string at the specified delimiter.
      * @param sv The string to split.
      * @param delimiter The delimiter.

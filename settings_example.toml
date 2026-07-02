@@ -1,6 +1,9 @@
 # The path to the router Zephyr executable.
 router_path = "/home/user/airport-router/build/zephyr/zephyr.exe"
 
+# The speed at which the simulation will be run.
+simulation_speed = 1
+
 [module.1]
 active = true
 left = 0

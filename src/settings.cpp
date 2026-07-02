@@ -1,6 +1,7 @@
 #include "defs.h"
 #include "lib/toml.h"
 #include "settings.h"
+#include "util.h"
 
 namespace settings
 {
@@ -20,13 +21,9 @@ namespace settings
         }
 
         toml::node *ss_node = table.get("simulation_speed");
-        if (!ss_node) {
-            throw std::invalid_argument("Missing simulation speed in settings.yml");
-        }
+        util::require(ss_node, "Missing simulation speed in settings.yml");
         double ss = static_cast<double>(ss_node->value_or(-1));
-        if (ss <= 0) {
-            throw std::invalid_argument("Invalid simulation speed in settings.yml");
-        }
+        util::require(ss >= 0, "Invalid simulation speed in settings.yml");
 
         for (uint8_t id = 0; id < MAX_MODULES; id++)
         {
