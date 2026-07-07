@@ -41,10 +41,7 @@ int main(int argc, char const *argv[])
     parser::parse_events(events);
 
     const std::string path = settings::get_setting<std::string>("router_path");
-    if (!std::filesystem::exists(path))
-    {
-        throw std::runtime_error("No zephyr.exe found at router_path in settings.toml");
-    }
+    util::require(std::filesystem::exists(path), "No zephyr.exe found at router_path in settings.toml");
 
     server::run();
 

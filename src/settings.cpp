@@ -28,10 +28,7 @@ namespace settings
         for (uint8_t id = 0; id < MAX_MODULES; id++)
         {
             toml::node *module_node = table.get("module");
-            if (!module_node || !module_node->is_table())
-            {
-                throw std::invalid_argument("Invalid setting 'module' in settings.yml");
-            }
+            util::require(module_node && module_node->is_table(), "Invalid setting 'module' in settings.yml");
 
             toml::table module_table = *module_node->as_table();
             toml::node *node = module_table.get(std::to_string(id + 1));
@@ -50,21 +47,14 @@ namespace settings
                 .angle = static_cast<uint16_t>(table["angle"].value_or(0)),
             };
 
-            if (module_settings[id].angle >= 360)
-            {
-                throw std::invalid_argument("Invalid angle '" + std::to_string(module_settings[id].angle) + "' for module " + std::to_string(id));
-            }
+            util::require(module_settings[id].angle < 360, "Invalid angle '" + std::to_string(module_settings[id].angle) + "' for module " + std::to_string(id));
         }
     }
 
     template <typename T>
     T get_setting(std::string_view setting)
     {
-        if (!table.contains(setting))
-        {
-            throw std::invalid_argument("Invalid setting " + std::string(setting));
-        }
-
+        util::require(table.contains(setting), "Invalid setting " + std::string(setting));
         return table[setting].value<T>().value();
     }
 
@@ -72,11 +62,7 @@ namespace settings
     template <typename T>
     void set_setting(std::string_view setting, T value)
     {
-        if (!table.contains(setting))
-        {
-            throw std::invalid_argument("Invalid setting " + std::string(setting));
-        }
-
+        util::require(table.contains(setting), "Invalid setting " + std::string(setting));
         table[setting].value<T>() = value;
     }
 
@@ -96,8 +82,7 @@ namespace settings
 
     ModuleSettings get_module_settings(uint8_t id)
     {
-        assert(id < MAX_MODULES);
-
+        util::require(id < MAX_MODULES, "Invalid module id " + std::to_string(id));
         return module_settings[id];
     }
 
