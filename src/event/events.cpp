@@ -43,17 +43,11 @@ namespace events
 
     void TubEvent::fire() const
     {
-        auto packet = packet::TubArrival(_id, _origin.id, _destination.id, _safe);
+        const auto packet = packet::TubArrival(_id, _origin.id, _destination.id, _safe);
+        const auto module = module::get_module(_origin.id);
 
-        for (const auto &module : module::get_modules())
-        {
-            if (!module)
-            {
-                continue;
-            }
-
-            module->send(packet);
-        }
+        util::require(module.has_value(), "No module with id " + std::to_string(_origin.id));
+        (*module)->send(packet);
 
         tub::Tub tub = tub::Tub(_id, _origin.id, _destination.id, ModuleLocation::BOTTOM_BELT);
         tub.run();

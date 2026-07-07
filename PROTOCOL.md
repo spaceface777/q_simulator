@@ -58,7 +58,7 @@ Required elements:
 
 Example:
 ```toml
-[update]
+[packet]
 module = 12
 length = 12
 content = "2394823492"

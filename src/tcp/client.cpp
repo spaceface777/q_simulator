@@ -74,8 +74,6 @@ namespace client
                 continue;
             }
 
-            std::cout << "Size " << std::to_string(current_size) << std::endl;
-            std::cout << "Sending " << packet->to_toml() << " to " << std::to_string(socket.fd()) << std::endl;
             const std::string toml = packet->to_toml();
             if (::write(socket.fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
             {
