@@ -94,9 +94,12 @@ int main(int argc, char const *argv[])
     }
 
     virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();
+    vclock.set_simulation_speed(settings::get_setting<double>("simulation_speed"));
+
     visualization::init();
     while (visualization::is_running())
     {
+        events::fire_events(vclock, events);
         visualization::update();
         vclock.tick();
 
