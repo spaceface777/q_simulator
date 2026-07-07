@@ -24,7 +24,7 @@ namespace tub
 
         bool in_laser_ = false;
         bool in_rfid_ = false;
-        double location_progress_ = 0;
+        double location_progress_ = 0.5;
         std::unique_ptr<std::thread> thread_ptr_;
 
     public:

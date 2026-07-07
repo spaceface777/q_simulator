@@ -3,6 +3,7 @@
 
 #include <list>
 #include <cstdint>
+#include <memory>
 #include <string_view>
 #include "../synchronization/virtual_clock.h"
 
@@ -19,9 +20,7 @@ namespace events
         unsigned int _id;
 
     public:
-        virtual ~Event() {}
-
-        virtual void fire() const;
+        virtual void fire() const = 0;
 
         /**
          * Returns the arrival time of the object.
@@ -42,6 +41,8 @@ namespace events
         bool operator==(const Event& other) const {
             return this->id() == other.id(); 
         }
+
+        virtual ~Event() = default;
     };
 
     /**
@@ -143,7 +144,7 @@ namespace events
      * @param vclock The current clock.
      * @param events The remaining events.
      */
-    void fire_events(virtual_clock::VirtualClock &vclock, std::list<events::Event> &events);
+    void fire_events(virtual_clock::VirtualClock &vclock, std::list<std::unique_ptr<events::Event>> &events);
 
 };
 

@@ -12,7 +12,7 @@ namespace parser
      * Parses the events in the events.toml file.
      * @param events Vector to populate with parsed events.
      */
-    void parse_events(std::list<events::Event> &events);
+    void parse_events(std::list<std::unique_ptr<events::Event>> &events);
 
 }
 

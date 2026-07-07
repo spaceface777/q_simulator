@@ -153,7 +153,7 @@ namespace server
         if (update)
         {
             const packet::ModuleUpdate packet = update.value();
-            std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
+            // std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
 
             std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(packet.id());
             if (ptr)

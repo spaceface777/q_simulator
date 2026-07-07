@@ -15,7 +15,7 @@
  * Parses the events in the events.toml file.
  * @param result Vector to populate with parsed events.
  */
-void parser::parse_events(std::list<events::Event> &result)
+void parser::parse_events(std::list<std::unique_ptr<events::Event>> &result)
 {
 
     toml::table table;
@@ -107,7 +107,7 @@ void parser::parse_events(std::list<events::Event> &result)
                     throw std::invalid_argument("Tub event missing required fields");
                 }
 
-                result.push_back(events::TubEvent(time, id, safe, origin, destination));
+                result.push_back(std::make_unique<events::TubEvent>(time, id, safe, origin, destination));
             }
         }
         else if (group == "plane")
@@ -129,7 +129,7 @@ void parser::parse_events(std::list<events::Event> &result)
                     throw std::invalid_argument("Plane event missing required fields");
                 }
 
-                result.push_back(events::PlaneEvent(time, id, module, leaves_in));
+                result.push_back(std::make_unique<events::PlaneEvent>(time, id, module, leaves_in));
             }
         }
     }

@@ -9,19 +9,15 @@
 namespace events
 {
 
-    void Event::fire() const
-    {
-    }
-
-    void fire_events(virtual_clock::VirtualClock &vclock, std::list<Event> &events)
+    void fire_events(virtual_clock::VirtualClock &vclock, std::list<std::unique_ptr<Event>> &events)
     {
         int64_t seconds = std::chrono::duration_cast<std::chrono::seconds>(vclock.get_virtual_time()).count();
 
         events.remove_if([seconds](const auto &event)
                          {
-                             if (seconds >= event.time())
+                             if (seconds >= event->time())
                              {
-                                 event.fire();
+                                 event->fire();
                                  std::cout << "Fired at vtime " << std::to_string(seconds) << std::endl;
                                  return true;
                              }

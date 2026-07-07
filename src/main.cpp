@@ -37,7 +37,7 @@ static void handle_close(int code)
 int main(int argc, char const *argv[])
 {
     settings::parse_settings();
-    std::list<events::Event> events;
+    std::list<std::unique_ptr<events::Event>> events;
     parser::parse_events(events);
 
     const std::string path = settings::get_setting<std::string>("router_path");
