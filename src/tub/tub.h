@@ -92,7 +92,6 @@ namespace tub
         Tub(Tub&&) noexcept = default;
         Tub& operator=(Tub&&) noexcept = default;
 
-        // Explicitly keep copy disabled if you want to be safe:
         Tub(const Tub&) = delete;
         Tub& operator=(const Tub&) = delete;
     };

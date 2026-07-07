@@ -49,9 +49,9 @@ namespace events
         util::require(module.has_value(), "No module with id " + std::to_string(_origin.id));
         (*module)->send(packet);
 
-        tub::Tub tub = tub::Tub(_id, _origin.id, _destination.id, ModuleLocation::BOTTOM_BELT);
-        tub.run();
-        tub::add_tub(std::make_unique<tub::Tub>(std::move(tub)));
+        auto tub_ptr = std::make_unique<tub::Tub>(_id, _origin.id, _destination.id, ModuleLocation::BOTTOM_BELT);
+        tub_ptr->run();
+        tub::add_tub(std::move(tub_ptr));
 
         std::cout << "Fired tub event at " << std::to_string(_time) << std::endl;
     }
