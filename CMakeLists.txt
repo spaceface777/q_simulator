@@ -35,7 +35,8 @@ add_executable(main
     src/packet/packet.cpp
     src/tub/tub.cpp
     src/visualization/visualization.cpp
-    src/settings.cpp)
+    src/settings.cpp
+    src/event/events.cpp)
 
 target_link_libraries(main pthread 
     tomlplusplus::tomlplusplus

@@ -38,6 +38,10 @@ namespace events
         {
             return _id;
         }
+
+        bool operator==(const Event& other) const {
+            return this->id() == other.id(); 
+        }
     };
 
     /**

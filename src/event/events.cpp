@@ -3,10 +3,14 @@
 #include "../module/module.h"
 #include "../tub/tub.h"
 
-#include <unique>
+#include <memory>
 
 namespace events 
 {
+
+    void Event::fire() const
+    {
+    }
 
     void fire_events(virtual_clock::VirtualClock &vclock, std::list<Event> &events)
     {
@@ -55,6 +59,6 @@ namespace events
 
         tub::Tub tub = tub::Tub(_id, _origin.id, _destination.id, ModuleLocation::BOTTOM_BELT);
         tub.run();
-        tub::add_tub(std::make_unique(tub));
+        tub::add_tub(std::make_unique<tub::Tub>(std::move(tub)));
     }
 }

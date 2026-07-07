@@ -10,7 +10,7 @@ namespace virtual_clock
     /**
      * Simulation clock.
      */
-    class VirtualClock 
+    class VirtualClock
     {
     private:
         std::chrono::milliseconds _virtual_time = std::chrono::milliseconds(0);
@@ -18,11 +18,11 @@ namespace virtual_clock
         double _simulation_speed = 1.0;
 
     public:
-        VirtualClock() noexcept 
+        VirtualClock() noexcept
             : _last_time_point(std::chrono::steady_clock::now()) {}
-    
+
         /**
-         * Ticks the clock. 
+         * Ticks the clock.
          * Should occur at least as often as the time between any given simulation speed updates.
          */
         void tick() noexcept
@@ -61,7 +61,6 @@ namespace virtual_clock
 
             _simulation_speed = speed;
         }
-
     };
 
 }
