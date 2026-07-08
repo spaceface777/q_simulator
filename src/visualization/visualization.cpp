@@ -60,12 +60,25 @@ namespace visualization
         }
     }
 
+    static void draw_minus(SDL_Renderer *renderer, int x, int y, int scale)
+    {
+        SDL_Rect r = {x, y + 2 * scale, 3 * scale, scale};
+        SDL_RenderFillRect(renderer, &r);
+    }
+
     static void draw_number(SDL_Renderer *renderer, int x, int y, int number, int scale)
     {
         std::string s = std::to_string(number);
         for (size_t i = 0; i < s.length(); ++i)
         {
-            draw_digit(renderer, x + i * 4 * scale, y, s[i] - '0', scale);
+            if (s[i] == '-')
+            {
+                draw_minus(renderer, x + i * 4 * scale, y, scale);
+            }
+            else
+            {
+                draw_digit(renderer, x + i * 4 * scale, y, s[i] - '0', scale);
+            }
         }
     }
 
@@ -359,6 +372,8 @@ namespace visualization
         // Animation lines
         if (is_running && speed != 0)
         {
+            draw_number(_renderer, belt_x, belt_y, speed, 2);
+
             SDL_SetRenderDrawColor(_renderer, 144, 238, 144, 150); // Light Green
             double step = 20.0;
             double offset = -fmod(_belt_offset * (-speed / 100.0), step);
