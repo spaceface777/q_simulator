@@ -27,7 +27,6 @@ namespace tub
             // angle > 90 = left
             // angle <= 90 = right
 
-            std::cout << std::to_string(_location_progress) << std::endl;
             if (_location_progress > 1)
             {
                 const uint8_t old_module = _module;
@@ -46,7 +45,6 @@ namespace tub
                 }
 
                 const settings::ModuleSettings other_settings = settings::get_module_settings(_module);
-
                 if (other_settings.bottom == _module)
                 {
                     _location = ModuleLocation::SMALL_BELT;
@@ -111,7 +109,7 @@ namespace tub
                 switch (_location)
                 {
                 case ModuleLocation::SMALL_BELT:
-                    _location_progress += simulation_speed * module->small_belt_speed() / 100.0 / 20.0 / 2.0;
+                    _location_progress += simulation_speed * module->small_belt_speed() / 100.0 / 60.0 / 4.0;
 
                     if (_in_rfid && (_location_progress < 0.2 || _location_progress > 0.8))
                     {
@@ -142,7 +140,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    _location_progress += simulation_speed * -module->big_belt_speed() / 100.0 / 20.0 / 2.0;
+                    _location_progress += simulation_speed * -module->big_belt_speed() / 100.0 / 60.0 / 4.0;
 
                     if (_in_laser && (_location_progress < 0.8 || _location_progress > 1))
                     {
@@ -173,7 +171,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    _location_progress += simulation_speed * module->big_belt_speed() / 100.0 / 20.0 / 2.0;
+                    _location_progress += simulation_speed * module->big_belt_speed() / 100.0 / 60.0 / 4.0;
 
                     if (_in_laser && (_location_progress < 0.8 || _location_progress > 1))
                     {
@@ -206,7 +204,6 @@ namespace tub
                 }
             }
 
-            std::cout << "eepy time" << std::endl;
             std::this_thread::sleep_for(TIMEOUT);
         }
     }
