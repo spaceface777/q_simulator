@@ -19,10 +19,10 @@ namespace module
 
 	void Module::run(std::string path)
 	{
-		pid_ = ::fork();
-		util::require(pid_ > -1, "Failed to fork: " + std::string(std::strerror(errno)));
+		_pid = ::fork();
+		util::require(_pid > -1, "Failed to fork: " + std::string(std::strerror(errno)));
 
-		const bool child = pid_ == 0;
+		const bool child = _pid == 0;
 		if (child)
 		{
 			::prctl(PR_SET_PDEATHSIG, SIGKILL);
@@ -33,19 +33,19 @@ namespace module
 
 			const std::string id_path = "/tmp/qaid";
 			std::ofstream id_of(id_path);
-			util::require(id_of.is_open(), "Failed to create ofstream for " + std::to_string(id_));
+			util::require(id_of.is_open(), "Failed to create ofstream for " + std::to_string(_id));
 
-			id_of << std::to_string(id_);
+			id_of << std::to_string(_id);
 			id_of.flush();
 			id_of.close();
 
-			util::require(std::filesystem::exists(id_path), "Failed to create file for " + std::to_string(id_));
+			util::require(std::filesystem::exists(id_path), "Failed to create file for " + std::to_string(_id));
 
 			// exec
 
-			const std::string module_name = "Module " + std::to_string(id_);
-			running_ = true;
-			std::cerr << "Starting module " << std::to_string(id_) << std::endl;
+			const std::string module_name = "Module " + std::to_string(_id);
+			_running = true;
+			std::cerr << "Starting module " << std::to_string(_id) << std::endl;
 
 			const int success = ::execl(path.c_str(), module_name.c_str(), (char *)0);
 
@@ -55,26 +55,26 @@ namespace module
 
 	void Module::send(const packet::Packet &packet)
 	{
-		server::send(id_, packet);
+		server::send(_id, packet);
 	}
 
 	void Module::update(const packet::ModuleUpdate packet)
 	{
 		if (packet.device() == "big belt")
 		{
-			big_speed_ = packet.value();
+			_big_speed = packet.value();
 		}
 		else if (packet.device() == "small belt")
 		{
-			small_speed_ = packet.value();
+			_small_speed = packet.value();
 		}
 		else if (packet.device() == "servo")
 		{
-			servo_degrees_ = packet.value();
+			_servo_degrees = packet.value();
 		}
 		else if (packet.device() == "led")
 		{
-			led_color_ = packet.value();
+			_led_color = packet.value();
 		}
 	}
 

@@ -17,22 +17,22 @@ namespace module
     class Module
     {
     private:
-        pid_t pid_;
-        uint8_t id_;
-        bool running_ = false;
+        pid_t _pid;
+        uint8_t _id;
+        bool _running = false;
 
-        uint8_t big_speed_ = 0;
-        uint8_t small_speed_ = 0;
-        uint16_t servo_degrees_ = 0;
-        int led_color_ = 0;
-        bool left_laser_active_ = false;
-        bool right_laser_active_ = false;
-        bool rfid_active_ = false;
+        int8_t _big_speed = 0;
+        int8_t _small_speed = 0;
+        uint16_t _servo_degrees = 0;
+        int _led_color = 0;
+        bool _left_laser_active = false;
+        bool _right_laser_active = false;
+        bool _rfid_active = false;
 
     public:
         Module(uint8_t id)
         {
-            id_ = id;
+            _id = id;
         }
 
         /**
@@ -40,7 +40,7 @@ namespace module
          */
         pid_t pid() const noexcept
         {
-            return pid_;
+            return _pid;
         }
 
         /**
@@ -48,7 +48,7 @@ namespace module
          */
         uint8_t id() const noexcept
         {
-            return id_;
+            return _id;
         }
 
         /**
@@ -56,23 +56,23 @@ namespace module
          */
         bool is_running() const noexcept
         {
-            return running_;
+            return _running;
         }
 
         /**
          * @return The speed of the big belt.
          */
-        uint8_t big_belt_speed() const noexcept
+        int8_t big_belt_speed() const noexcept
         {
-            return big_speed_;
+            return _big_speed;
         }
 
         /**
          * @return The speed of the small belt.
          */
-        uint8_t small_belt_speed() const noexcept
+        int8_t small_belt_speed() const noexcept
         {
-            return small_speed_;
+            return _small_speed;
         }
 
         /**
@@ -80,7 +80,7 @@ namespace module
          */
         uint16_t servo_angle() const noexcept
         {
-            return servo_degrees_;
+            return _servo_degrees;
         }
 
         /**
@@ -88,7 +88,7 @@ namespace module
          */
         int led_color() const noexcept
         {
-            return led_color_;
+            return _led_color;
         }
 
         /**
@@ -96,7 +96,7 @@ namespace module
          */
         bool is_left_laser_active() const noexcept
         {
-            return left_laser_active_;
+            return _left_laser_active;
         }
 
         /**
@@ -105,7 +105,7 @@ namespace module
          */
         void set_left_laser_active(bool active) noexcept
         {
-            left_laser_active_ = active;
+            _left_laser_active = active;
         }
 
         /**
@@ -113,7 +113,7 @@ namespace module
          */
         bool is_right_laser_active() const noexcept
         {
-            return right_laser_active_;
+            return _right_laser_active;
         }
 
         /**
@@ -122,7 +122,7 @@ namespace module
          */
         void set_right_laser_active(bool active) noexcept
         {
-            right_laser_active_ = active;
+            _right_laser_active = active;
         }
 
         /**
@@ -130,7 +130,7 @@ namespace module
          */
         bool is_rfid_active() const noexcept
         {
-            return rfid_active_;
+            return _rfid_active;
         }
 
         /**
@@ -139,7 +139,7 @@ namespace module
          */
         void set_rfid_active(bool active) noexcept
         {
-            rfid_active_ = active;
+            _rfid_active = active;
         }
 
         /**
