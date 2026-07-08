@@ -25,13 +25,13 @@ namespace settings
         double ss = static_cast<double>(ss_node->value_or(-1));
         util::require(ss >= 0, "Invalid simulation speed in settings.yml");
 
-        for (uint8_t id = 0; id < MAX_MODULES; id++)
+        for (uint8_t id = 1; id < MAX_MODULES; id++)
         {
             toml::node *module_node = table.get("module");
             util::require(module_node && module_node->is_table(), "Invalid setting 'module' in settings.yml");
 
             toml::table module_table = *module_node->as_table();
-            toml::node *node = module_table.get(std::to_string(id + 1));
+            toml::node *node = module_table.get(std::to_string(id));
             if (!node || !node->is_table())
             {
                 break;
@@ -58,7 +58,6 @@ namespace settings
         return table[setting].value<T>().value();
     }
 
-
     template <typename T>
     void set_setting(std::string_view setting, T value)
     {
@@ -69,7 +68,7 @@ namespace settings
     uint8_t get_modules_active()
     {
         uint8_t count = 0;
-        for (uint8_t id = 0; id < MAX_MODULES; id++)
+        for (uint8_t id = 1; id < MAX_MODULES; id++)
         {
             if (module_settings[id].active)
             {
@@ -82,7 +81,7 @@ namespace settings
 
     ModuleSettings get_module_settings(uint8_t id)
     {
-        util::require(id < MAX_MODULES, "Invalid module id " + std::to_string(id));
+        util::require(id >= 1 && id < MAX_MODULES, "Invalid module id " + std::to_string(id));
         return module_settings[id];
     }
 

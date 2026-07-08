@@ -45,15 +45,15 @@ int main(int argc, char const *argv[])
 
     server::run();
 
-    uint8_t module_index = 0;
-    while (module_index < settings::get_modules_active())
+    uint8_t module_index = 1;
+    while (module_index <= settings::get_modules_active())
     {
         std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
         module->run(path);
         module::add_module(std::move(module));
 
         int attempts = 0;
-        while (server::size() < module_index + 1)
+        while (server::size() < module_index)
         {
             if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 100)
             {
@@ -82,7 +82,6 @@ int main(int argc, char const *argv[])
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            attempts++;
             attempts++;
         }
 
