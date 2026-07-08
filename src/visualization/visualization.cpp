@@ -558,25 +558,50 @@ namespace visualization
             get_module_coords(tub->module(), module_x, module_y);
 
             double rel_x = 0, rel_y = 0;
-            if (tub->module_location() == ModuleLocation::LEFT_BELT || tub->module_location() == ModuleLocation::RIGHT_BELT)
+            if (tub->module_location() == ModuleLocation::LEFT_BELT)
             {
                 switch (module_settings.angle)
                 {
                 case 0:
-                    rel_x = tub->module_location_progress() * 180.0;
+                    rel_x = tub->module_location_progress() * 90.0;
                     rel_y = 90.0;
                     break;
                 case 90:
                     rel_x = 90.0;
-                    rel_y = tub->module_location_progress() * 180.0;
+                    rel_y = tub->module_location_progress() * 90.0;
                     break;
                 case 180:
-                    rel_x = (1.0 - tub->module_location_progress()) * 180.0;
+                    rel_x = (1.0 - tub->module_location_progress()) * 90.0;
                     rel_y = 90.0;
                     break;
                 case 270:
                     rel_x = 90.0;
-                    rel_y = (1.0 - tub->module_location_progress()) * 180.0;
+                    rel_y = (1.0 - tub->module_location_progress()) * 90.0;
+                    break;
+
+                default:
+                    throw std::invalid_argument("Invalid module angle " + std::to_string(module_settings.angle));
+                }
+            }
+            else if (tub->module_location() == ModuleLocation::RIGHT_BELT)
+            {
+                switch (module_settings.angle)
+                {
+                case 0:
+                    rel_x = tub->module_location_progress() * 90.0;
+                    rel_y = 90.0;
+                    break;
+                case 90:
+                    rel_x = 90.0;
+                    rel_y = tub->module_location_progress() * 90.0;
+                    break;
+                case 180:
+                    rel_x = (1.0 - tub->module_location_progress()) * 90.0;
+                    rel_y = 90.0;
+                    break;
+                case 270:
+                    rel_x = 90.0;
+                    rel_y = (1.0 - tub->module_location_progress()) * 90.0;
                     break;
 
                 default:

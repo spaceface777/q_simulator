@@ -11,6 +11,12 @@
 namespace tub
 {
 
+    static constexpr double RFID_LOCATION = 0.5;
+    static constexpr double RFID_RANGE = 0.15;
+
+    static constexpr double LASER_LOCATION = 0.7;
+    static constexpr double LASER_RANGE = 0.1;
+
     static std::exception_ptr exception_ptr;
     static std::atomic_bool stopped = false;
 
@@ -117,13 +123,13 @@ namespace tub
                 case ModuleLocation::SMALL_BELT:
                     _location_progress += simulation_speed * module->small_belt_speed() / 100.0 / 60.0 / 4.0;
 
-                    if (_in_rfid && (_location_progress < 0.2 || _location_progress > 0.8))
+                    if (_in_rfid && (_location_progress < RFID_LOCATION - RFID_RANGE || _location_progress > RFID_LOCATION + RFID_RANGE))
                     {
                         module->send(packet::SimulationUpdate(_module, "rfid", false));
                         module->set_rfid_active(false);
                         _in_rfid = false;
                     }
-                    else if (!_in_rfid && _location_progress > 0.2 && _location_progress < 0.8)
+                    else if (!_in_rfid && _location_progress > RFID_LOCATION - RFID_RANGE && _location_progress < RFID_LOCATION + RFID_RANGE)
                     {
                         module->send(packet::SimulationUpdate(_module, "rfid", true));
                         module->set_rfid_active(true);
@@ -133,13 +139,13 @@ namespace tub
                 case ModuleLocation::LEFT_BELT:
                     _location_progress += simulation_speed * -module->big_belt_speed() / 100.0 / 60.0 / 4.0;
 
-                    if (_in_laser && (_location_progress < 0.8 || _location_progress > 1))
+                    if (_in_laser && (_location_progress < LASER_LOCATION - LASER_RANGE || _location_progress > LASER_LOCATION + LASER_RANGE))
                     {
                         module->send(packet::SimulationUpdate(_module, "left laser", false));
                         module->set_left_laser_active(false);
                         _in_laser = false;
                     }
-                    else if (!_in_laser && _location_progress > 0.8 && _location_progress < 1)
+                    else if (!_in_laser && _location_progress > LASER_LOCATION - LASER_RANGE && _location_progress < LASER_LOCATION + LASER_RANGE)
                     {
 
                         module->send(packet::SimulationUpdate(_module, "left laser", true));
@@ -150,13 +156,13 @@ namespace tub
                 case ModuleLocation::RIGHT_BELT:
                     _location_progress += simulation_speed * module->big_belt_speed() / 100.0 / 60.0 / 4.0;
 
-                    if (_in_laser && (_location_progress < 0.8 || _location_progress > 1))
+                    if (_in_laser && (_location_progress < LASER_LOCATION - LASER_RANGE || _location_progress > LASER_LOCATION + LASER_RANGE))
                     {
                         module->send(packet::SimulationUpdate(_module, "right laser", false));
                         module->set_right_laser_active(false);
                         _in_laser = false;
                     }
-                    else if (!_in_laser && _location_progress > 0.8 && _location_progress < 1)
+                    else if (!_in_laser && _location_progress > LASER_LOCATION - LASER_RANGE && _location_progress < LASER_LOCATION + LASER_RANGE)
                     {
                         module->send(packet::SimulationUpdate(_module, "right laser", true));
                         module->set_right_laser_active(true);

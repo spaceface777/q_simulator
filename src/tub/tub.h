@@ -24,6 +24,7 @@ namespace tub
 
         bool _in_laser = false;
         bool _in_rfid = false;
+        // 0 = middle, 1 = extremity
         double _location_progress = 0.5;
         std::unique_ptr<std::thread> _thread_ptr;
 
