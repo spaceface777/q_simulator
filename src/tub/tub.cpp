@@ -30,40 +30,42 @@ namespace tub
             if (_location_progress > 1)
             {
                 const uint8_t old_module = _module;
+                uint8_t new_module = -1;
                 const settings::ModuleSettings settings = settings::get_module_settings(_module);
                 switch (_location)
                 {
                 case ModuleLocation::SMALL_BELT:
-                    _module = settings.bottom;
+                    new_module = settings.bottom;
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    _module = settings.left;
+                    new_module = settings.left;
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    _module = settings.right;
+                    new_module = settings.right;
                     break;
                 }
 
-                const settings::ModuleSettings other_settings = settings::get_module_settings(_module);
-                if (other_settings.bottom == _module)
+                const settings::ModuleSettings new_settings = settings::get_module_settings(new_module);
+                if (new_settings.bottom == old_module)
                 {
                     _location = ModuleLocation::SMALL_BELT;
                 }
-                else if (other_settings.left == _module)
+                else if (new_settings.left == old_module)
                 {
                     _location = ModuleLocation::LEFT_BELT;
                 }
-                else if (other_settings.right == _module)
+                else if (new_settings.right == old_module)
                 {
                     _location = ModuleLocation::RIGHT_BELT;
                 }
                 else
                 {
                     stop();
-                    throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(_module) + " are not connected in settings.toml");
+                    throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(new_module) + " are not connected in settings.toml");
                 }
 
                 _location_progress = 1;
+                _module = new_module;
             }
             else if (_location_progress < 0)
             {
