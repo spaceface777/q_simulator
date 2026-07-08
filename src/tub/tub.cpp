@@ -15,7 +15,7 @@ namespace tub
 
     void Tub::_run()
     {
-        const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(module_);
+        const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(_module);
         util::require(module_opt.has_value(), "Failed to get module");
 
         const std::shared_ptr<module::Module> module = module_opt.value();
@@ -27,194 +27,198 @@ namespace tub
             // angle > 90 = left
             // angle <= 90 = right
 
-            if (location_progress_ > 1)
+            std::cout << std::to_string(_location_progress) << std::endl;
+            if (_location_progress > 1)
             {
-                const uint8_t old_module = module_;
-                const settings::ModuleSettings settings = settings::get_module_settings(module_);
-                switch (location_)
+                const uint8_t old_module = _module;
+                const settings::ModuleSettings settings = settings::get_module_settings(_module);
+                switch (_location)
                 {
-                case ModuleLocation::BOTTOM_BELT:
-                    module_ = settings.bottom;
+                case ModuleLocation::SMALL_BELT:
+                    _module = settings.bottom;
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    module_ = settings.left;
+                    _module = settings.left;
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    module_ = settings.right;
+                    _module = settings.right;
                     break;
                 }
 
-                const settings::ModuleSettings other_settings = settings::get_module_settings(module_);
+                const settings::ModuleSettings other_settings = settings::get_module_settings(_module);
 
-                if (other_settings.bottom == module_)
+                if (other_settings.bottom == _module)
                 {
-                    location_ = ModuleLocation::BOTTOM_BELT;
+                    _location = ModuleLocation::SMALL_BELT;
                 }
-                else if (other_settings.left == module_)
+                else if (other_settings.left == _module)
                 {
-                    location_ = ModuleLocation::LEFT_BELT;
+                    _location = ModuleLocation::LEFT_BELT;
                 }
-                else if (other_settings.right == module_)
+                else if (other_settings.right == _module)
                 {
-                    location_ = ModuleLocation::RIGHT_BELT;
+                    _location = ModuleLocation::RIGHT_BELT;
                 }
                 else
                 {
                     stop();
-                    throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(module_) + " are not connected in settings.toml");
+                    throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(_module) + " are not connected in settings.toml");
                 }
 
-                location_progress_ = 1;
+                _location_progress = 1;
             }
-            else if (location_progress_ < 0)
+            else if (_location_progress < 0)
             {
-                switch (location_)
+                switch (_location)
                 {
-                case ModuleLocation::BOTTOM_BELT:
+                case ModuleLocation::SMALL_BELT:
                     if (module->servo_angle() > 90)
                     {
-                        location_ = ModuleLocation::RIGHT_BELT;
+                        _location = ModuleLocation::RIGHT_BELT;
                     }
                     else
                     {
-                        location_ = ModuleLocation::LEFT_BELT;
+                        _location = ModuleLocation::LEFT_BELT;
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
                     if (module->servo_angle() < 10)
                     {
-                        location_ = ModuleLocation::RIGHT_BELT;
+                        _location = ModuleLocation::RIGHT_BELT;
                     }
                     else
                     {
-                        location_ = ModuleLocation::BOTTOM_BELT;
+                        _location = ModuleLocation::SMALL_BELT;
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
                     if (module->servo_angle() > 170)
                     {
-                        location_ = ModuleLocation::LEFT_BELT;
+                        _location = ModuleLocation::LEFT_BELT;
                     }
                     else
                     {
-                        location_ = ModuleLocation::BOTTOM_BELT;
+                        _location = ModuleLocation::SMALL_BELT;
                     }
                     break;
                 }
-                location_progress_ = 0;
+                _location_progress = 0;
             }
             else
             {
-                switch (location_)
-                {
-                case ModuleLocation::BOTTOM_BELT:
-                    location_progress_ += settings::get_setting<double>("simulation_speed") * module->small_belt_speed() / 1000.0f;
+                const double simulation_speed = settings::get_setting<double>("simulation_speed");
 
-                    if (in_rfid_ && (location_progress_ < 0.2 || location_progress_ > 0.8))
+                switch (_location)
+                {
+                case ModuleLocation::SMALL_BELT:
+                    _location_progress += simulation_speed * module->small_belt_speed() / 100.0 / 20.0 / 2.0;
+
+                    if (_in_rfid && (_location_progress < 0.2 || _location_progress > 0.8))
                     {
-                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(_module);
                         if (!module)
                         {
                             stop();
-                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                            throw std::runtime_error("Tub " + std::to_string(_id) + " is owned by invalid module " + std::to_string(_module));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "rfid", false));
+                        (*module)->send(packet::SimulationUpdate(_module, "rfid", false));
                         (*module)->set_rfid_active(false);
-                        in_rfid_ = false;
+                        _in_rfid = false;
                     }
 
-                    if (!in_rfid_ && location_progress_ > 0.2 && location_progress_ < 0.8)
+                    if (!_in_rfid && _location_progress > 0.2 && _location_progress < 0.8)
                     {
-                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(_module);
                         if (!module)
                         {
                             stop();
-                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                            throw std::runtime_error("Tub " + std::to_string(_id) + " is owned by invalid module " + std::to_string(_module));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "rfid", true));
+                        (*module)->send(packet::SimulationUpdate(_module, "rfid", true));
                         (*module)->set_rfid_active(true);
-                        in_rfid_ = true;
+                        _in_rfid = true;
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    location_progress_ += settings::get_setting<double>("simulation_speed") * -module->big_belt_speed() / 1000.0f;
+                    _location_progress += simulation_speed * -module->big_belt_speed() / 100.0 / 20.0 / 2.0;
 
-                    if (in_laser_ && (location_progress_ < 0.8 || location_progress_ > 1))
+                    if (_in_laser && (_location_progress < 0.8 || _location_progress > 1))
                     {
-                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(_module);
                         if (!module)
                         {
                             stop();
-                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                            throw std::runtime_error("Tub " + std::to_string(_id) + " is owned by invalid module " + std::to_string(_module));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "left laser", false));
+                        (*module)->send(packet::SimulationUpdate(_module, "left laser", false));
                         (*module)->set_left_laser_active(false);
-                        in_laser_ = false;
+                        _in_laser = false;
                     }
 
-                    if (!in_laser_ && location_progress_ > 0.8 && location_progress_ < 1)
+                    if (!_in_laser && _location_progress > 0.8 && _location_progress < 1)
                     {
-                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(_module);
                         if (!module)
                         {
                             stop();
-                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                            throw std::runtime_error("Tub " + std::to_string(_id) + " is owned by invalid module " + std::to_string(_module));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "left laser", true));
+                        (*module)->send(packet::SimulationUpdate(_module, "left laser", true));
                         (*module)->set_left_laser_active(true);
-                        in_laser_ = true;
+                        _in_laser = true;
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    location_progress_ += settings::get_setting<double>("simulation_speed") * module->big_belt_speed() / 1000.0f;
+                    _location_progress += simulation_speed * module->big_belt_speed() / 100.0 / 20.0 / 2.0;
 
-                    if (in_laser_ && (location_progress_ < 0.8 || location_progress_ > 1))
+                    if (_in_laser && (_location_progress < 0.8 || _location_progress > 1))
                     {
-                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(_module);
                         if (!module)
                         {
                             stop();
-                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                            throw std::runtime_error("Tub " + std::to_string(_id) + " is owned by invalid module " + std::to_string(_module));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "right laser", false));
+                        (*module)->send(packet::SimulationUpdate(_module, "right laser", false));
                         (*module)->set_right_laser_active(false);
-                        in_laser_ = false;
+                        _in_laser = false;
                     }
 
-                    if (!in_laser_ && location_progress_ > 0.8 && location_progress_ < 1)
+                    if (!_in_laser && _location_progress > 0.8 && _location_progress < 1)
                     {
-                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(module_);
+                        const std::optional<std::shared_ptr<module::Module>> module = module::get_module(_module);
                         if (!module)
                         {
                             stop();
-                            throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                            throw std::runtime_error("Tub " + std::to_string(_id) + " is owned by invalid module " + std::to_string(_module));
                         }
 
-                        (*module)->send(packet::SimulationUpdate(module_, "right laser", true));
+                        (*module)->send(packet::SimulationUpdate(_module, "right laser", true));
                         (*module)->set_right_laser_active(true);
-                        in_laser_ = true;
+                        _in_laser = true;
                     }
                     break;
                 }
             }
 
+            std::cout << "eepy time" << std::endl;
             std::this_thread::sleep_for(TIMEOUT);
         }
     }
 
     void Tub::run()
     {
-        if (thread_ptr_)
+        if (_thread_ptr)
         {
             throw std::runtime_error("Double tub instantiation");
         }
 
-        thread_ptr_ = std::make_unique<std::thread>(
+        _thread_ptr = std::make_unique<std::thread>(
             [this]
             {
                 try
@@ -227,7 +231,7 @@ namespace tub
                 }
             });
 
-        std::cerr << "Started tub " << std::to_string(id_) << std::endl;
+        std::cerr << "Started tub " << std::to_string(_id) << std::endl;
     }
 
     void stop()

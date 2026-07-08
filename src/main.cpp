@@ -97,7 +97,7 @@ int main(int argc, char const *argv[])
     while (visualization::is_running())
     {
         events::fire_events(vclock, events);
-        visualization::update();
+        visualization::update(vclock);
         vclock.tick();
 
         try

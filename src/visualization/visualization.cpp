@@ -12,6 +12,7 @@
 
 #include "../module/module.h"
 #include "../settings.h"
+#include "../synchronization/virtual_clock.h"
 
 namespace visualization
 {
@@ -22,7 +23,7 @@ namespace visualization
     static SDL_Renderer *renderer_ = nullptr;
     static std::exception_ptr exception_ptr_ = nullptr;
 
-    static double big_belt_offset_ = 0.0;
+    static double _belt_offset = 0.0;
 
     // Simple 3x5 pixel font for digits 0-9
     const uint16_t PIXEL_FONT[10] = {
@@ -260,7 +261,7 @@ namespace visualization
         {
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150); // Light Green
             double step = 20.0;
-            double offset = fmod(big_belt_offset_ * (speed / 100.0), step);
+            double offset = fmod(_belt_offset * (speed / 100.0), step);
             int longer_dimension = height > width ? height : width;
             for (double l = -step; l < longer_dimension + step; l += step)
             {
@@ -359,7 +360,7 @@ namespace visualization
         {
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150); // Light Green
             double step = 20.0;
-            double offset = -fmod(big_belt_offset_ * (speed / 100.0), step);
+            double offset = -fmod(_belt_offset * (speed / 100.0), step);
             int longer_dimension = height > width ? height : width;
             for (double l = -step; l < longer_dimension + step; l += step)
             {
@@ -709,9 +710,9 @@ namespace visualization
         ::atexit(stop);
     }
 
-    uint32_t last_time = 0;
+    std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
 
-    void update()
+    void update(virtual_clock::VirtualClock &vclock)
     {
         if (!running_ || exception_ptr_)
         {
@@ -720,8 +721,6 @@ namespace visualization
 
         try
         {
-            last_time = SDL_GetTicks();
-
             SDL_Event e;
             while (SDL_PollEvent(&e) != 0)
             {
@@ -732,8 +731,13 @@ namespace visualization
                 }
             }
 
-            uint32_t current_time = SDL_GetTicks();
-            double dt = (current_time - last_time) / 1000.0;
+            if (last_time.count() == 0)
+            {
+                last_time = vclock.get_virtual_time();
+            }
+
+            const std::chrono::milliseconds current_time = vclock.get_virtual_time();
+            const std::chrono::milliseconds dt = current_time - last_time;
             last_time = current_time;
 
             SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
@@ -748,7 +752,11 @@ namespace visualization
 
             render_tubs();
 
-            big_belt_offset_ += settings::get_setting<double>("simulation_speed") * dt * 50.0;
+            draw_number(renderer_, 0, 0, current_time.count(), 3);
+            draw_number(renderer_, 100, 0, dt.count(), 3);
+            draw_number(renderer_, 200, 0, (int)_belt_offset, 3);
+
+            _belt_offset += (dt.count() / 16.0) * 0.5;
 
             SDL_RenderPresent(renderer_);
             SDL_Delay(16);

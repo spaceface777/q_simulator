@@ -49,7 +49,7 @@ namespace events
         util::require(module.has_value(), "No module with id " + std::to_string(_origin.id));
         (*module)->send(packet);
 
-        auto tub_ptr = std::make_unique<tub::Tub>(_id, _origin.id, _destination.id, ModuleLocation::BOTTOM_BELT);
+        auto tub_ptr = std::make_unique<tub::Tub>(_id, _origin.id, _destination.id, ModuleLocation::SMALL_BELT);
         tub_ptr->run();
         tub::add_tub(std::move(tub_ptr));
 

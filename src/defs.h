@@ -32,7 +32,7 @@ enum ModuleLocation
 {
     LEFT_BELT,
     RIGHT_BELT,
-    BOTTOM_BELT,
+    SMALL_BELT,
 };
 
 #endif
