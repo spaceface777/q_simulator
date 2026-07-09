@@ -80,6 +80,8 @@ namespace client
                 std::this_thread::sleep_for(TIMEOUT);
             }
         }
+
+        close(fd_);
     }
 
     void Client::run()
@@ -131,6 +133,7 @@ namespace client
             val->queue(packet::Shutdown());
         }
         map.clear();
+        stop();
     }
 
     void rethrow()

@@ -168,7 +168,7 @@ namespace server
         if (sent)
         {
             const packet::ModulePacket packet = sent.value();
-            std::cout << "Received packet send request to " << std::to_string(packet.module()) << " with content " << packet.content() << std::endl;
+            // std::cout << "Received packet send request to " << std::to_string(packet.module()) << " with content " << packet.content() << std::endl;
             send(packet.module(), packet);
             return;
         }
@@ -288,6 +288,11 @@ namespace server
         stopped = true;
 
         client::close_clients();
+
+        for (size_t i = 0; i < fds.size(); i++)
+        {
+            close(fds[i]);
+        }
 
         if (thread_ptr_->joinable())
         {

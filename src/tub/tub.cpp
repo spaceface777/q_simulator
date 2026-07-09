@@ -12,9 +12,9 @@ namespace tub
 {
 
     static constexpr double RFID_LOCATION = 0.5;
-    static constexpr double RFID_RANGE = 0.15;
+    static constexpr double RFID_RANGE = 0.1;
 
-    static constexpr double LASER_LOCATION = 0.7;
+    static constexpr double LASER_LOCATION = 0.75;
     static constexpr double LASER_RANGE = 0.1;
 
     static std::exception_ptr exception_ptr;

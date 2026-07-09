@@ -9,6 +9,8 @@
 #include <atomic>
 #include <memory>
 #include <vector>
+#include <sstream>
+#include <iomanip>
 
 #include "../module/module.h"
 #include "../settings.h"
@@ -25,8 +27,7 @@ namespace visualization
 
     static double _belt_offset = 0.0;
 
-    // Simple 3x5 pixel font for digits 0-9
-    const uint16_t PIXEL_FONT[10] = {
+    const uint16_t PIXEL_FONT[13] = {
         0x7B6F, // 0: 111, 101, 101, 101, 111
         0x2492, // 1: 010, 010, 010, 010, 010
         0x73E7, // 2: 111, 001, 111, 100, 111
@@ -36,12 +37,15 @@ namespace visualization
         0x79EF, // 6: 111, 100, 111, 101, 111
         0x7292, // 7: 111, 001, 010, 010, 010
         0x7BEF, // 8: 111, 101, 111, 101, 111
-        0x7BCF  // 9: 111, 101, 111, 001, 111
+        0x7BCF, // 9: 111, 101, 111, 001, 111
+        0x5AAD, // x: 101, 101, 010, 101, 101
+        0x2E93, // t: 010, 111, 010, 010, 011
+        0x410,  // :: 000, 010, 000, 010, 000
     };
 
     static void draw_digit(SDL_Renderer *renderer, int x, int y, int digit, int scale)
     {
-        if (digit < 0 || digit > 9)
+        if (digit < 0 || digit > 12)
         {
             return;
         }
@@ -66,6 +70,13 @@ namespace visualization
         SDL_RenderFillRect(renderer, &r);
     }
 
+    static void draw_dot(SDL_Renderer *renderer, int x, int y, int scale)
+    {
+        SDL_Rect r = {x + scale, y + 4 * scale, scale, scale};
+        SDL_RenderFillRect(renderer, &r);
+    }
+
+    // Overload to draw integers
     static void draw_number(SDL_Renderer *renderer, int x, int y, int number, int scale)
     {
         std::string s = std::to_string(number);
@@ -74,6 +85,52 @@ namespace visualization
             if (s[i] == '-')
             {
                 draw_minus(renderer, x + i * 4 * scale, y, scale);
+            }
+            else
+            {
+                draw_digit(renderer, x + i * 4 * scale, y, s[i] - '0', scale);
+            }
+        }
+    }
+
+    static void draw_number(SDL_Renderer *renderer, int x, int y, double number, int scale, bool append_x = false, bool add_t = false)
+    {
+        std::stringstream ss;
+
+        if (add_t)
+        {
+            ss << "t:";
+        }
+
+        ss << std::fixed << std::setprecision(1) << number;
+        std::string s = ss.str();
+
+        if (append_x)
+        {
+            s += "x";
+        }
+
+        for (size_t i = 0; i < s.length(); ++i)
+        {
+            if (s[i] == '-')
+            {
+                draw_minus(renderer, x + i * 4 * scale, y, scale);
+            }
+            else if (s[i] == '.')
+            {
+                draw_dot(renderer, x + i * 4 * scale, y, scale);
+            }
+            else if (s[i] == 'x')
+            {
+                draw_digit(renderer, x + i * 4 * scale, y, 10, scale); // 10 is index of 'x'
+            }
+            else if (s[i] == 't')
+            {
+                draw_digit(renderer, x + i * 4 * scale, y, 11, scale); // 11 is index of 'x'
+            }
+            else if (s[i] == ':')
+            {
+                draw_digit(renderer, x + i * 4 * scale, y, 12, scale); // 12 is index of 'x'
             }
             else
             {
@@ -156,12 +213,11 @@ namespace visualization
         uint8_t b = (color >> 16) & 0xFF;
         uint8_t a = (color >> 24) & 0xFF;
         if (a == 0)
-            a = 255; // Ensure visibility for 0xRRGGBB colors
+            a = 255;
 
         SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(_renderer, r, g, b, a);
 
-        // Draw a small circle
         int radius = 6;
         for (int w = -radius; w <= radius; w++)
         {
@@ -174,7 +230,6 @@ namespace visualization
             }
         }
 
-        // Add a small highlight for a 3D effect
         SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 150);
         SDL_RenderDrawPoint(_renderer, x - 2, y - 2);
     }
@@ -217,7 +272,7 @@ namespace visualization
         }
 
         SDL_Rect rfid_rect = {module_x + rfid_rel_x - 10, module_y + rfid_rel_y - 10, 20, 20};
-        SDL_SetRenderDrawColor(_renderer, 255, 0, 0, 255); // Red
+        SDL_SetRenderDrawColor(_renderer, 255, 0, 0, 255);
         SDL_RenderFillRect(_renderer, &rfid_rect);
     }
 
@@ -246,23 +301,21 @@ namespace visualization
             throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         };
 
-        // Belt surface
         SDL_Rect belt = {belt_x, belt_y, width, height};
 
         if (is_running)
         {
-            SDL_SetRenderDrawColor(_renderer, 34, 139, 34, 255); // Forest Green
+            SDL_SetRenderDrawColor(_renderer, 34, 139, 34, 255);
         }
         else
         {
-            SDL_SetRenderDrawColor(_renderer, 40, 40, 40, 255); // Dark Gray
+            SDL_SetRenderDrawColor(_renderer, 40, 40, 40, 255);
         }
         SDL_RenderFillRect(_renderer, &belt);
 
-        // Belt border
         if (is_running)
         {
-            SDL_SetRenderDrawColor(_renderer, 50, 205, 50, 255); // Lime Green
+            SDL_SetRenderDrawColor(_renderer, 50, 205, 50, 255);
         }
         else
         {
@@ -270,10 +323,9 @@ namespace visualization
         }
         SDL_RenderDrawRect(_renderer, &belt);
 
-        // Animation lines
         if (is_running && speed != 0)
         {
-            SDL_SetRenderDrawColor(_renderer, 144, 238, 144, 150); // Light Green
+            SDL_SetRenderDrawColor(_renderer, 144, 238, 144, 150);
             double step = 20.0;
             double offset = fmod(_belt_offset * (-speed / 100.0), step);
             int longer_dimension = height > width ? height : width;
@@ -345,23 +397,21 @@ namespace visualization
             throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         }
 
-        // Belt surface
         SDL_Rect belt = {belt_x, belt_y, width, height};
 
         if (is_running)
         {
-            SDL_SetRenderDrawColor(_renderer, 34, 139, 34, 255); // Forest Green
+            SDL_SetRenderDrawColor(_renderer, 34, 139, 34, 255);
         }
         else
         {
-            SDL_SetRenderDrawColor(_renderer, 40, 40, 40, 255); // Dark Gray
+            SDL_SetRenderDrawColor(_renderer, 40, 40, 40, 255);
         }
         SDL_RenderFillRect(_renderer, &belt);
 
-        // Belt border
         if (is_running)
         {
-            SDL_SetRenderDrawColor(_renderer, 50, 205, 50, 255); // Lime Green
+            SDL_SetRenderDrawColor(_renderer, 50, 205, 50, 255);
         }
         else
         {
@@ -374,7 +424,7 @@ namespace visualization
         {
             draw_number(_renderer, belt_x, belt_y, speed, 2);
 
-            SDL_SetRenderDrawColor(_renderer, 144, 238, 144, 150); // Light Green
+            SDL_SetRenderDrawColor(_renderer, 144, 238, 144, 150);
             double step = 20.0;
             double offset = -fmod(_belt_offset * (-speed / 100.0), step);
             int longer_dimension = height > width ? height : width;
@@ -455,7 +505,7 @@ namespace visualization
             throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
         }
 
-        SDL_SetRenderDrawColor(_renderer, 255, 0, 0, 255); // Red
+        SDL_SetRenderDrawColor(_renderer, 255, 0, 0, 255);
         int thickness = 2;
         SDL_Rect beam;
         if (x1 == x2)
@@ -468,7 +518,6 @@ namespace visualization
         }
         SDL_RenderFillRect(_renderer, &beam);
 
-        // Draw small sensor dots at the ends of the laser line
         SDL_SetRenderDrawColor(_renderer, 100, 100, 100, 255);
         SDL_Rect dot1 = {x1 - 2, y1 - 2, 4, 4};
         SDL_Rect dot2 = {x2 - 2, y2 - 2, 4, 4};
@@ -517,7 +566,7 @@ namespace visualization
         double end_rel_x = pivot_rel_x + length * cos(total_angle_rad);
         double end_rel_y = pivot_rel_y + length * sin(total_angle_rad);
 
-        SDL_SetRenderDrawColor(_renderer, 200, 200, 200, 255); // Light Gray
+        SDL_SetRenderDrawColor(_renderer, 200, 200, 200, 255);
         int x1 = module_x + static_cast<int>(pivot_rel_x);
         int y1 = module_y + static_cast<int>(pivot_rel_y);
         int x2 = module_x + static_cast<int>(end_rel_x);
@@ -536,7 +585,6 @@ namespace visualization
             }
         }
 
-        // Draw the pivot point
         SDL_SetRenderDrawColor(_renderer, 50, 50, 50, 255);
         SDL_Rect pivot_rect = {x1 - 4, y1 - 4, 8, 8};
         SDL_RenderFillRect(_renderer, &pivot_rect);
@@ -558,32 +606,7 @@ namespace visualization
             get_module_coords(tub->module(), module_x, module_y);
 
             double rel_x = 0, rel_y = 0;
-            if (tub->module_location() == ModuleLocation::LEFT_BELT)
-            {
-                switch (module_settings.angle)
-                {
-                case 0:
-                    rel_x = tub->module_location_progress() * 90.0;
-                    rel_y = 90.0;
-                    break;
-                case 90:
-                    rel_x = 90.0;
-                    rel_y = tub->module_location_progress() * 90.0;
-                    break;
-                case 180:
-                    rel_x = (1.0 - tub->module_location_progress()) * 90.0;
-                    rel_y = 90.0;
-                    break;
-                case 270:
-                    rel_x = 90.0;
-                    rel_y = (1.0 - tub->module_location_progress()) * 90.0;
-                    break;
-
-                default:
-                    throw std::invalid_argument("Invalid module angle " + std::to_string(module_settings.angle));
-                }
-            }
-            else if (tub->module_location() == ModuleLocation::RIGHT_BELT)
+            if (tub->module_location() == ModuleLocation::LEFT_BELT || tub->module_location() == ModuleLocation::RIGHT_BELT)
             {
                 switch (module_settings.angle)
                 {
@@ -637,7 +660,6 @@ namespace visualization
             int x = module_x + (int)rel_x;
             int y = module_y + (int)rel_y;
 
-            // Draw tub (blue circle)
             SDL_SetRenderDrawColor(_renderer, 255, 192, 203, 255);
             int radius = 10;
             for (int w = -radius; w <= radius; w++)
@@ -651,7 +673,6 @@ namespace visualization
                 }
             }
 
-            // Draw tub ID
             SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
             draw_number(_renderer, x - 4, y - 6, tub->id(), 1);
         }
@@ -659,7 +680,6 @@ namespace visualization
 
     static void render_module(int module_id, int x, int y)
     {
-
         const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(module_id);
         if (!module_opt)
         {
@@ -669,35 +689,21 @@ namespace visualization
         const std::shared_ptr<module::Module> module = module_opt.value();
         const settings::ModuleSettings module_settings = settings::get_module_settings(module_id);
 
-        // Draw module background
         SDL_Rect bg = {x, y, 180, 180};
         SDL_SetRenderDrawColor(_renderer, 60, 60, 60, 255);
         SDL_RenderFillRect(_renderer, &bg);
 
-        // Draw module ID border
         SDL_SetRenderDrawColor(_renderer, 200, 200, 200, 255);
         SDL_RenderDrawRect(_renderer, &bg);
 
-        // Draw module ID text
         SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
         draw_number(_renderer, x + 5, y + 5, module_id, 2);
 
-        // Render Big Belt
         render_big_belt(x, y, module->big_belt_speed(), module->big_belt_speed() != 0, module_settings.angle);
-
-        // Render Small Belt
         render_small_belt(x, y, module->small_belt_speed(), module->small_belt_speed() != 0, module_settings.angle);
-
-        // Render LED
         render_led(x, y, module->led_color(), module_settings.angle);
-
-        // Render RFID
         render_rfid(x, y, module->is_rfid_active(), module_settings.angle);
-
-        // Render Servo
         render_servo(x, y, module->servo_angle(), module_settings.angle);
-
-        // Render Lasers
         render_laser(x, y, module->is_left_laser_active(), true, true, module_settings.angle);
         render_laser(x, y, module->is_right_laser_active(), true, false, module_settings.angle);
     }
@@ -742,13 +748,9 @@ namespace visualization
         if (!_renderer)
         {
             std::cerr << "Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-            SDL_DestroyWindow(_window);
-            SDL_Quit();
-            _running = false;
+            stop();
             return;
         }
-
-        ::atexit(stop);
     }
 
     std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
@@ -765,10 +767,9 @@ namespace visualization
             SDL_Event e;
             while (SDL_PollEvent(&e) != 0)
             {
-                if (e.type == SDL_QUIT)
+                if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE)
                 {
                     stop();
-                    return;
                 }
             }
 
@@ -793,8 +794,9 @@ namespace visualization
 
             render_tubs();
 
-            draw_number(_renderer, 0, 0, current_time.count(), 3);
-            draw_number(_renderer, 100, 0, dt.count(), 3);
+            SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
+            draw_number(_renderer, 0, 0, settings::get_setting<double>("simulation_speed"), 3, true);
+            draw_number(_renderer, 75, 0, current_time.count() / 1000.0, 3, false, true);
 
             _belt_offset += (dt.count() / 16.0) * 0.3;
 
@@ -812,7 +814,6 @@ namespace visualization
         return _running && !_exception_ptr;
     }
 
-    // === Added rethrow management ===
     void rethrow()
     {
         if (_exception_ptr)
