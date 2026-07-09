@@ -17,7 +17,7 @@ namespace events
     {
     protected:
         unsigned int _time;
-        unsigned int _id;
+        unsigned int id_;
 
     public:
         virtual void fire() const = 0;
@@ -35,7 +35,7 @@ namespace events
          */
         unsigned int id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         bool operator==(const Event& other) const {
@@ -50,16 +50,16 @@ namespace events
      */
     class PlaneEvent : public Event
     {
-        uint8_t _module;
-        unsigned int _leaves_in;
+        uint8_t module_;
+        unsigned int leaves_in_;
 
     public:
         PlaneEvent(uint8_t time, uint8_t id, uint8_t module, unsigned int leaves_in)
         {
             _time = time;
-            _id = id;
-            _module = module;
-            _leaves_in = leaves_in;
+            id_ = id;
+            module_ = module;
+            leaves_in_ = leaves_in;
         }
 
         /**
@@ -67,7 +67,7 @@ namespace events
          */
         uint8_t module() const noexcept
         {
-            return _module;
+            return module_;
         }
 
         /**
@@ -75,7 +75,7 @@ namespace events
          */
         unsigned int leaves_in() const noexcept
         {
-            return _leaves_in;
+            return leaves_in_;
         }
 
         virtual void fire() const override;
@@ -98,7 +98,7 @@ namespace events
      */
     class TubEvent : public Event
     {
-        bool _safe;
+        bool safe_;
         TubData _origin;
         TubData _destination;
 
@@ -106,8 +106,8 @@ namespace events
         TubEvent(unsigned int time, uint8_t id, bool safe, TubData origin, TubData destination)
         {
             _time = time;
-            _id = id;
-            _safe = safe;
+            id_ = id;
+            safe_ = safe;
             _origin = origin;
             _destination = destination;
         }
@@ -117,7 +117,7 @@ namespace events
          */
         bool safe() const noexcept
         {
-            return _safe;
+            return safe_;
         }
 
         /**

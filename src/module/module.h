@@ -18,8 +18,8 @@ namespace module
     {
     private:
         pid_t _pid;
-        uint8_t _id;
-        bool _running = false;
+        uint8_t id_;
+        bool running_ = false;
 
         int8_t _big_speed = 0;
         int8_t _small_speed = 0;
@@ -32,7 +32,7 @@ namespace module
     public:
         Module(uint8_t id)
         {
-            _id = id;
+            id_ = id;
         }
 
         /**
@@ -48,7 +48,7 @@ namespace module
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         /**
@@ -56,7 +56,7 @@ namespace module
          */
         bool is_running() const noexcept
         {
-            return _running;
+            return running_;
         }
 
         /**

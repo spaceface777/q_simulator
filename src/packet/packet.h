@@ -52,12 +52,12 @@ namespace packet
     class Introduction : public Packet
     {
     private:
-        uint8_t _id;
+        uint8_t id_;
 
     public:
         Introduction(uint8_t id)
         {
-            _id = id;
+            id_ = id;
         }
 
         /**
@@ -65,7 +65,7 @@ namespace packet
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         bool is_valid() const noexcept override;
@@ -83,16 +83,16 @@ namespace packet
     class ModuleUpdate : public Packet
     {
     private:
-        uint8_t _id;
-        std::string _device;
-        int _value;
+        uint8_t id_;
+        std::string device_;
+        int value_;
 
     public:
         ModuleUpdate(uint8_t id, std::string device, int value)
         {
-            _id = id;
-            _device = device;
-            _value = value;
+            id_ = id;
+            device_ = device;
+            value_ = value;
         }
 
         /**
@@ -100,7 +100,7 @@ namespace packet
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         /**
@@ -108,7 +108,7 @@ namespace packet
          */
         std::string device() const noexcept
         {
-            return _device;
+            return device_;
         }
 
         /**
@@ -116,7 +116,7 @@ namespace packet
          */
         int value() const noexcept
         {
-            return _value;
+            return value_;
         }
 
         bool is_valid() const noexcept override;
@@ -134,16 +134,16 @@ namespace packet
     class SimulationUpdate : public Packet
     {
     private:
-        uint8_t _id;
-        std::string _device;
-        int _value;
+        uint8_t id_;
+        std::string device_;
+        int value_;
 
     public:
         SimulationUpdate(uint8_t id, std::string device, int value)
         {
-            _id = id;
-            _device = device;
-            _value = value;
+            id_ = id;
+            device_ = device;
+            value_ = value;
         }
 
         /**
@@ -151,7 +151,7 @@ namespace packet
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         /**
@@ -159,7 +159,7 @@ namespace packet
          */
         std::string device() const noexcept
         {
-            return _device;
+            return device_;
         }
 
         /**
@@ -167,7 +167,7 @@ namespace packet
          */
         int value() const noexcept
         {
-            return _value;
+            return value_;
         }
 
         bool is_valid() const noexcept override;
@@ -178,14 +178,14 @@ namespace packet
     class ModulePacket : public Packet
     {
     private:
-        uint8_t _module;
+        uint8_t module_;
         std::size_t _length;
         std::string _content;
 
     public:
         ModulePacket(uint8_t module, std::size_t length, std::string content)
         {
-            _module = module;
+            module_ = module;
             _length = length;
             _content = content;
         }
@@ -195,7 +195,7 @@ namespace packet
          */
         uint8_t module() const noexcept
         {
-            return _module;
+            return module_;
         }
 
         /**
@@ -229,18 +229,18 @@ namespace packet
     class TubArrival : public Packet
     {
     private:
-        uint8_t _id;
-        uint8_t _module;
+        uint8_t id_;
+        uint8_t module_;
         uint8_t _destination;
-        bool _safe;
+        bool safe_;
 
     public:
         TubArrival(uint8_t id, uint8_t module, uint8_t destination, bool safe)
         {
-            _id = id;
-            _module = module;
+            id_ = id;
+            module_ = module;
             _destination = destination;
-            _safe = safe;
+            safe_ = safe;
         }
 
         /**
@@ -248,7 +248,7 @@ namespace packet
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         /**
@@ -256,7 +256,7 @@ namespace packet
          */
         uint8_t module() const noexcept
         {
-            return _module;
+            return module_;
         }
 
         /**
@@ -272,7 +272,7 @@ namespace packet
          */
         bool safe() const noexcept
         {
-            return _safe;
+            return safe_;
         }
 
         bool is_valid() const noexcept override;
@@ -283,14 +283,14 @@ namespace packet
     class TubDeparture : public Packet
     {
     private:
-        uint8_t _id;
-        uint8_t _module;
+        uint8_t id_;
+        uint8_t module_;
 
     public:
         TubDeparture(uint8_t id, uint8_t module)
         {
-            _id = id;
-            _module = module;
+            id_ = id;
+            module_ = module;
         }
 
         /**
@@ -298,7 +298,7 @@ namespace packet
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         /**
@@ -306,7 +306,7 @@ namespace packet
          */
         uint8_t module() const noexcept
         {
-            return _module;
+            return module_;
         }
 
         bool is_valid() const noexcept override;
@@ -317,16 +317,16 @@ namespace packet
     class PlaneArrival : public Packet
     {
     private:
-        uint8_t _id;
-        uint8_t _module;
-        unsigned int _leaves_in;
+        uint8_t id_;
+        uint8_t module_;
+        unsigned int leaves_in_;
 
     public:
         PlaneArrival(uint8_t id, uint8_t module, unsigned int leaves_in)
         {
-            _id = id;
-            _module = module;
-            _leaves_in = leaves_in;
+            id_ = id;
+            module_ = module;
+            leaves_in_ = leaves_in;
         }
 
         /**
@@ -334,7 +334,7 @@ namespace packet
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         /**
@@ -342,7 +342,7 @@ namespace packet
          */
         uint8_t module() const noexcept
         {
-            return _module;
+            return module_;
         }
 
         /**
@@ -350,7 +350,7 @@ namespace packet
          */
         unsigned int leaves_in() const noexcept
         {
-            return _leaves_in;
+            return leaves_in_;
         }
 
         bool is_valid() const noexcept override;
@@ -360,14 +360,14 @@ namespace packet
     class PlaneDeparture : public Packet
     {
     private:
-        uint8_t _id;
-        uint8_t _module;
+        uint8_t id_;
+        uint8_t module_;
 
     public:
         PlaneDeparture(uint8_t id, uint8_t module)
         {
-            _id = id;
-            _module = module;
+            id_ = id;
+            module_ = module;
         }
 
         /**
@@ -375,7 +375,7 @@ namespace packet
          */
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         /**
@@ -383,7 +383,7 @@ namespace packet
          */
         uint8_t module() const noexcept
         {
-            return _module;
+            return module_;
         }
 
         bool is_valid() const noexcept override;

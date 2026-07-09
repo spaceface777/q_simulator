@@ -26,7 +26,7 @@ namespace events
 
     void PlaneEvent::fire() const
     {
-        auto packet = packet::PlaneArrival(_id, _module, _leaves_in);
+        auto packet = packet::PlaneArrival(id_, module_, leaves_in_);
 
         for (const auto &module : module::get_modules())
         {
@@ -43,13 +43,13 @@ namespace events
 
     void TubEvent::fire() const
     {
-        const auto packet = packet::TubArrival(_id, _origin.id, _destination.id, _safe);
+        const auto packet = packet::TubArrival(id_, _origin.id, _destination.id, safe_);
         const auto module = module::get_module(_origin.id);
 
         util::require(module.has_value(), "No module with id " + std::to_string(_origin.id));
         (*module)->send(packet);
 
-        auto tub_ptr = std::make_unique<tub::Tub>(_id, _origin.id, _destination.id, ModuleLocation::SMALL_BELT);
+        auto tub_ptr = std::make_unique<tub::Tub>(id_, _origin.id, _destination.id, ModuleLocation::SMALL_BELT);
         tub_ptr->run();
         tub::add_tub(std::move(tub_ptr));
 

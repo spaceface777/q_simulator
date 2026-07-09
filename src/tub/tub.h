@@ -15,40 +15,40 @@ namespace tub
     class Tub
     {
     private:
-        uint8_t _id;
-        uint8_t _module;
-        ModuleLocation _location = ModuleLocation::SMALL_BELT;
+        uint8_t id_;
+        uint8_t module_;
+        ModuleLocation location_ = ModuleLocation::SMALL_BELT;
 
-        uint8_t _target_module;
-        ModuleLocation _target_module_location;
+        uint8_t target_module_;
+        ModuleLocation target_module_location_;
 
-        bool _in_laser = false;
-        bool _in_rfid = false;
+        bool in_laser_ = false;
+        bool in_rfid_ = false;
         // 0 = middle, 1 = extremity
-        double _location_progress = 0.5;
-        std::unique_ptr<std::thread> _thread_ptr;
+        double location_progress_ = 0.5;
+        std::unique_ptr<std::thread> thread_ptr_;
 
     public:
-        Tub(uint8_t id, uint8_t module, uint8_t target_module, ModuleLocation target_module_location) : _id(id), _module(module), _target_module(target_module), _target_module_location(target_module_location)
+        Tub(uint8_t id, uint8_t module, uint8_t target_module, ModuleLocation target_module_location) : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location)
         {
         }
 
         ~Tub()
         {
-            if (_thread_ptr && _thread_ptr->joinable())
+            if (thread_ptr_ && thread_ptr_->joinable())
             {
-                _thread_ptr->join();
+                thread_ptr_->join();
             }
         }
 
         uint8_t id() const noexcept
         {
-            return _id;
+            return id_;
         }
 
         uint8_t module() const noexcept
         {
-            return _module;
+            return module_;
         }
 
         /**
@@ -56,12 +56,12 @@ namespace tub
          */
         ModuleLocation module_location() const noexcept
         {
-            return _location;
+            return location_;
         }
 
         uint8_t target_module() const noexcept
         {
-            return _target_module;
+            return target_module_;
         }
 
         /**
@@ -69,7 +69,7 @@ namespace tub
          */
         ModuleLocation target_module_location() const noexcept
         {
-            return _target_module_location;
+            return target_module_location_;
         }
 
         /**
@@ -78,7 +78,7 @@ namespace tub
          */
         double module_location_progress() const noexcept
         {
-            return _location_progress;
+            return location_progress_;
         }
 
     private:

@@ -87,7 +87,7 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "introduction");
-        append_value(buf, "id", _id);
+        append_value(buf, "id", id_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -142,7 +142,7 @@ namespace packet
 
     bool ModuleUpdate::is_valid() const noexcept
     {
-        if (_device.empty())
+        if (device_.empty())
         {
             return false;
         }
@@ -154,9 +154,9 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "update");
-        append_value(buf, "id", _id);
-        append_value(buf, "device", _device);
-        append_value(buf, "value", _value);
+        append_value(buf, "id", id_);
+        append_value(buf, "device", device_);
+        append_value(buf, "value", value_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -235,7 +235,7 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "packet");
-        append_value(buf, "module", _module);
+        append_value(buf, "module", module_);
         append_value(buf, "length", _length);
         append_value(buf, "content", _content);
         trim_trailing_nl(buf);
@@ -305,16 +305,16 @@ namespace packet
     bool SimulationUpdate::is_valid() const noexcept
     {
         // Device name must not be empty
-        return !_device.empty();
+        return !device_.empty();
     }
 
     std::string SimulationUpdate::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "update.simulation");
-        append_value(buf, "id", _id);
-        append_value(buf, "device", _device);
-        append_value(buf, "value", _value);
+        append_value(buf, "id", id_);
+        append_value(buf, "device", device_);
+        append_value(buf, "value", value_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -333,10 +333,10 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "tub.arrival");
-        append_value(buf, "id", _id);
-        append_value(buf, "module", _module);
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
         append_value(buf, "destination", _destination);
-        append_value(buf, "safe", _safe);
+        append_value(buf, "safe", safe_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -355,8 +355,8 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "tub.departure");
-        append_value(buf, "id", _id);
-        append_value(buf, "module", _module);
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -375,9 +375,9 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "plane.arrival");
-        append_value(buf, "id", _id);
-        append_value(buf, "module", _module);
-        append_value(buf, "leaves_in", _leaves_in);
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
+        append_value(buf, "leaves_in", leaves_in_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -391,8 +391,8 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "plane.departure");
-        append_value(buf, "id", _id);
-        append_value(buf, "module", _module);
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
         trim_trailing_nl(buf);
         return buf;
     }

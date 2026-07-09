@@ -25,8 +25,13 @@
 #include "../defs.h"
 #include "../module/module.h"
 
+#include <future>
+
 namespace server
 {
+    static std::future<void> server_future_;
+    static std::atomic_bool stopped = false;
+
     inline constexpr int PORT = 7777;
 
     static std::unique_ptr<std::thread> thread_ptr_;
@@ -264,23 +269,10 @@ namespace server
 
     void run()
     {
-        if (thread_ptr_)
-        {
-            throw std::runtime_error("Double tub instantiation");
-        }
+        util::require(!stopped, "Cannot run two servers");
 
-        thread_ptr_ = std::make_unique<std::thread>(
-            []
-            {
-                try
-                {
-                    _run();
-                }
-                catch (...)
-                {
-                    exception_ptr = std::current_exception();
-                }
-            });
+        server_future_ = std::async(std::launch::async, []
+                                    { _run(); });
     }
 
     void stop()

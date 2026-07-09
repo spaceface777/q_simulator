@@ -29,20 +29,20 @@ namespace tub
             // angle > 90 = left
             // angle <= 90 = right
 
-            const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(_module);
+            const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(module_);
             if (!module_opt)
             {
                 stop();
-                throw std::runtime_error("Tub " + std::to_string(_id) + " is owned by invalid module " + std::to_string(_module));
+                throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
             }
             const std::shared_ptr<module::Module> module = module_opt.value();
-            const settings::ModuleSettings settings = settings::get_module_settings(_module);
+            const settings::ModuleSettings settings = settings::get_module_settings(module_);
 
-            if (_location_progress > 1)
+            if (location_progress_ > 1)
             {
-                const uint8_t old_module = _module;
+                const uint8_t old_module = module_;
                 uint8_t new_module = -1;
-                switch (_location)
+                switch (location_)
                 {
                 case ModuleLocation::SMALL_BELT:
                     new_module = settings.bottom;
@@ -58,15 +58,15 @@ namespace tub
                 const settings::ModuleSettings new_settings = settings::get_module_settings(new_module);
                 if (new_settings.bottom == old_module)
                 {
-                    _location = ModuleLocation::SMALL_BELT;
+                    location_ = ModuleLocation::SMALL_BELT;
                 }
                 else if (new_settings.left == old_module)
                 {
-                    _location = ModuleLocation::LEFT_BELT;
+                    location_ = ModuleLocation::LEFT_BELT;
                 }
                 else if (new_settings.right == old_module)
                 {
-                    _location = ModuleLocation::RIGHT_BELT;
+                    location_ = ModuleLocation::RIGHT_BELT;
                 }
                 else
                 {
@@ -74,99 +74,99 @@ namespace tub
                     throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(new_module) + " are not connected in settings.toml");
                 }
 
-                _location_progress = 1;
-                _module = new_module;
+                location_progress_ = 1;
+                module_ = new_module;
             }
-            else if (_location_progress < 0)
+            else if (location_progress_ < 0)
             {
-                switch (_location)
+                switch (location_)
                 {
                 case ModuleLocation::SMALL_BELT:
                     if (module->servo_angle() > 90)
                     {
-                        _location = ModuleLocation::RIGHT_BELT;
+                        location_ = ModuleLocation::RIGHT_BELT;
                     }
                     else
                     {
-                        _location = ModuleLocation::LEFT_BELT;
+                        location_ = ModuleLocation::LEFT_BELT;
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
                     if (module->servo_angle() < 10)
                     {
-                        _location = ModuleLocation::RIGHT_BELT;
+                        location_ = ModuleLocation::RIGHT_BELT;
                     }
                     else
                     {
-                        _location = ModuleLocation::SMALL_BELT;
+                        location_ = ModuleLocation::SMALL_BELT;
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
                     if (module->servo_angle() > 170)
                     {
-                        _location = ModuleLocation::LEFT_BELT;
+                        location_ = ModuleLocation::LEFT_BELT;
                     }
                     else
                     {
-                        _location = ModuleLocation::SMALL_BELT;
+                        location_ = ModuleLocation::SMALL_BELT;
                     }
                     break;
                 }
-                _location_progress = 0;
+                location_progress_ = 0;
             }
             else
             {
                 const double simulation_speed = settings::get_setting<double>("simulation_speed");
 
-                switch (_location)
+                switch (location_)
                 {
                 case ModuleLocation::SMALL_BELT:
-                    _location_progress += simulation_speed * module->small_belt_speed() / 100.0 / 60.0 / 4.0;
+                    location_progress_ += simulation_speed * module->small_belt_speed() / 100.0 / 60.0 / 4.0;
 
-                    if (_in_rfid && (_location_progress < RFID_LOCATION - RFID_RANGE || _location_progress > RFID_LOCATION + RFID_RANGE))
+                    if (in_rfid_ && (location_progress_ < RFID_LOCATION - RFID_RANGE || location_progress_ > RFID_LOCATION + RFID_RANGE))
                     {
-                        module->send(packet::SimulationUpdate(_module, "rfid", false));
+                        module->send(packet::SimulationUpdate(module_, "rfid", false));
                         module->set_rfid_active(false);
-                        _in_rfid = false;
+                        in_rfid_ = false;
                     }
-                    else if (!_in_rfid && _location_progress > RFID_LOCATION - RFID_RANGE && _location_progress < RFID_LOCATION + RFID_RANGE)
+                    else if (!in_rfid_ && location_progress_ > RFID_LOCATION - RFID_RANGE && location_progress_ < RFID_LOCATION + RFID_RANGE)
                     {
-                        module->send(packet::SimulationUpdate(_module, "rfid", true));
+                        module->send(packet::SimulationUpdate(module_, "rfid", true));
                         module->set_rfid_active(true);
-                        _in_rfid = true;
+                        in_rfid_ = true;
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    _location_progress += simulation_speed * -module->big_belt_speed() / 100.0 / 60.0 / 4.0;
+                    location_progress_ += simulation_speed * -module->big_belt_speed() / 100.0 / 60.0 / 4.0;
 
-                    if (_in_laser && (_location_progress < LASER_LOCATION - LASER_RANGE || _location_progress > LASER_LOCATION + LASER_RANGE))
+                    if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {
-                        module->send(packet::SimulationUpdate(_module, "left laser", false));
+                        module->send(packet::SimulationUpdate(module_, "left laser", false));
                         module->set_left_laser_active(false);
-                        _in_laser = false;
+                        in_laser_ = false;
                     }
-                    else if (!_in_laser && _location_progress > LASER_LOCATION - LASER_RANGE && _location_progress < LASER_LOCATION + LASER_RANGE)
+                    else if (!in_laser_ && location_progress_ > LASER_LOCATION - LASER_RANGE && location_progress_ < LASER_LOCATION + LASER_RANGE)
                     {
 
-                        module->send(packet::SimulationUpdate(_module, "left laser", true));
+                        module->send(packet::SimulationUpdate(module_, "left laser", true));
                         module->set_left_laser_active(true);
-                        _in_laser = true;
+                        in_laser_ = true;
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    _location_progress += simulation_speed * module->big_belt_speed() / 100.0 / 60.0 / 4.0;
+                    location_progress_ += simulation_speed * module->big_belt_speed() / 100.0 / 60.0 / 4.0;
 
-                    if (_in_laser && (_location_progress < LASER_LOCATION - LASER_RANGE || _location_progress > LASER_LOCATION + LASER_RANGE))
+                    if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {
-                        module->send(packet::SimulationUpdate(_module, "right laser", false));
+                        module->send(packet::SimulationUpdate(module_, "right laser", false));
                         module->set_right_laser_active(false);
-                        _in_laser = false;
+                        in_laser_ = false;
                     }
-                    else if (!_in_laser && _location_progress > LASER_LOCATION - LASER_RANGE && _location_progress < LASER_LOCATION + LASER_RANGE)
+                    else if (!in_laser_ && location_progress_ > LASER_LOCATION - LASER_RANGE && location_progress_ < LASER_LOCATION + LASER_RANGE)
                     {
-                        module->send(packet::SimulationUpdate(_module, "right laser", true));
+                        module->send(packet::SimulationUpdate(module_, "right laser", true));
                         module->set_right_laser_active(true);
-                        _in_laser = true;
+                        in_laser_ = true;
                     }
                     break;
                 }
@@ -178,12 +178,12 @@ namespace tub
 
     void Tub::run()
     {
-        if (_thread_ptr)
+        if (thread_ptr_)
         {
             throw std::runtime_error("Double tub instantiation");
         }
 
-        _thread_ptr = std::make_unique<std::thread>(
+        thread_ptr_ = std::make_unique<std::thread>(
             [this]
             {
                 try
@@ -196,7 +196,7 @@ namespace tub
                 }
             });
 
-        std::cerr << "Started tub " << std::to_string(_id) << std::endl;
+        std::cerr << "Started tub " << std::to_string(id_) << std::endl;
     }
 
     void stop()

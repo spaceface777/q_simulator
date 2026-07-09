@@ -33,19 +33,19 @@ namespace module
 
 			const std::string id_path = "/tmp/qaid";
 			std::ofstream id_of(id_path);
-			util::require(id_of.is_open(), "Failed to create ofstream for " + std::to_string(_id));
+			util::require(id_of.is_open(), "Failed to create ofstream for " + std::to_string(id_));
 
-			id_of << std::to_string(_id);
+			id_of << std::to_string(id_);
 			id_of.flush();
 			id_of.close();
 
-			util::require(std::filesystem::exists(id_path), "Failed to create file for " + std::to_string(_id));
+			util::require(std::filesystem::exists(id_path), "Failed to create file for " + std::to_string(id_));
 
 			// exec
 
-			const std::string module_name = "Module " + std::to_string(_id);
-			_running = true;
-			std::cerr << "Starting module " << std::to_string(_id) << std::endl;
+			const std::string module_name = "Module " + std::to_string(id_);
+			running_ = true;
+			std::cerr << "Starting module " << std::to_string(id_) << std::endl;
 
 			const int success = ::execl(path.c_str(), module_name.c_str(), (char *)0);
 
@@ -55,7 +55,7 @@ namespace module
 
 	void Module::send(const packet::Packet &packet)
 	{
-		server::send(_id, packet);
+		server::send(id_, packet);
 	}
 
 	void Module::update(const packet::ModuleUpdate packet)
