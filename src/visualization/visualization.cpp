@@ -23,7 +23,6 @@ namespace visualization
 
     static SDL_Window *window_ = nullptr;
     static SDL_Renderer *renderer_ = nullptr;
-    static std::exception_ptr exception_ptr_ = nullptr;
 
     static double _belt_offset = 0.0;
 
@@ -757,71 +756,54 @@ namespace visualization
 
     void update(virtual_clock::VirtualClock &vclock)
     {
-        if (!running_ || exception_ptr_)
+        if (!running_)
         {
             return;
         }
 
-        try
+        SDL_Event e;
+        while (SDL_PollEvent(&e) != 0)
         {
-            SDL_Event e;
-            while (SDL_PollEvent(&e) != 0)
+            if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE)
             {
-                if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE)
-                {
-                    stop();
-                }
+                stop();
             }
-
-            if (last_time.count() == 0)
-            {
-                last_time = vclock.get_virtual_time();
-            }
-
-            const std::chrono::milliseconds current_time = vclock.get_virtual_time();
-            const std::chrono::milliseconds dt = current_time - last_time;
-            last_time = current_time;
-
-            SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
-            SDL_RenderClear(renderer_);
-
-            for (int i = 1; i <= settings::get_modules_active(); ++i)
-            {
-                int x, y;
-                get_module_coords(i, x, y);
-                render_module(i, x, y);
-            }
-
-            render_tubs();
-
-            SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-            draw_number(renderer_, 0, 0, settings::get_setting<double>("simulation_speed"), 3, true);
-            draw_number(renderer_, 75, 0, current_time.count() / 1000.0, 3, false, true);
-
-            _belt_offset += (dt.count() / 16.0) * 0.3;
-
-            SDL_RenderPresent(renderer_);
-            SDL_Delay(16);
         }
-        catch (...)
+
+        if (last_time.count() == 0)
         {
-            exception_ptr_ = std::current_exception();
+            last_time = vclock.get_virtual_time();
         }
+
+        const std::chrono::milliseconds current_time = vclock.get_virtual_time();
+        const std::chrono::milliseconds dt = current_time - last_time;
+        last_time = current_time;
+
+        SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
+        SDL_RenderClear(renderer_);
+
+        for (int i = 1; i <= settings::get_modules_active(); ++i)
+        {
+            int x, y;
+            get_module_coords(i, x, y);
+            render_module(i, x, y);
+        }
+
+        render_tubs();
+
+        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+        draw_number(renderer_, 0, 0, settings::get_setting<double>("simulation_speed"), 3, true);
+        draw_number(renderer_, 75, 0, current_time.count() / 1000.0, 3, false, true);
+
+        _belt_offset += (dt.count() / 16.0) * 0.3;
+
+        SDL_RenderPresent(renderer_);
+        SDL_Delay(16);
     }
 
     bool is_running()
     {
-        return running_ && !exception_ptr_;
-    }
-
-    void rethrow()
-    {
-        if (exception_ptr_)
-        {
-            stop();
-            std::cerr << "Rethrowing exception from visualization execution loop" << std::endl;
-            std::rethrow_exception(exception_ptr_);
-        }
+        return running_;
     }
 
 }

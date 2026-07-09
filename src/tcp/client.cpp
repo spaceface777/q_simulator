@@ -17,12 +17,16 @@
 
 namespace client
 {
-    static std::exception_ptr exception_ptr;
-    static std::atomic_bool stopped = false;
+
+    static std::map<uint8_t, std::shared_ptr<Client>> map;
 
     void stop()
     {
-        stopped = true;
+        for (auto &[key, val] : map)
+        {
+            val->queue(packet::Shutdown());
+        }
+        map.clear();
     }
 
     static void setup_connection(int fd, unsigned int port, unsigned int id)
@@ -40,7 +44,7 @@ namespace client
         }
     }
 
-    void Client::_run()
+    void Client::run_()
     {
         const Socket socket;
         if (!socket.is_valid())
@@ -54,7 +58,7 @@ namespace client
 
         std::cout << "Connected to module " << std::to_string(id_) << std::endl;
 
-        while (!stopped)
+        while (!stopped_)
         {
             std::unique_ptr<packet::Packet> packet;
             size_t current_size = 0;
@@ -86,27 +90,30 @@ namespace client
 
     void Client::run()
     {
-        if (thread_ptr_)
-        {
-            stop();
-            throw std::runtime_error("Double client instantiation");
-        }
+        util::require(!stopped_, "Cannot run the same client twice");
 
-        thread_ptr_ = std::make_unique<std::thread>(
-            [this]
-            {
-                try
-                {
-                    this->_run();
-                }
-                catch (...)
-                {
-                    exception_ptr = std::current_exception();
-                }
-            });
+        client_future_ = std::async(std::launch::async, [this]
+                                    { run_(); });
     }
 
-    static std::map<uint8_t, std::shared_ptr<Client>> map;
+    void Client::check()
+    {
+        if (!client_future_.valid())
+        {
+            return;
+        }
+
+        auto status = client_future_.wait_for(std::chrono::seconds(0));
+        if (status == std::future_status::ready)
+        {
+            client_future_.get();
+        }
+    }
+
+    void Client::stop()
+    {
+        stopped_ = true;
+    }
 
     void add_client(std::shared_ptr<Client> ptr)
     {
@@ -126,23 +133,11 @@ namespace client
         return {};
     }
 
-    void close_clients()
+    void check()
     {
         for (auto &[key, val] : map)
         {
-            val->queue(packet::Shutdown());
-        }
-        map.clear();
-        stop();
-    }
-
-    void rethrow()
-    {
-        if (exception_ptr)
-        {
-            stop();
-            std::cerr << "Rethrowing exception from client thread" << std::endl;
-            std::rethrow_exception(exception_ptr);
+            val->check();
         }
     }
 

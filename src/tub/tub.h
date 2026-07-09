@@ -6,6 +6,7 @@
 #include <thread>
 #include <optional>
 #include <vector>
+#include <future>
 
 #include "../defs.h"
 
@@ -26,19 +27,13 @@ namespace tub
         bool in_rfid_ = false;
         // 0 = middle, 1 = extremity
         double location_progress_ = 0.5;
-        std::unique_ptr<std::thread> thread_ptr_;
+
+        std::future<void> tub_future_;
+        std::atomic_bool stopped_ = false;
 
     public:
         Tub(uint8_t id, uint8_t module, uint8_t target_module, ModuleLocation target_module_location) : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location)
         {
-        }
-
-        ~Tub()
-        {
-            if (thread_ptr_ && thread_ptr_->joinable())
-            {
-                thread_ptr_->join();
-            }
         }
 
         uint8_t id() const noexcept
@@ -82,13 +77,17 @@ namespace tub
         }
 
     private:
-        void _run();
+        void run_();
 
     public:
         /**
          * Starts the update process of this tub.
          */
         void run();
+
+        void check();
+
+        void stop();
 
         Tub(Tub&&) noexcept = default;
         Tub& operator=(Tub&&) noexcept = default;
@@ -120,10 +119,7 @@ namespace tub
      */
     std::vector<std::shared_ptr<tub::Tub>> get_tubs();
 
-    /**
-     * Throws any exceptions that may have occurred during the execution of the thread.
-     */
-    void rethrow();
+    void check();
 
 }
 

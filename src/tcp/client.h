@@ -6,6 +6,7 @@
 #include <queue>
 #include <thread>
 #include <mutex>
+#include <future>
 
 // only used for testing
 namespace client
@@ -18,7 +19,9 @@ namespace client
         unsigned int port_ = 0;
         std::queue<std::unique_ptr<packet::Packet>> queue_;
         std::mutex mutex_;
-        std::unique_ptr<std::thread> thread_ptr_;
+
+        std::future<void> client_future_;
+        std::atomic_bool stopped_ = false;
 
     public:
         Client() = default;
@@ -30,10 +33,6 @@ namespace client
         ~Client()
         {
             ::close(fd_);
-            if (thread_ptr_ && thread_ptr_->joinable())
-            {
-                thread_ptr_->join();
-            }
         }
 
         unsigned int id() const noexcept
@@ -58,10 +57,14 @@ namespace client
         }
 
     private:
-        void _run();
+        void run_();
 
     public:
         void run();
+
+        void check();
+
+        void stop();
     };
 
     /**
@@ -77,16 +80,9 @@ namespace client
      */
     std::optional<std::shared_ptr<client::Client>> get_client(uint8_t id);
 
-    /**
-     * Closes all clients.
-     */
-    void close_clients();
+    void stop();
 
-    /**
-     * Throws any exceptions that may have occurred during the execution of the thread.
-     */
-    void rethrow();
-
+    void check();
 }
 
 #endif // CLIENT_H

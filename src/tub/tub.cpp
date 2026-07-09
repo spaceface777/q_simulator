@@ -17,12 +17,9 @@ namespace tub
     static constexpr double LASER_LOCATION = 0.75;
     static constexpr double LASER_RANGE = 0.1;
 
-    static std::exception_ptr exception_ptr;
-    static std::atomic_bool stopped = false;
-
-    void Tub::_run()
+    void Tub::run_()
     {
-        while (!stopped)
+        while (!stopped_)
         {
             // assume if module is in T shape
             // then servo is aimed at right by default
@@ -178,30 +175,37 @@ namespace tub
 
     void Tub::run()
     {
-        if (thread_ptr_)
+        util::require(!stopped_, "Cannot run the same tub twice");
+
+        tub_future_ = std::async(std::launch::async, [this]
+                                 { run_(); });
+    }
+
+    void Tub::check()
+    {
+        if (!tub_future_.valid())
         {
-            throw std::runtime_error("Double tub instantiation");
+            return;
         }
 
-        thread_ptr_ = std::make_unique<std::thread>(
-            [this]
-            {
-                try
-                {
-                    this->_run();
-                }
-                catch (...)
-                {
-                    exception_ptr = std::current_exception();
-                }
-            });
+        auto status = tub_future_.wait_for(std::chrono::seconds(0));
+        if (status == std::future_status::ready)
+        {
+            tub_future_.get();
+        }
+    }
 
-        std::cerr << "Started tub " << std::to_string(id_) << std::endl;
+    void Tub::stop()
+    {
+        stopped_ = true;
     }
 
     void stop()
     {
-        stopped = true;
+        for (auto &tub : get_tubs())
+        {
+            tub->stop();
+        }
     }
 
     static std::map<uint8_t, std::shared_ptr<tub::Tub>> map;
@@ -235,13 +239,11 @@ namespace tub
         return tubs;
     }
 
-    void rethrow()
+    void check()
     {
-        if (exception_ptr)
+        for (auto &tub : get_tubs())
         {
-            stop();
-            std::cerr << "Rethrowing exception from tub thread" << std::endl;
-            std::rethrow_exception(exception_ptr);
+            tub->check();
         }
     }
 }

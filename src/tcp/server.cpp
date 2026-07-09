@@ -32,11 +32,8 @@ namespace server
     static std::future<void> server_future_;
     static std::atomic_bool stopped = false;
 
-    inline constexpr int PORT = 7777;
+    static constexpr int PORT = 7777;
 
-    static std::unique_ptr<std::thread> thread_ptr_;
-    static std::exception_ptr exception_ptr;
-    static std::atomic_bool stopped = false;
     static std::vector<unsigned int> fds;
 
     /**
@@ -243,7 +240,7 @@ namespace server
         }
     }
 
-    static void _run()
+    static void run_()
     {
         const Socket socket;
         if (!socket.is_valid())
@@ -272,23 +269,16 @@ namespace server
         util::require(!stopped, "Cannot run two servers");
 
         server_future_ = std::async(std::launch::async, []
-                                    { _run(); });
+                                    { run_(); });
     }
 
     void stop()
     {
         stopped = true;
 
-        client::close_clients();
-
         for (size_t i = 0; i < fds.size(); i++)
         {
             close(fds[i]);
-        }
-
-        if (thread_ptr_->joinable())
-        {
-            thread_ptr_->join();
         }
     }
 
@@ -297,14 +287,14 @@ namespace server
         return fds.size();
     }
 
-    void rethrow()
-    {
-        if (exception_ptr)
-        {
-            stop();
-            std::cerr << "Rethrowing exception from server thread" << std::endl;
-            std::rethrow_exception(exception_ptr);
+    void check() {
+        if (!server_future_.valid()) {
+            return;
+        }
+
+        auto status = server_future_.wait_for(std::chrono::seconds(0));
+        if (status == std::future_status::ready) {
+            server_future_.get();
         }
     }
-
 }

@@ -27,11 +27,7 @@ static void handle_close(int code)
     tub::stop();
     server::stop();
     visualization::stop();
-
-    server::rethrow();
-    client::rethrow();
-    tub::rethrow();
-    visualization::rethrow();
+    client::stop();
 }
 
 int main(int argc, char const *argv[])
@@ -60,26 +56,14 @@ int main(int argc, char const *argv[])
                 tub::stop();
                 server::stop();
                 visualization::stop();
+                client::stop();
+
                 throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after 2 seconds");
             }
 
-            try
-            {
-                server::rethrow();
-                client::rethrow();
-                tub::rethrow();
-            }
-            catch (const std::exception &ex)
-            {
-                tub::stop();
-                server::stop();
-                visualization::stop();
-
-                server::rethrow();
-                client::rethrow();
-                tub::rethrow();
-                return EXIT_FAILURE;
-            }
+            server::check();
+            tub::check();
+            client::check();
 
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             attempts++;
@@ -99,25 +83,12 @@ int main(int argc, char const *argv[])
         visualization::update(vclock);
         vclock.tick();
 
-        try
-        {
-            server::rethrow();
-            client::rethrow();
-            tub::rethrow();
-            visualization::rethrow();
-        }
-        catch (...)
-        {
-            tub::stop();
-            server::stop();
-            visualization::stop();
-
-            server::rethrow();
-            client::rethrow();
-            tub::rethrow();
-            visualization::rethrow();
-        }
+        server::check();
+        tub::check();
+        client::check();
     }
+
+    handle_close(-1);
 
     return EXIT_SUCCESS;
 }

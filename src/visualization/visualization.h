@@ -28,8 +28,6 @@ namespace visualization
      */
     bool is_running();
 
-    void rethrow();
-
 }
 
 #endif
