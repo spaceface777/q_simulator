@@ -134,7 +134,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    location_progress_ += simulation_speed * -module->big_belt_speed() / 100.0 / 60.0 / 4.0;
+                    location_progress_ += simulation_speed * module->big_belt_speed() / 100.0 / 60.0 / 4.0;
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {
@@ -151,7 +151,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    location_progress_ += simulation_speed * module->big_belt_speed() / 100.0 / 60.0 / 4.0;
+                    location_progress_ += simulation_speed * -module->big_belt_speed() / 100.0 / 60.0 / 4.0;
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {

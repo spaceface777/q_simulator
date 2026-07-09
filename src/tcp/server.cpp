@@ -246,13 +246,14 @@ namespace server
         if (!socket.is_valid())
         {
             stop();
+            close(socket.fd());
             throw std::runtime_error("Failed to initialize socket");
         }
         setup_port(socket);
 
         fds.reserve(MAX_MODULES);
 
-        std::cerr << "Server waiting for connections" << std::endl;
+        std::cout << "Server waiting for connections" << std::endl;
 
         while (!stopped)
         {
@@ -262,6 +263,8 @@ namespace server
 
             std::this_thread::sleep_for(TIMEOUT);
         }
+
+        close(socket.fd());
     }
 
     void run()
@@ -287,13 +290,16 @@ namespace server
         return fds.size();
     }
 
-    void check() {
-        if (!server_future_.valid()) {
+    void check()
+    {
+        if (!server_future_.valid())
+        {
             return;
         }
 
         auto status = server_future_.wait_for(std::chrono::seconds(0));
-        if (status == std::future_status::ready) {
+        if (status == std::future_status::ready)
+        {
             server_future_.get();
         }
     }

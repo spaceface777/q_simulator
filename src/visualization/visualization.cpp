@@ -324,6 +324,8 @@ namespace visualization
 
         if (is_running && speed != 0)
         {
+            draw_number(renderer_, belt_x, belt_y, speed, 2);
+
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
             double step = 20.0;
             double offset = fmod(_belt_offset * (-speed / 100.0), step);
@@ -587,6 +589,8 @@ namespace visualization
         SDL_SetRenderDrawColor(renderer_, 50, 50, 50, 255);
         SDL_Rect pivot_rect = {x1 - 4, y1 - 4, 8, 8};
         SDL_RenderFillRect(renderer_, &pivot_rect);
+        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+        draw_number(renderer_, x1 - 24, y1 - 8, angle, 1);
     }
 
     static void render_tubs()
@@ -605,25 +609,50 @@ namespace visualization
             get_module_coords(tub->module(), module_x, module_y);
 
             double rel_x = 0, rel_y = 0;
-            if (tub->module_location() == ModuleLocation::LEFT_BELT || tub->module_location() == ModuleLocation::RIGHT_BELT)
+            if (tub->module_location() == ModuleLocation::LEFT_BELT)
             {
                 switch (module_settings.angle)
                 {
                 case 0:
-                    rel_x = tub->module_location_progress() * 90.0;
+                    rel_x = (1.0 - tub->module_location_progress()) * 90.0;
                     rel_y = 90.0;
                     break;
                 case 90:
                     rel_x = 90.0;
-                    rel_y = tub->module_location_progress() * 90.0;
+                    rel_y = (1.0 - tub->module_location_progress()) * 90.0;
                     break;
                 case 180:
-                    rel_x = (1.0 - tub->module_location_progress()) * 90.0;
+                    rel_x = tub->module_location_progress() * 90.0;
                     rel_y = 90.0;
                     break;
                 case 270:
                     rel_x = 90.0;
-                    rel_y = (1.0 - tub->module_location_progress()) * 90.0;
+                    rel_y = tub->module_location_progress() * 90.0;
+                    break;
+
+                default:
+                    throw std::invalid_argument("Invalid module angle " + std::to_string(module_settings.angle));
+                }
+            }
+            else if (tub->module_location() == ModuleLocation::RIGHT_BELT)
+            {
+                switch (module_settings.angle)
+                {
+                case 0:
+                    rel_x = 90 + tub->module_location_progress() * 90.0;
+                    rel_y = 90.0;
+                    break;
+                case 90:
+                    rel_x = 90.0;
+                    rel_y = 90 + tub->module_location_progress() * 90.0;
+                    break;
+                case 180:
+                    rel_x = 90 + (1.0 - tub->module_location_progress()) * 90.0;
+                    rel_y = 90.0;
+                    break;
+                case 270:
+                    rel_x = 90.0;
+                    rel_y = 90 + (1.0 - tub->module_location_progress()) * 90.0;
                     break;
 
                 default:
@@ -674,6 +703,7 @@ namespace visualization
 
             SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
             draw_number(renderer_, x - 4, y - 6, tub->id(), 1);
+            draw_number(renderer_, x - 4, y - 14, tub->module_location_progress(), 1);
         }
     }
 
