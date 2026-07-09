@@ -13,6 +13,7 @@
 #include <iomanip>
 
 #include "../module/module.h"
+#include "../defs.h"
 #include "../settings.h"
 #include "../synchronization/virtual_clock.h"
 
@@ -324,7 +325,8 @@ namespace visualization
 
         if (is_running && speed != 0)
         {
-            draw_number(renderer_, belt_x, belt_y, speed, 2);
+            if (settings::get_setting<bool>("debug"))
+                draw_number(renderer_, belt_x, belt_y, speed, 2);
 
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
             double step = 20.0;
@@ -423,7 +425,8 @@ namespace visualization
         // Animation lines
         if (is_running && speed != 0)
         {
-            draw_number(renderer_, belt_x, belt_y, speed, 2);
+            if (settings::get_setting<bool>("debug"))
+                draw_number(renderer_, belt_x, belt_y, speed, 2);
 
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
             double step = 20.0;
@@ -590,7 +593,8 @@ namespace visualization
         SDL_Rect pivot_rect = {x1 - 4, y1 - 4, 8, 8};
         SDL_RenderFillRect(renderer_, &pivot_rect);
         SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-        draw_number(renderer_, x1 - 24, y1 - 8, angle, 1);
+        if (settings::get_setting<bool>("debug"))
+            draw_number(renderer_, x1 - 12, y1 - 8, angle, 2);
     }
 
     static void render_tubs()
@@ -703,7 +707,8 @@ namespace visualization
 
             SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
             draw_number(renderer_, x - 4, y - 6, tub->id(), 1);
-            draw_number(renderer_, x - 4, y - 14, tub->module_location_progress(), 1);
+            if (settings::get_setting<bool>("debug"))
+                draw_number(renderer_, x - 4, y, tub->module_location_progress(), 1);
         }
     }
 
@@ -798,6 +803,22 @@ namespace visualization
             {
                 stop();
             }
+            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F4)
+            {
+                settings::set_setting("debug", !settings::get_setting<bool>("debug"));
+            }
+            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_UP)
+            {
+                double new_value = settings::get_setting<double>("simulation_speed") + 0.1;
+                settings::set_setting("simulation_speed", new_value);
+                vclock.set_simulation_speed(new_value);
+            }
+            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_DOWN)
+            {
+                double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - 0.1);
+                settings::set_setting("simulation_speed", new_value);
+                vclock.set_simulation_speed(new_value);
+            }
         }
 
         if (last_time.count() == 0)
@@ -828,7 +849,7 @@ namespace visualization
         _belt_offset += (dt.count() / 16.0) * 0.3;
 
         SDL_RenderPresent(renderer_);
-        SDL_Delay(16);
+        SDL_Delay(TIMEOUT.count());
     }
 
     bool is_running()

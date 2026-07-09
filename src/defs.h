@@ -26,7 +26,7 @@ inline constexpr uint8_t MAX_TCP_BACKLOG = 25;
 /**
  * A constant timeout value.
  */
-inline constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(50);
+inline constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(16);
 
 enum ModuleLocation
 {

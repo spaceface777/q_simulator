@@ -79,13 +79,21 @@ int main(int argc, char const *argv[])
     visualization::init();
     while (visualization::is_running())
     {
-        events::fire_events(vclock, events);
-        visualization::update(vclock);
-        vclock.tick();
+        try
+        {
+            events::fire_events(vclock, events);
+            visualization::update(vclock);
+            vclock.tick();
 
-        server::check();
-        tub::check();
-        client::check();
+            server::check();
+            tub::check();
+            client::check();
+        }
+        catch (...)
+        {
+            handle_close(-1);
+            return EXIT_FAILURE;
+        }
     }
 
     handle_close(-1);

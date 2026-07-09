@@ -49,6 +49,8 @@ namespace settings
 
             util::require(module_settings[id].angle < 360, "Invalid angle '" + std::to_string(module_settings[id].angle) + "' for module " + std::to_string(id));
         }
+
+        settings::set_setting("debug", false);
     }
 
     template <typename T>
@@ -61,8 +63,7 @@ namespace settings
     template <typename T>
     void set_setting(std::string_view setting, T value)
     {
-        util::require(table.contains(setting), "Invalid setting " + std::string(setting));
-        table[setting].value<T>() = value;
+        table.insert_or_assign(std::string(setting), value);
     }
 
     uint8_t get_modules_active()
@@ -91,3 +92,6 @@ template int settings::get_setting<int>(std::string_view setting);
 template double settings::get_setting<double>(std::string_view setting);
 template bool settings::get_setting<bool>(std::string_view setting);
 template std::string settings::get_setting<std::string>(std::string_view setting);
+
+template void settings::set_setting<double>(std::string_view setting, double value);
+template void settings::set_setting<bool>(std::string_view setting, bool value);
