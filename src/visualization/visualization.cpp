@@ -626,12 +626,12 @@ namespace visualization
                     rel_y = (1.0 - tub->module_location_progress()) * 90.0;
                     break;
                 case 180:
-                    rel_x = tub->module_location_progress() * 90.0;
+                    rel_x = 90 + tub->module_location_progress() * 90.0;
                     rel_y = 90.0;
                     break;
                 case 270:
                     rel_x = 90.0;
-                    rel_y = tub->module_location_progress() * 90.0;
+                    rel_y = 90 + tub->module_location_progress() * 90.0;
                     break;
 
                 default:
@@ -651,12 +651,12 @@ namespace visualization
                     rel_y = 90 + tub->module_location_progress() * 90.0;
                     break;
                 case 180:
-                    rel_x = 90 + (1.0 - tub->module_location_progress()) * 90.0;
+                    rel_x = (1.0 - tub->module_location_progress()) * 90.0;
                     rel_y = 90.0;
                     break;
                 case 270:
                     rel_x = 90.0;
-                    rel_y = 90 + (1.0 - tub->module_location_progress()) * 90.0;
+                    rel_y = (1.0 - tub->module_location_progress()) * 90.0;
                     break;
 
                 default:
