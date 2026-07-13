@@ -1,5 +1,5 @@
-# PURPLE 2
-The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE), version 2.
+# PURPLE 3
+The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE), version 3.
 
 ## Format
 The format of PURPLE follows that of TOML. The header indicates the type of message that is sent. Currently accepted:

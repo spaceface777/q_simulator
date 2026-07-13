@@ -27,7 +27,6 @@ find_package(SDL2 REQUIRED)
 
 add_executable(main 
     src/main.cpp 
-    src/event/parser.cpp 
     src/tcp/server.cpp 
     src/tcp/client.cpp 
     src/util.cpp 

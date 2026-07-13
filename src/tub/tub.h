@@ -30,6 +30,8 @@ namespace tub
 
         std::future<void> tub_future_;
         std::atomic_bool stopped_ = false;
+        std::array<int8_t, RFID_UID_SIZE_BYTES> rfid_uid_;
+        std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
         Tub(uint8_t id, uint8_t module, uint8_t target_module, ModuleLocation target_module_location) : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location)
@@ -89,11 +91,11 @@ namespace tub
 
         void stop();
 
-        Tub(Tub&&) noexcept = default;
-        Tub& operator=(Tub&&) noexcept = default;
+        Tub(Tub &&) noexcept = default;
+        Tub &operator=(Tub &&) noexcept = default;
 
-        Tub(const Tub&) = delete;
-        Tub& operator=(const Tub&) = delete;
+        Tub(const Tub &) = delete;
+        Tub &operator=(const Tub &) = delete;
     };
 
     /**
