@@ -35,4 +35,8 @@ enum ModuleLocation
     SMALL_BELT,
 };
 
+inline constexpr uint8_t RFID_UID_SIZE_BYTES = 7;
+inline constexpr uint8_t RFID_BLOCK_SIZE_BYTES = 4;
+inline constexpr uint8_t RFID_CONTENT_BLOCK_COUNT = 36;
+
 #endif
