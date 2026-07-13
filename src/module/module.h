@@ -17,17 +17,17 @@ namespace module
     class Module
     {
     private:
-        pid_t _pid;
+        pid_t pid_;
         uint8_t id_;
         bool running_ = false;
 
-        int8_t _big_speed = 0;
-        int8_t _small_speed = 0;
-        uint16_t _servo_degrees = 0;
-        int _led_color = 0;
-        bool _left_laser_active = false;
-        bool _right_laser_active = false;
-        bool _rfid_active = false;
+        int8_t big_speed_ = 0;
+        int8_t small_speed_ = 0;
+        uint16_t servo_degrees_ = 0;
+        int led_color_ = 0;
+        bool left_laser_active_ = false;
+        bool right_laser_active_ = false;
+        bool rfid_active_ = false;
 
     public:
         Module(uint8_t id)
@@ -40,7 +40,7 @@ namespace module
          */
         pid_t pid() const noexcept
         {
-            return _pid;
+            return pid_;
         }
 
         /**
@@ -64,7 +64,7 @@ namespace module
          */
         int8_t big_belt_speed() const noexcept
         {
-            return _big_speed;
+            return big_speed_;
         }
 
         /**
@@ -72,7 +72,7 @@ namespace module
          */
         int8_t small_belt_speed() const noexcept
         {
-            return _small_speed;
+            return small_speed_;
         }
 
         /**
@@ -80,7 +80,7 @@ namespace module
          */
         uint16_t servo_angle() const noexcept
         {
-            return _servo_degrees;
+            return servo_degrees_;
         }
 
         /**
@@ -88,7 +88,7 @@ namespace module
          */
         int led_color() const noexcept
         {
-            return _led_color;
+            return led_color_;
         }
 
         /**
@@ -96,7 +96,7 @@ namespace module
          */
         bool is_left_laser_active() const noexcept
         {
-            return _left_laser_active;
+            return left_laser_active_;
         }
 
         /**
@@ -105,7 +105,7 @@ namespace module
          */
         void set_left_laser_active(bool active) noexcept
         {
-            _left_laser_active = active;
+            left_laser_active_ = active;
         }
 
         /**
@@ -113,7 +113,7 @@ namespace module
          */
         bool is_right_laser_active() const noexcept
         {
-            return _right_laser_active;
+            return right_laser_active_;
         }
 
         /**
@@ -122,7 +122,7 @@ namespace module
          */
         void set_right_laser_active(bool active) noexcept
         {
-            _right_laser_active = active;
+            right_laser_active_ = active;
         }
 
         /**
@@ -130,7 +130,7 @@ namespace module
          */
         bool is_rfid_active() const noexcept
         {
-            return _rfid_active;
+            return rfid_active_;
         }
 
         /**
@@ -139,7 +139,7 @@ namespace module
          */
         void set_rfid_active(bool active) noexcept
         {
-            _rfid_active = active;
+            rfid_active_ = active;
         }
 
         /**

@@ -157,7 +157,7 @@ namespace server
             const message::Update message = update.value();
             // std::cout << "Received update for " << std::to_string(message.id()) << "'s " << message.device() << ": " << std::to_string(message.value()) << std::endl;
 
-            std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.id());
+            std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
             if (ptr)
             {
                 ptr.value()->update(message);

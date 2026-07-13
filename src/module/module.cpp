@@ -19,10 +19,10 @@ namespace module
 
 	void Module::run(std::string path)
 	{
-		_pid = ::fork();
-		util::require(_pid > -1, "Failed to fork: " + std::string(std::strerror(errno)));
+		pid_ = ::fork();
+		util::require(pid_ > -1, "Failed to fork: " + std::string(std::strerror(errno)));
 
-		const bool child = _pid == 0;
+		const bool child = pid_ == 0;
 		if (child)
 		{
 			::prctl(PR_SET_PDEATHSIG, SIGKILL);
@@ -62,19 +62,19 @@ namespace module
 	{
 		if (message.device() == "big belt")
 		{
-			_big_speed = message.value();
+			big_speed_ = message.value();
 		}
 		else if (message.device() == "small belt")
 		{
-			_small_speed = message.value();
+			small_speed_ = message.value();
 		}
 		else if (message.device() == "servo")
 		{
-			_servo_degrees = message.value();
+			servo_degrees_ = message.value();
 		}
 		else if (message.device() == "led")
 		{
-			_led_color = message.value();
+			led_color_ = message.value();
 		}
 	}
 

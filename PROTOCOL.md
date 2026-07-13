@@ -21,12 +21,12 @@ Used to indicate the value of a hardware component.
 
 Required elements:
 - `module = <uint>`: The module that this component belongs to.
-- `device = <string>`: The changed device. Currently accepted: `"led", "big belt", "small belt", "servo"`.
+- `device = <string>`: The changed device. Currently accepted: `"led", "big belt", "small belt", "servo", "left laser", "right laser"`.
 - `value = <num>`: The updated value.
 
 Example:
 ```toml
-[update.module]
+[update]
 module = 12
 device = "led"
 value = 2298889
@@ -42,7 +42,7 @@ Required elements:
 
 Example:
 ```toml
-[update.simulation.rfid]
+[update.rfid]
 module = 12
 uid = "asda"
 data = ""

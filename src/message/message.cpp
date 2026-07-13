@@ -149,7 +149,7 @@ namespace message
     {
         std::string buf = create_buffer();
         append_header(buf, "update");
-        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
         append_value(buf, "device", device_);
         append_value(buf, "value", value_);
         trim_trailing_nl(buf);
@@ -214,6 +214,27 @@ namespace message
         }
 
         return Update(module, device, value);
+    }
+
+    bool UpdateRfid::is_valid() const noexcept
+    {
+        return !uid_.empty() && !data_.empty();
+    }
+
+    std::string UpdateRfid::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "update.rfid");
+        append_value(buf, "module", module_);
+        append_value(buf, "uid", uid_);
+        append_value(buf, "data", data_);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::unique_ptr<Message> UpdateRfid::clone() const
+    {
+        return std::make_unique<UpdateRfid>(*this);
     }
 
     bool Packet::is_valid() const noexcept

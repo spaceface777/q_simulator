@@ -25,7 +25,7 @@ namespace visualization
     static SDL_Window *window_ = nullptr;
     static SDL_Renderer *renderer_ = nullptr;
 
-    static double _belt_offset = 0.0;
+    static double belt_offset_ = 0.0;
 
     const uint16_t PIXEL_FONT[13] = {
         0x7B6F, // 0: 111, 101, 101, 101, 111
@@ -330,7 +330,7 @@ namespace visualization
 
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
             double step = 20.0;
-            double offset = fmod(_belt_offset * (-speed / 100.0), step);
+            double offset = fmod(belt_offset_ * (-speed / 100.0), step);
             int longer_dimension = height > width ? height : width;
             for (double l = -step; l < longer_dimension + step; l += step)
             {
@@ -430,7 +430,7 @@ namespace visualization
 
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
             double step = 20.0;
-            double offset = -fmod(_belt_offset * (-speed / 100.0), step);
+            double offset = -fmod(belt_offset_ * (-speed / 100.0), step);
             int longer_dimension = height > width ? height : width;
             for (double l = -step; l < longer_dimension + step; l += step)
             {
@@ -846,7 +846,7 @@ namespace visualization
         draw_number(renderer_, 0, 0, settings::get_setting<double>("simulation_speed"), 3, true);
         draw_number(renderer_, 75, 0, current_time.count() / 1000.0, 3, false, true);
 
-        _belt_offset += (dt.count() / 16.0) * 0.3;
+        belt_offset_ += (dt.count() / 16.0) * 0.3;
 
         SDL_RenderPresent(renderer_);
         SDL_Delay(TIMEOUT.count());

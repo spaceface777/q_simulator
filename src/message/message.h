@@ -83,14 +83,14 @@ namespace message
     class Update : public Message
     {
     private:
-        uint8_t id_;
+        uint8_t module_;
         std::string device_;
         int value_;
 
     public:
-        Update(uint8_t id, std::string device, int value)
+        Update(uint8_t module, std::string device, int value)
         {
-            id_ = id;
+            module_ = module;
             device_ = device;
             value_ = value;
         }
@@ -98,9 +98,9 @@ namespace message
         /**
          * @return The id of the module.
          */
-        uint8_t id() const noexcept
+        uint8_t module() const noexcept
         {
-            return id_;
+            return module_;
         }
 
         /**
@@ -129,6 +129,51 @@ namespace message
          * @return A new Update instance.
          */
         static std::optional<Update> from_toml(std::string_view toml);
+    };
+
+    class UpdateRfid : public Message
+    {
+    private:
+        uint8_t module_;
+        std::string uid_;
+        std::string data_;
+
+    public:
+        UpdateRfid(uint8_t module, std::string uid, std::string data)
+        {
+            module_ = module;
+            uid_ = uid;
+            data_ = data;
+        }
+
+        /**
+         * @return The id of the module.
+         */
+        uint8_t module() const noexcept
+        {
+            return module_;
+        }
+
+        /**
+         * @return The uid.
+         */
+        std::string uid() const noexcept
+        {
+            return uid_;
+        }
+
+        /**
+         * @return The data.
+         */
+        std::string data() const noexcept
+        {
+            return data_;
+        }
+
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
+        std::unique_ptr<Message> clone() const override;
+
     };
 
     class Packet : public Message
