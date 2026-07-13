@@ -335,7 +335,7 @@ namespace packet
         append_header(buf, "tub.arrival");
         append_value(buf, "id", id_);
         append_value(buf, "module", module_);
-        append_value(buf, "destination", _destination);
+        append_value(buf, "destination", destination_);
         append_value(buf, "safe", safe_);
         trim_trailing_nl(buf);
         return buf;

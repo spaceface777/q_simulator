@@ -231,7 +231,7 @@ namespace packet
     private:
         uint8_t id_;
         uint8_t module_;
-        uint8_t _destination;
+        uint8_t destination_;
         bool safe_;
 
     public:
@@ -239,7 +239,7 @@ namespace packet
         {
             id_ = id;
             module_ = module;
-            _destination = destination;
+            destination_ = destination;
             safe_ = safe;
         }
 
@@ -264,7 +264,7 @@ namespace packet
          */
         uint8_t destination() const noexcept
         {
-            return _destination;
+            return destination_;
         }
 
         /**
