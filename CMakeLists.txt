@@ -31,7 +31,7 @@ add_executable(main
     src/tcp/client.cpp 
     src/util.cpp 
     src/module/module.cpp
-    src/packet/packet.cpp
+    src/message/message.cpp
     src/tub/tub.cpp
     src/visualization/visualization.cpp
     src/settings.cpp

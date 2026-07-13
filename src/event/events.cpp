@@ -1,5 +1,5 @@
 #include "events.h"
-#include "../packet/packet.h"
+#include "../message/message.h"
 #include "../module/module.h"
 #include "../tub/tub.h"
 #include "../lib/toml.h"
@@ -28,7 +28,7 @@ namespace events
 
     void PlaneEvent::fire() const
     {
-        auto packet = packet::PlaneArrival(id_, module_, leaves_in_);
+        auto message = message::PlaneArrival(id_, module_, leaves_in_);
 
         for (const auto &module : module::get_modules())
         {
@@ -37,7 +37,7 @@ namespace events
                 continue;
             }
 
-            module->send(packet);
+            module->send(message);
         }
 
         std::cout << "Fired plane event at " << std::to_string(time_) << std::endl;
@@ -45,11 +45,11 @@ namespace events
 
     void TubEvent::fire() const
     {
-        const auto packet = packet::TubArrival(id_, origin_.id, destination_.id, safe_);
+        const auto message = message::TubArrival(id_, origin_.id, destination_.id, safe_);
         const auto module = module::get_module(origin_.id);
 
         util::require(module.has_value(), "No module with id " + std::to_string(origin_.id));
-        (*module)->send(packet);
+        (*module)->send(message);
 
         auto tub_ptr = std::make_unique<tub::Tub>(id_, origin_.id, destination_.id, ModuleLocation::SMALL_BELT);
         tub_ptr->run();
@@ -64,7 +64,7 @@ namespace events
         {
             throw std::invalid_argument("Tub event missing rfid array");
         }
-        if (rfid_arr->size() > 36)
+        if (rfid_arr->size() > RFID_CONTENT_BLOCK_COUNT)
         {
             throw std::invalid_argument("rfid contains " + std::to_string(rfid_arr->size()) + " blocks, which is more than the 36 allowed");
         }
@@ -76,7 +76,12 @@ namespace events
             if (auto *inner_arr = node.as_array())
             {
                 std::array<int8_t, RFID_BLOCK_SIZE_BYTES> row = {0, 0, 0, 0};
-                for (size_t i = 0; i < std::min<size_t>(RFID_BLOCK_SIZE_BYTES, inner_arr->size()); ++i)
+                if (inner_arr->size() != 4)
+                {
+                    throw std::invalid_argument("Invalid array in rfid data");
+                }
+
+                for (size_t i = 0; i < RFID_BLOCK_SIZE_BYTES; ++i)
                 {
                     row[i] = inner_arr->get(i)->as_integer()->get();
                 }

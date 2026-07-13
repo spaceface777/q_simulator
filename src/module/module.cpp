@@ -53,28 +53,28 @@ namespace module
 		}
 	}
 
-	void Module::send(const packet::Packet &packet)
+	void Module::send(const message::Message &message)
 	{
-		server::send(id_, packet);
+		server::send(id_, message);
 	}
 
-	void Module::update(const packet::ModuleUpdate packet)
+	void Module::update(const message::Update message)
 	{
-		if (packet.device() == "big belt")
+		if (message.device() == "big belt")
 		{
-			_big_speed = packet.value();
+			_big_speed = message.value();
 		}
-		else if (packet.device() == "small belt")
+		else if (message.device() == "small belt")
 		{
-			_small_speed = packet.value();
+			_small_speed = message.value();
 		}
-		else if (packet.device() == "servo")
+		else if (message.device() == "servo")
 		{
-			_servo_degrees = packet.value();
+			_servo_degrees = message.value();
 		}
-		else if (packet.device() == "led")
+		else if (message.device() == "led")
 		{
-			_led_color = packet.value();
+			_led_color = message.value();
 		}
 	}
 

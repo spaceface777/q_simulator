@@ -8,7 +8,7 @@
 #include <memory>
 #include <thread>
 
-#include "../packet/packet.h"
+#include "../message/message.h"
 #include "../tub/tub.h"
 
 namespace module
@@ -150,18 +150,18 @@ namespace module
         void run(std::string path);
 
         /**
-         * Sends a packet to this module.
+         * Sends a message to this module.
          *
-         * @param packet The packet to send.
+         * @param message The message to send.
          */
-        void send(const packet::Packet &packet);
+        void send(const message::Message &message);
 
         /**
-         * Runs when an update packet has been sent from this module's simulation.
+         * Runs when an update message has been sent from this module's simulation.
          *
-         * @param packet The packet that was sent to this module's simulation.
+         * @param message The message that was sent to this module's simulation.
          */
-        void update(const packet::ModuleUpdate packet);
+        void update(const message::Update message);
     };
 
     /**

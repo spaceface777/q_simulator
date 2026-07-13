@@ -9,7 +9,7 @@
 #include "event/events.h"
 #include "tcp/server.h"
 #include "tcp/client.h"
-#include "packet/packet.h"
+#include "message/message.h"
 #include "module/module.h"
 #include "visualization/visualization.h"
 #include "synchronization/virtual_clock.h"

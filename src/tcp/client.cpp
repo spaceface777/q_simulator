@@ -9,7 +9,7 @@
 #include <queue>
 #include <map>
 
-#include "../packet/packet.h"
+#include "../message/message.h"
 #include "../util.h"
 #include "../defs.h"
 #include "socket.h"
@@ -24,7 +24,7 @@ namespace client
     {
         for (auto &[key, val] : map)
         {
-            val->queue(packet::Shutdown());
+            val->queue(message::Shutdown());
         }
         map.clear();
     }
@@ -60,25 +60,25 @@ namespace client
 
         while (!stopped_)
         {
-            std::unique_ptr<packet::Packet> packet;
+            std::unique_ptr<message::Message> message;
             size_t current_size = 0;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!queue_.empty())
                 {
-                    packet = std::move(queue_.front());
+                    message = std::move(queue_.front());
                     queue_.pop();
                     current_size = queue_.size();
                 }
             }
 
-            if (!packet)
+            if (!message)
             {
                 std::this_thread::sleep_for(TIMEOUT);
                 continue;
             }
 
-            const std::string toml = packet->to_toml();
+            const std::string toml = message->to_toml();
             if (::write(socket.fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
             {
                 std::this_thread::sleep_for(TIMEOUT);

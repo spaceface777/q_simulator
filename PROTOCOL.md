@@ -17,7 +17,7 @@ id = 12
 ```
 
 ### `[update]`
-Used to indicate the value of a hardware component, sent from a module.
+Used to indicate the value of a hardware component.
 
 Required elements:
 - `module = <uint>`: The module that this component belongs to.
@@ -26,26 +26,26 @@ Required elements:
 
 Example:
 ```toml
-[update]
+[update.module]
 module = 12
 device = "led"
 value = 2298889
 ```
 
-### `[update.simulation]`
-Used to indicate the value of a hardware component sent from the simulation, not a module.
+### `[update.rfid]`
+Used to indicate the value of the RFID chip on a sensor sent from the simulation.
 
 Required elements:
 - `module = <uint>`: The module that this component belongs to.
-- `device = <string>`: The changed device. Currently accepted: `"left laser", "right laser", "rfid"`.
-- `value = <num>`: The updated value.
+- `uid = <string>`: The UID of the RFID chip.
+- `data = <string>`: The data contained in the rest of the RFID chip.
 
 Example:
 ```toml
-[update.simulation]
+[update.simulation.rfid]
 module = 12
-device = "left laser"
-value = 1
+uid = "asda"
+data = ""
 ```
 
 ### `[packet]`

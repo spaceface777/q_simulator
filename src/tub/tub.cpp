@@ -1,7 +1,7 @@
 #include "tub.h"
 #include "../module/module.h"
 #include "../settings.h"
-#include "../packet/packet.h"
+#include "../message/message.h"
 #include "../util.h"
 
 #include <thread>
@@ -122,13 +122,13 @@ namespace tub
 
                     if (in_rfid_ && (location_progress_ < RFID_LOCATION - RFID_RANGE || location_progress_ > RFID_LOCATION + RFID_RANGE))
                     {
-                        module->send(packet::SimulationUpdate(module_, "rfid", false));
+                        module->send(message::Update(module_, "rfid", false));
                         module->set_rfid_active(false);
                         in_rfid_ = false;
                     }
                     else if (!in_rfid_ && location_progress_ > RFID_LOCATION - RFID_RANGE && location_progress_ < RFID_LOCATION + RFID_RANGE)
                     {
-                        module->send(packet::SimulationUpdate(module_, "rfid", true));
+                        module->send(message::Update(module_, "rfid", true));
                         module->set_rfid_active(true);
                         in_rfid_ = true;
                     }
@@ -138,14 +138,14 @@ namespace tub
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {
-                        module->send(packet::SimulationUpdate(module_, "left laser", false));
+                        module->send(message::Update(module_, "left laser", false));
                         module->set_left_laser_active(false);
                         in_laser_ = false;
                     }
                     else if (!in_laser_ && location_progress_ > LASER_LOCATION - LASER_RANGE && location_progress_ < LASER_LOCATION + LASER_RANGE)
                     {
 
-                        module->send(packet::SimulationUpdate(module_, "left laser", true));
+                        module->send(message::Update(module_, "left laser", true));
                         module->set_left_laser_active(true);
                         in_laser_ = true;
                     }
@@ -155,13 +155,13 @@ namespace tub
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {
-                        module->send(packet::SimulationUpdate(module_, "right laser", false));
+                        module->send(message::Update(module_, "right laser", false));
                         module->set_right_laser_active(false);
                         in_laser_ = false;
                     }
                     else if (!in_laser_ && location_progress_ > LASER_LOCATION - LASER_RANGE && location_progress_ < LASER_LOCATION + LASER_RANGE)
                     {
-                        module->send(packet::SimulationUpdate(module_, "right laser", true));
+                        module->send(message::Update(module_, "right laser", true));
                         module->set_right_laser_active(true);
                         in_laser_ = true;
                     }

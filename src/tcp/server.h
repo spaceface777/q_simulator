@@ -1,18 +1,18 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include "../packet/packet.h"
+#include "../message/message.h"
 
 namespace server
 {
 
     /**
-     * Sends a packet to module id.
+     * Sends a message to module id.
      *
      * @param id The module id.
-     * @param packet The packet to send.
+     * @param message The message to send.
      */
-    void send(unsigned int id, const packet::Packet &packet);
+    void send(unsigned int id, const message::Message &message);
 
     /**
      * Runs the server.

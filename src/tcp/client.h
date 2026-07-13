@@ -17,7 +17,7 @@ namespace client
         int fd_ = -1;
         unsigned int id_ = 0;
         unsigned int port_ = 0;
-        std::queue<std::unique_ptr<packet::Packet>> queue_;
+        std::queue<std::unique_ptr<message::Message>> queue_;
         std::mutex mutex_;
 
         std::future<void> client_future_;
@@ -50,10 +50,10 @@ namespace client
             return fd_ >= 0;
         }
 
-        void queue(const packet::Packet &packet) noexcept
+        void queue(const message::Message &message) noexcept
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            queue_.push(packet.clone());
+            queue_.push(message.clone());
         }
 
     private:

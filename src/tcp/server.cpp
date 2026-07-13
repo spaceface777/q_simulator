@@ -20,7 +20,7 @@
 #include "server.h"
 #include "client.h"
 #include "socket.h"
-#include "../packet/packet.h"
+#include "../message/message.h"
 #include "../util.h"
 #include "../defs.h"
 #include "../module/module.h"
@@ -108,7 +108,7 @@ namespace server
         fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
     }
 
-    void send(unsigned int id, const packet::Packet &packet)
+    void send(unsigned int id, const message::Message &message)
     {
         if (stopped || id > MAX_MODULES)
         {
@@ -121,19 +121,19 @@ namespace server
             return;
         }
 
-        client.value()->queue(packet);
+        client.value()->queue(message);
     }
 
     /**
-     * Parses a buffer to a packet::Packet, and performs the appropriate action.
+     * Parses a buffer to a message::Packet, and performs the appropriate action.
      */
     static void parse_packet(unsigned int fd, char *buff)
     {
-        std::optional<packet::Introduction> intro = packet::Introduction::from_toml(buff);
+        std::optional<message::Introduction> intro = message::Introduction::from_toml(buff);
         if (intro)
         {
-            const packet::Introduction packet = intro.value();
-            const unsigned int id = packet.id();
+            const message::Introduction message = intro.value();
+            const unsigned int id = message.id();
 
             const std::optional<std::shared_ptr<client::Client>> existing_client = client::get_client(id);
             if (existing_client)
@@ -151,27 +151,27 @@ namespace server
             return;
         }
 
-        std::optional<packet::ModuleUpdate> update = packet::ModuleUpdate::from_toml(buff);
+        std::optional<message::Update> update = message::Update::from_toml(buff);
         if (update)
         {
-            const packet::ModuleUpdate packet = update.value();
-            // std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
+            const message::Update message = update.value();
+            // std::cout << "Received update for " << std::to_string(message.id()) << "'s " << message.device() << ": " << std::to_string(message.value()) << std::endl;
 
-            std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(packet.id());
+            std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.id());
             if (ptr)
             {
-                ptr.value()->update(packet);
+                ptr.value()->update(message);
             }
 
             return;
         }
 
-        std::optional<packet::ModulePacket> sent = packet::ModulePacket::from_toml(buff);
+        std::optional<message::Packet> sent = message::Packet::from_toml(buff);
         if (sent)
         {
-            const packet::ModulePacket packet = sent.value();
-            // std::cout << "Received packet send request to " << std::to_string(packet.module()) << " with content " << packet.content() << std::endl;
-            send(packet.module(), packet);
+            const message::Packet message = sent.value();
+            // std::cout << "Received message send request to " << std::to_string(message.module()) << " with content " << message.content() << std::endl;
+            send(message.module(), message);
             return;
         }
     }

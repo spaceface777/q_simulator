@@ -1,17 +1,17 @@
-#ifndef PACKET_H
-#define PACKET_H
+#ifndef MESSAGE_H
+#define MESSAGE_H
 
 #include <string>
 #include <cstdint>
 #include <optional>
 #include <memory>
 
-namespace packet
+namespace message
 {
     /**
      * Represents a generic PURPLE message.
      */
-    class Packet
+    class Message
     {
     public:
         /**
@@ -25,15 +25,15 @@ namespace packet
         virtual std::string to_toml() const noexcept;
 
         /**
-         * @return A heap-allocated copy of this packet preserving dynamic type.
+         * @return A heap-allocated copy of this message preserving dynamic type.
          */
-        virtual std::unique_ptr<Packet> clone() const;
+        virtual std::unique_ptr<Message> clone() const;
 
-        virtual ~Packet() = default;
+        virtual ~Message() = default;
     };
 
     /**
-     * Thrown when a packet that is attempting to be parsed is deformed.
+     * Thrown when a message that is attempting to be parsed is deformed.
      */
     class DeformedPacketException : public std::exception
     {
@@ -49,7 +49,7 @@ namespace packet
         }
     };
 
-    class Introduction : public Packet
+    class Introduction : public Message
     {
     private:
         uint8_t id_;
@@ -70,7 +70,7 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
-        std::unique_ptr<Packet> clone() const override;
+        std::unique_ptr<Message> clone() const override;
 
         /**
          * Creates a new instance on this class based on the passed TOML info.
@@ -80,7 +80,7 @@ namespace packet
         static std::optional<Introduction> from_toml(std::string_view toml);
     };
 
-    class ModuleUpdate : public Packet
+    class Update : public Message
     {
     private:
         uint8_t id_;
@@ -88,7 +88,7 @@ namespace packet
         int value_;
 
     public:
-        ModuleUpdate(uint8_t id, std::string device, int value)
+        Update(uint8_t id, std::string device, int value)
         {
             id_ = id;
             device_ = device;
@@ -121,73 +121,29 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
-        std::unique_ptr<Packet> clone() const override;
+        std::unique_ptr<Message> clone() const override;
 
         /**
          * Creates a new instance on this class based on the passed TOML info.
          * @param toml The TOML info.
          * @return A new Update instance.
          */
-        static std::optional<ModuleUpdate> from_toml(std::string_view toml);
+        static std::optional<Update> from_toml(std::string_view toml);
     };
 
-    class SimulationUpdate : public Packet
-    {
-    private:
-        uint8_t id_;
-        std::string device_;
-        int value_;
-
-    public:
-        SimulationUpdate(uint8_t id, std::string device, int value)
-        {
-            id_ = id;
-            device_ = device;
-            value_ = value;
-        }
-
-        /**
-         * @return The id of the module.
-         */
-        uint8_t id() const noexcept
-        {
-            return id_;
-        }
-
-        /**
-         * @return The device that had its value updated.
-         */
-        std::string device() const noexcept
-        {
-            return device_;
-        }
-
-        /**
-         * @return The updated value.
-         */
-        int value() const noexcept
-        {
-            return value_;
-        }
-
-        bool is_valid() const noexcept override;
-        std::string to_toml() const noexcept override;
-        std::unique_ptr<Packet> clone() const override;
-    };
-
-    class ModulePacket : public Packet
+    class Packet : public Message
     {
     private:
         uint8_t module_;
-        std::size_t _length;
-        std::string _content;
+        std::size_t length_;
+        std::string content_;
 
     public:
-        ModulePacket(uint8_t module, std::size_t length, std::string content)
+        Packet(uint8_t module, std::size_t length, std::string content)
         {
             module_ = module;
-            _length = length;
-            _content = content;
+            length_ = length;
+            content_ = content;
         }
 
         /**
@@ -203,7 +159,7 @@ namespace packet
          */
         std::size_t length() const noexcept
         {
-            return _length;
+            return length_;
         }
 
         /**
@@ -211,22 +167,22 @@ namespace packet
          */
         std::string content() const noexcept
         {
-            return _content;
+            return content_;
         }
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
-        std::unique_ptr<Packet> clone() const override;
+        std::unique_ptr<Message> clone() const override;
 
         /**
          * Creates a new instance on this class based on the passed TOML info.
          * @param toml The TOML info.
-         * @return A new ModulePacket instance.
+         * @return A new Packet instance.
          */
-        static std::optional<ModulePacket> from_toml(std::string_view toml);
+        static std::optional<Packet> from_toml(std::string_view toml);
     };
 
-    class TubArrival : public Packet
+    class TubArrival : public Message
     {
     private:
         uint8_t id_;
@@ -277,10 +233,10 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
-        std::unique_ptr<Packet> clone() const override;
+        std::unique_ptr<Message> clone() const override;
     };
 
-    class TubDeparture : public Packet
+    class TubDeparture : public Message
     {
     private:
         uint8_t id_;
@@ -311,10 +267,10 @@ namespace packet
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
-        std::unique_ptr<Packet> clone() const override;
+        std::unique_ptr<Message> clone() const override;
     };
 
-    class PlaneArrival : public Packet
+    class PlaneArrival : public Message
     {
     private:
         uint8_t id_;
@@ -357,7 +313,7 @@ namespace packet
         std::string to_toml() const noexcept override;
     };
 
-    class PlaneDeparture : public Packet
+    class PlaneDeparture : public Message
     {
     private:
         uint8_t id_;
@@ -390,7 +346,7 @@ namespace packet
         std::string to_toml() const noexcept override;
     };
 
-    class Shutdown : public Packet
+    class Shutdown : public Message
     {
     public:
         Shutdown() {};
@@ -401,4 +357,4 @@ namespace packet
 
 };
 
-#endif // PACKET_H
+#endif // MESSAGE_H
