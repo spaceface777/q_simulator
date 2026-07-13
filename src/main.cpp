@@ -96,7 +96,5 @@ int main(int argc, char const *argv[])
         }
     }
 
-    handle_close(-1);
-
     return EXIT_SUCCESS;
 }

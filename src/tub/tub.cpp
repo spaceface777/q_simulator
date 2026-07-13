@@ -7,6 +7,9 @@
 #include <thread>
 #include <atomic>
 #include <iostream>
+#include <string>
+#include <cstdint>
+#include <cstddef>
 
 namespace tub
 {
@@ -16,6 +19,27 @@ namespace tub
 
     static constexpr double LASER_LOCATION = 0.75;
     static constexpr double LASER_RANGE = 0.1;
+
+    static std::string bytes_to_hex(const int8_t *data, std::size_t len)
+    {
+        if (data == nullptr || len == 0)
+        {
+            return "";
+        }
+
+        static constexpr char hex_digits[] = "0123456789ABCDEF";
+
+        std::string out;
+        out.reserve(len * 2);
+
+        for (std::size_t i = 0; i < len; ++i)
+        {
+            out.push_back(hex_digits[(data[i] >> 4) & 0x0F]);
+            out.push_back(hex_digits[data[i] & 0x0F]);
+        }
+
+        return out;
+    }
 
     void Tub::run_()
     {
@@ -122,13 +146,15 @@ namespace tub
 
                     if (in_rfid_ && (location_progress_ < RFID_LOCATION - RFID_RANGE || location_progress_ > RFID_LOCATION + RFID_RANGE))
                     {
-                        module->send(message::Update(module_, "rfid", false));
+                        module->send(message::UpdateRfid(module_, "", ""));
                         module->set_rfid_active(false);
                         in_rfid_ = false;
                     }
                     else if (!in_rfid_ && location_progress_ > RFID_LOCATION - RFID_RANGE && location_progress_ < RFID_LOCATION + RFID_RANGE)
                     {
-                        module->send(message::Update(module_, "rfid", true));
+                        module->send(message::UpdateRfid(module_, 
+                            bytes_to_hex(reinterpret_cast<int8_t*>(rfid_uid_.data()), rfid_uid_.size()), 
+                            bytes_to_hex(reinterpret_cast<int8_t*>(rfid_.data()), rfid_.size())));
                         module->set_rfid_active(true);
                         in_rfid_ = true;
                     }

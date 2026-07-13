@@ -58,8 +58,8 @@ namespace events
         std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        PlaneEvent(uint8_t time, uint8_t id, uint8_t module, unsigned int leaves_in, 
-            std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
+        PlaneEvent(uint8_t time, uint8_t id, uint8_t module, unsigned int leaves_in,
+                   std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
         {
             time_ = time;
             id_ = id;
@@ -82,6 +82,11 @@ namespace events
         unsigned int leaves_in() const noexcept
         {
             return leaves_in_;
+        }
+
+        std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid() const noexcept
+        {
+            return rfid_;
         }
 
         virtual void fire() const override;
@@ -112,7 +117,7 @@ namespace events
 
     public:
         TubEvent(unsigned int time, uint8_t id, TubData origin, TubData destination,
-                 bool safe, bool needs_security, 
+                 bool safe, bool needs_security,
                  std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
         {
             time_ = time;
@@ -145,6 +150,11 @@ namespace events
         bool safe() const noexcept
         {
             return safe_;
+        }
+
+        std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid() const noexcept
+        {
+            return rfid_;
         }
 
         virtual void fire() const override;

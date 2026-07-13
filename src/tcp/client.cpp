@@ -26,6 +26,11 @@ namespace client
         {
             val->queue(message::Shutdown());
         }
+
+        for (auto &[key, val] : map)
+        {
+            val->stop();
+        }
         map.clear();
     }
 

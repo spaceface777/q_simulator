@@ -51,7 +51,7 @@ namespace events
         util::require(module.has_value(), "No module with id " + std::to_string(origin_.id));
         (*module)->send(message);
 
-        auto tub_ptr = std::make_unique<tub::Tub>(id_, origin_.id, destination_.id, ModuleLocation::SMALL_BELT);
+        auto tub_ptr = std::make_unique<tub::Tub>(id_, origin_.id, destination_.id, ModuleLocation::SMALL_BELT, rfid_);
         tub_ptr->run();
         tub::add_tub(std::move(tub_ptr));
 
