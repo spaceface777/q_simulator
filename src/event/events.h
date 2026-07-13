@@ -6,6 +6,7 @@
 #include <memory>
 #include <cstring>
 #include <string_view>
+#include <array>
 #include "../synchronization/virtual_clock.h"
 #include "../defs.h"
 
