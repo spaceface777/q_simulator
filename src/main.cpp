@@ -6,7 +6,7 @@
 #include <iostream>
 #include <list>
 
-#include "event/parser.h"
+#include "event/events.h"
 #include "tcp/server.h"
 #include "tcp/client.h"
 #include "packet/packet.h"
@@ -34,7 +34,7 @@ int main(int argc, char const *argv[])
 {
     settings::parse_settings();
     std::list<std::unique_ptr<events::Event>> events;
-    parser::parse_events(events);
+    events::parse_events(events);
 
     const std::string path = settings::get_setting<std::string>("router_path");
     util::require(std::filesystem::exists(path), "No zephyr.exe found at router_path in settings.toml");
