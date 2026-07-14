@@ -198,7 +198,12 @@ namespace events
                         throw std::invalid_argument("Tub event missing required fields");
                     }
 
-                    result.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, parse_rfid(rfid_arr)));
+                    auto rfid = parse_rfid(rfid_arr);
+                    rfid[0] = {(int8_t)origin.id, (int8_t)(origin.type == LocationType::MODULE ? 0 : 1),
+                               (int8_t)destination.id, (int8_t)(destination.type == LocationType::MODULE ? 0 : 1)};
+                    rfid[1] = {safe, needs_security, 0, 0};
+
+                    result.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, rfid));
                 }
             }
             else if (group == "plane")
@@ -221,7 +226,11 @@ namespace events
                         throw std::invalid_argument("Plane event missing required fields");
                     }
 
-                    result.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, parse_rfid(rfid_arr)));
+                    auto rfid = parse_rfid(rfid_arr);
+                    rfid[0] = {(int8_t)module, 0, 0, 0};
+                    rfid[1] = {(int8_t)(leaves_in & 0xFF), (int8_t)((leaves_in >> 8) & 0xFF), (int8_t)((leaves_in >> 16) & 0xFF), (int8_t)((leaves_in >> 24) & 0xFF)};
+
+                    result.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, rfid));
                 }
             }
         }
