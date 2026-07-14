@@ -96,5 +96,8 @@ int main(int argc, char const *argv[])
         }
     }
 
+    ::signal(SIGTERM, handle_close);
+    ::signal(SIGKILL, handle_close);
+
     return EXIT_SUCCESS;
 }

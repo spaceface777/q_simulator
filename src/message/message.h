@@ -173,7 +173,6 @@ namespace message
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
         std::unique_ptr<Message> clone() const override;
-
     };
 
     class Packet : public Message
@@ -234,14 +233,16 @@ namespace message
         uint8_t module_;
         uint8_t destination_;
         bool safe_;
+        bool needs_security_;
 
     public:
-        TubArrival(uint8_t id, uint8_t module, uint8_t destination, bool safe)
+        TubArrival(uint8_t id, uint8_t module, uint8_t destination, bool safe, bool needs_security)
         {
             id_ = id;
             module_ = module;
             destination_ = destination;
             safe_ = safe;
+            needs_security_ = needs_security;
         }
 
         /**

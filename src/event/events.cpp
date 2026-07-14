@@ -45,7 +45,7 @@ namespace events
 
     void TubEvent::fire() const
     {
-        const auto message = message::TubArrival(id_, origin_.id, destination_.id, safe_);
+        const auto message = message::TubArrival(id_, origin_.id, destination_.id, safe_, needs_security_);
         const auto module = module::get_module(origin_.id);
 
         util::require(module.has_value(), "No module with id " + std::to_string(origin_.id));
@@ -135,7 +135,7 @@ namespace events
 
                     auto &event_tbl = *event_value.as_table();
 
-                    int time = event_tbl["time"].value_or(-1);
+                    double time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
                     bool safe = event_tbl["safe"].value_or(false);
                     bool needs_security = event_tbl["needs_security"].value_or(false);
@@ -193,7 +193,7 @@ namespace events
                         }
                     }
 
-                    if (time == -1 || id == -1 || origin.id == -1 || destination.id == -1)
+                    if (time == -1.0 || id == -1 || origin.id == -1 || destination.id == -1)
                     {
                         throw std::invalid_argument("Tub event missing required fields");
                     }
@@ -210,13 +210,13 @@ namespace events
 
                     auto &event_tbl = *event_value.as_table();
 
-                    int time = event_tbl["time"].value_or(-1);
+                    int time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
                     int module = event_tbl["module"].value_or(-1);
                     int leaves_in = event_tbl["leaves_in"].value_or(-1);
                     toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
 
-                    if (time == -1 || id == -1 || module == -1 || leaves_in == -1)
+                    if (time == -1.0 || id == -1 || module == -1 || leaves_in == -1)
                     {
                         throw std::invalid_argument("Plane event missing required fields");
                     }

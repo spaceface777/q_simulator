@@ -15,7 +15,7 @@ namespace message
     std::string create_buffer()
     {
         std::string buf;
-        buf.reserve(64);
+        buf.reserve(256);
         return buf;
     }
 
@@ -331,6 +331,7 @@ namespace message
         append_value(buf, "module", module_);
         append_value(buf, "destination", destination_);
         append_value(buf, "safe", safe_);
+        append_value(buf, "needs_security", needs_security_);
         trim_trailing_nl(buf);
         return buf;
     }

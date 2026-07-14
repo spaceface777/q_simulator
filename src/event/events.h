@@ -19,7 +19,7 @@ namespace events
     class Event
     {
     protected:
-        unsigned int time_;
+        double time_;
         unsigned int id_;
 
     public:
@@ -28,7 +28,7 @@ namespace events
         /**
          * Returns the arrival time of the object.
          */
-        unsigned int time() const noexcept
+        double time() const noexcept
         {
             return time_;
         }
@@ -59,7 +59,7 @@ namespace events
         std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        PlaneEvent(uint8_t time, uint8_t id, uint8_t module, unsigned int leaves_in,
+        PlaneEvent(double time, uint8_t id, uint8_t module, unsigned int leaves_in,
                    std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
         {
             time_ = time;
@@ -113,11 +113,11 @@ namespace events
         TubData origin_;
         TubData destination_;
         bool safe_;
-        bool needs_security;
+        bool needs_security_;
         std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        TubEvent(unsigned int time, uint8_t id, TubData origin, TubData destination,
+        TubEvent(double time, uint8_t id, TubData origin, TubData destination,
                  bool safe, bool needs_security,
                  std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
         {
@@ -126,6 +126,7 @@ namespace events
             safe_ = safe;
             origin_ = origin;
             destination_ = destination;
+            needs_security_ = needs_security;
             rfid_ = rfid;
         }
 

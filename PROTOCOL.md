@@ -72,6 +72,7 @@ Required elements:
 - `module = <uint>`: The module that this tub arrives at.
 - `destination = <uint>`: The destination module. 
 - `safe = <bool>`: Whether the tub is safe.
+- `needs_security = <bool>`: Whether the tub should be routed to security.
 
 ```toml
 [tub.arrival]
@@ -79,6 +80,7 @@ id = 3
 module = 12
 destination = 6
 safe = false
+needs_security = false
 ```
 
 ## `[tub.departure]`
