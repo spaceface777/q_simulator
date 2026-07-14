@@ -20,7 +20,6 @@ namespace events
                              if (seconds >= event->time())
                              {
                                  event->fire();
-                                 std::cout << "Fired at vtime " << std::to_string(seconds) << std::endl;
                                  return true;
                              }
                              return false; });
@@ -40,7 +39,7 @@ namespace events
             module->send(message);
         }
 
-        std::cout << "Fired plane event at " << std::to_string(time_) << std::endl;
+        std::cout << "Fired plane event at " << std::to_string(time_) << "s" << std::endl;
     }
 
     void TubEvent::fire() const
@@ -55,7 +54,7 @@ namespace events
         tub_ptr->run();
         tub::add_tub(std::move(tub_ptr));
 
-        std::cout << "Fired tub event at " << std::to_string(time_) << std::endl;
+        std::cout << "Fired tub event at " << std::to_string(time_) << "s" << std::endl;
     }
 
     static std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> parse_rfid(toml::v3::array *rfid_arr)

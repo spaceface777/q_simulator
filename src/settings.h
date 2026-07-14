@@ -10,14 +10,14 @@
 namespace settings
 {
 
-    typedef struct
+    struct ModuleSettings
     {
         bool active;
         uint8_t left;
         uint8_t right;
         uint8_t bottom;
         uint16_t angle;
-    } ModuleSettings;
+    };
 
     /**
      * Parses the settings file.
