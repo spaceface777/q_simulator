@@ -136,10 +136,10 @@ namespace server
      */
     static void parse_packet(unsigned int fd, char *buff)
     {
-        std::optional<message::Introduction> intro = message::Introduction::from_toml(buff);
+        std::optional<message::Init> intro = message::Init::from_toml(buff);
         if (intro)
         {
-            const message::Introduction message = intro.value();
+            const message::Init message = intro.value();
             const unsigned int id = message.id();
 
             const std::optional<std::shared_ptr<client::Client>> existing_client = client::get_client(id);

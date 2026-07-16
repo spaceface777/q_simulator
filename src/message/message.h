@@ -49,13 +49,13 @@ namespace message
         }
     };
 
-    class Introduction : public Message
+    class Init : public Message
     {
     private:
         uint8_t id_;
 
     public:
-        Introduction(uint8_t id)
+        Init(uint8_t id)
         {
             id_ = id;
         }
@@ -75,9 +75,40 @@ namespace message
         /**
          * Creates a new instance on this class based on the passed TOML info.
          * @param toml The TOML info.
-         * @return A new Introduction instance.
+         * @return A new Init instance.
          */
-        static std::optional<Introduction> from_toml(std::string_view toml);
+        static std::optional<Init> from_toml(std::string_view toml);
+    };
+
+    class InitFinish : public Message
+    {
+    private:
+        uint8_t id_;
+
+    public:
+        InitFinish(uint8_t id)
+        {
+            id_ = id;
+        }
+
+        /**
+         * @return The id of the module.
+         */
+        uint8_t id() const noexcept
+        {
+            return id_;
+        }
+
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
+        std::unique_ptr<Message> clone() const override;
+
+        /**
+         * Creates a new instance on this class based on the passed TOML info.
+         * @param toml The TOML info.
+         * @return A new Init instance.
+         */
+        static std::optional<InitFinish> from_toml(std::string_view toml);
     };
 
     class Update : public Message
