@@ -11,11 +11,13 @@
 #include <vector>
 #include <sstream>
 #include <iomanip>
+#include <functional>
 
 #include "../module/module.h"
 #include "../defs.h"
 #include "../settings.h"
 #include "../synchronization/virtual_clock.h"
+#include "buttons.h"
 
 namespace visualization
 {
@@ -706,7 +708,7 @@ namespace visualization
             }
 
             SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-            draw_number(renderer_, x - 4, y - 6, tub->id(), 1);
+            draw_number(renderer_, x - 4, y - 6, tub->id(), 2);
             if (settings::get_setting<bool>("debug"))
                 draw_number(renderer_, x - 4, y, tub->module_location_progress(), 1);
         }
@@ -751,6 +753,9 @@ namespace visualization
         SDL_Quit();
     }
 
+    static double pre_pause_simulation_speed = 0;
+    static buttons::PauseButton button_pause;
+
     void init()
     {
         if (running_)
@@ -787,7 +792,7 @@ namespace visualization
         }
     }
 
-    std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
+    static std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
 
     void update(virtual_clock::VirtualClock &vclock)
     {
@@ -819,6 +824,8 @@ namespace visualization
                 settings::set_setting("simulation_speed", new_value);
                 vclock.set_simulation_speed(new_value);
             }
+
+            button_pause.handle(e, vclock);
         }
 
         if (last_time.count() == 0)
@@ -845,6 +852,8 @@ namespace visualization
         SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
         draw_number(renderer_, 0, 0, settings::get_setting<double>("simulation_speed"), 3, true);
         draw_number(renderer_, 75, 0, current_time.count() / 1000.0, 3, false, true);
+
+        button_pause.render(renderer_);
 
         belt_offset_ += (dt.count() / 16.0) * 0.3;
 
