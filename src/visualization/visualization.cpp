@@ -19,12 +19,28 @@
 #include "../synchronization/virtual_clock.h"
 #include "buttons.h"
 
-#define MODULE_DIMENSIONS 180
-#define MODULE_MARGIN 180
-#define SCALE_WITHIN_MODULE(x) (int)(x / 180.0 * (double)MODULE_DIMENSIONS)
-
 namespace visualization
 {
+
+    /**
+     * Default scaling is kind of large, so reduce by a factor.
+     */
+    static inline constexpr double DEFAULT_SCALING_OFFSET = 0.75;
+
+    /**
+     * The current scale.
+     */
+    static double scale = 1.0;
+
+    /**
+     * Scales a constant by the current scaling.
+     * @param x The constant.
+     * @return The scaled constant.
+     */
+    int scale_within_module(int x)
+    {
+        return (int)(x * DEFAULT_SCALING_OFFSET * scale);
+    }
 
     static std::atomic<bool> running_;
 
@@ -168,7 +184,7 @@ namespace visualization
             {3, 0},
             {4, 0}, // 18
         };
-        int margin = SCALE_WITHIN_MODULE(20);
+        int margin = scale_within_module(20);
 
         int col = 0;
         int row = 0;
@@ -177,31 +193,31 @@ namespace visualization
             col = coords[module_id][0];
             row = coords[module_id][1];
         }
-        x = margin + col * (MODULE_DIMENSIONS + margin);
-        y = margin + row * (MODULE_DIMENSIONS + margin);
+        x = margin + col * (scale_within_module(180) + margin);
+        y = margin + row * (scale_within_module(180) + margin);
     }
 
     static void render_led(int module_x, int module_y, uint32_t color, int rotation)
     {
         int led_rel_x, led_rel_y;
-        int offset = SCALE_WITHIN_MODULE(20);
+        int offset = scale_within_module(20);
         switch (rotation)
         {
         case 0:
-            led_rel_x = SCALE_WITHIN_MODULE(90) + offset;
-            led_rel_y = SCALE_WITHIN_MODULE(90) + offset;
+            led_rel_x = scale_within_module(90) + offset;
+            led_rel_y = scale_within_module(90) + offset;
             break;
         case 90:
-            led_rel_x = SCALE_WITHIN_MODULE(90) - offset;
-            led_rel_y = SCALE_WITHIN_MODULE(90) + offset;
+            led_rel_x = scale_within_module(90) - offset;
+            led_rel_y = scale_within_module(90) + offset;
             break;
         case 180:
-            led_rel_x = SCALE_WITHIN_MODULE(90) - offset;
-            led_rel_y = SCALE_WITHIN_MODULE(90) - offset;
+            led_rel_x = scale_within_module(90) - offset;
+            led_rel_y = scale_within_module(90) - offset;
             break;
         case 270:
-            led_rel_x = SCALE_WITHIN_MODULE(90) + offset;
-            led_rel_y = SCALE_WITHIN_MODULE(90) - offset;
+            led_rel_x = scale_within_module(90) + offset;
+            led_rel_y = scale_within_module(90) - offset;
             break;
         default:
             throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
@@ -254,20 +270,20 @@ namespace visualization
         switch (rotation)
         {
         case 0:
-            rfid_rel_x = SCALE_WITHIN_MODULE(90);
-            rfid_rel_y = SCALE_WITHIN_MODULE(142);
+            rfid_rel_x = scale_within_module(90);
+            rfid_rel_y = scale_within_module(142);
             break;
         case 90:
-            rfid_rel_x = SCALE_WITHIN_MODULE(37);
-            rfid_rel_y = SCALE_WITHIN_MODULE(90);
+            rfid_rel_x = scale_within_module(37);
+            rfid_rel_y = scale_within_module(90);
             break;
         case 180:
-            rfid_rel_x = SCALE_WITHIN_MODULE(90);
-            rfid_rel_y = SCALE_WITHIN_MODULE(37);
+            rfid_rel_x = scale_within_module(90);
+            rfid_rel_y = scale_within_module(37);
             break;
         case 270:
-            rfid_rel_x = SCALE_WITHIN_MODULE(142);
-            rfid_rel_y = SCALE_WITHIN_MODULE(90);
+            rfid_rel_x = scale_within_module(142);
+            rfid_rel_y = scale_within_module(90);
             break;
         default:
             throw std::invalid_argument("Invalid module angle " + std::to_string(rotation));
@@ -286,16 +302,16 @@ namespace visualization
         {
         case 0:
         case 180:
-            width = SCALE_WITHIN_MODULE(180);
-            height = SCALE_WITHIN_MODULE(30);
+            width = scale_within_module(180);
+            height = scale_within_module(30);
             belt_x = module_x;
-            belt_y = module_y + 75;
+            belt_y = module_y + scale_within_module(75);
             break;
         case 90:
         case 270:
-            width = SCALE_WITHIN_MODULE(30);
-            height = SCALE_WITHIN_MODULE(180);
-            belt_x = module_x + 75;
+            width = scale_within_module(30);
+            height = scale_within_module(180);
+            belt_x = module_x + scale_within_module(75);
             belt_y = module_y;
             break;
 
@@ -374,28 +390,28 @@ namespace visualization
         switch (rotation)
         {
         case 0:
-            belt_x = module_x + SCALE_WITHIN_MODULE(75);
-            belt_y = module_y + SCALE_WITHIN_MODULE(105);
-            width = SCALE_WITHIN_MODULE(30);
-            height = SCALE_WITHIN_MODULE(75);
+            belt_x = module_x + scale_within_module(75);
+            belt_y = module_y + scale_within_module(105);
+            width = scale_within_module(30);
+            height = scale_within_module(75);
             break;
         case 90:
             belt_x = module_x;
-            belt_y = module_y + SCALE_WITHIN_MODULE(75);
-            width = SCALE_WITHIN_MODULE(75);
-            height = SCALE_WITHIN_MODULE(30);
+            belt_y = module_y + scale_within_module(75);
+            width = scale_within_module(75);
+            height = scale_within_module(30);
             break;
         case 180:
-            belt_x = module_x + SCALE_WITHIN_MODULE(75);
+            belt_x = module_x + scale_within_module(75);
             belt_y = module_y;
-            width = SCALE_WITHIN_MODULE(30);
-            height = SCALE_WITHIN_MODULE(75);
+            width = scale_within_module(30);
+            height = scale_within_module(75);
             break;
         case 270:
-            belt_x = module_x + SCALE_WITHIN_MODULE(105);
-            belt_y = module_y + SCALE_WITHIN_MODULE(75);
-            width = SCALE_WITHIN_MODULE(75);
-            height = SCALE_WITHIN_MODULE(30);
+            belt_x = module_x + scale_within_module(105);
+            belt_y = module_y + scale_within_module(75);
+            width = scale_within_module(75);
+            height = scale_within_module(30);
             break;
 
         default:
@@ -488,22 +504,22 @@ namespace visualization
         {
         case 0:
             x1 = x2 = module_x + (is_left ? margin : 180 - margin);
-            y1 = module_y + SCALE_WITHIN_MODULE(75);
-            y2 = module_y + SCALE_WITHIN_MODULE(105);
+            y1 = module_y + scale_within_module(75);
+            y2 = module_y + scale_within_module(105);
             break;
         case 90:
-            x1 = module_x + SCALE_WITHIN_MODULE(75);
-            x2 = module_x + SCALE_WITHIN_MODULE(105);
+            x1 = module_x + scale_within_module(75);
+            x2 = module_x + scale_within_module(105);
             y1 = y2 = module_y + (is_left ? margin : 180 - margin);
             break;
         case 180:
             x1 = x2 = module_x + (is_left ? 180 - margin : margin);
-            y1 = module_y + SCALE_WITHIN_MODULE(75);
-            y2 = module_y + SCALE_WITHIN_MODULE(105);
+            y1 = module_y + scale_within_module(75);
+            y2 = module_y + scale_within_module(105);
             break;
         case 270:
-            x1 = module_x + SCALE_WITHIN_MODULE(75);
-            x2 = module_x + SCALE_WITHIN_MODULE(105);
+            x1 = module_x + scale_within_module(75);
+            x2 = module_x + scale_within_module(105);
             y1 = y2 = module_y + (is_left ? 180 - margin : margin);
             break;
 
@@ -534,8 +550,8 @@ namespace visualization
     static void render_servo(int module_x, int module_y, int angle, int rotation)
     {
         // Pivot at (90, 75) relative to module (top-middle of big belt)
-        double pivot_rel_x = SCALE_WITHIN_MODULE(90.0);
-        double pivot_rel_y = SCALE_WITHIN_MODULE(75.0);
+        double pivot_rel_x = scale_within_module(90.0);
+        double pivot_rel_y = scale_within_module(75.0);
 
         // Base angle depends on rotation
         double base_angle_rad = 0.0;
@@ -546,18 +562,18 @@ namespace visualization
             break;
         case 90:
             base_angle_rad = M_PI / 2.0;
-            pivot_rel_x = SCALE_WITHIN_MODULE(105.0);
-            pivot_rel_y = SCALE_WITHIN_MODULE(90.0);
+            pivot_rel_x = scale_within_module(105.0);
+            pivot_rel_y = scale_within_module(90.0);
             break;
         case 180:
             base_angle_rad = M_PI;
-            pivot_rel_x = SCALE_WITHIN_MODULE(90.0);
-            pivot_rel_y = SCALE_WITHIN_MODULE(105.0);
+            pivot_rel_x = scale_within_module(90.0);
+            pivot_rel_y = scale_within_module(105.0);
             break;
         case 270:
             base_angle_rad = 3.0 * M_PI / 2.0;
-            pivot_rel_x = SCALE_WITHIN_MODULE(75.0);
-            pivot_rel_y = SCALE_WITHIN_MODULE(90.0);
+            pivot_rel_x = scale_within_module(75.0);
+            pivot_rel_y = scale_within_module(90.0);
             break;
 
         default:
@@ -568,7 +584,7 @@ namespace visualization
         double servo_angle_rad = (angle / 180.0) * M_PI;
         double total_angle_rad = base_angle_rad + servo_angle_rad;
 
-        double length = SCALE_WITHIN_MODULE(35.0);
+        double length = scale_within_module(35.0);
         double end_rel_x = pivot_rel_x + length * cos(total_angle_rad);
         double end_rel_y = pivot_rel_y + length * sin(total_angle_rad);
 
@@ -620,20 +636,20 @@ namespace visualization
                 switch (module_settings.angle)
                 {
                 case 0:
-                    rel_x = (1.0 - tub->module_location_progress()) * SCALE_WITHIN_MODULE(90.0);
-                    rel_y = SCALE_WITHIN_MODULE(90.0);
+                    rel_x = (1.0 - tub->module_location_progress()) * scale_within_module(90.0);
+                    rel_y = scale_within_module(90.0);
                     break;
                 case 90:
-                    rel_x = SCALE_WITHIN_MODULE(90.0);
-                    rel_y = (1.0 - tub->module_location_progress()) * SCALE_WITHIN_MODULE(90.0);
+                    rel_x = scale_within_module(90.0);
+                    rel_y = (1.0 - tub->module_location_progress()) * scale_within_module(90.0);
                     break;
                 case 180:
-                    rel_x = SCALE_WITHIN_MODULE(90) + tub->module_location_progress() * SCALE_WITHIN_MODULE(90.0);
-                    rel_y = SCALE_WITHIN_MODULE(90.0);
+                    rel_x = scale_within_module(90) + tub->module_location_progress() * scale_within_module(90.0);
+                    rel_y = scale_within_module(90.0);
                     break;
                 case 270:
-                    rel_x = SCALE_WITHIN_MODULE(90.0);
-                    rel_y = SCALE_WITHIN_MODULE(90) + tub->module_location_progress() * SCALE_WITHIN_MODULE(90.0);
+                    rel_x = scale_within_module(90.0);
+                    rel_y = scale_within_module(90) + tub->module_location_progress() * scale_within_module(90.0);
                     break;
 
                 default:
@@ -645,20 +661,20 @@ namespace visualization
                 switch (module_settings.angle)
                 {
                 case 0:
-                    rel_x = SCALE_WITHIN_MODULE(90) + tub->module_location_progress() * SCALE_WITHIN_MODULE(90.0);
-                    rel_y = SCALE_WITHIN_MODULE(90.0);
+                    rel_x = scale_within_module(90) + tub->module_location_progress() * scale_within_module(90.0);
+                    rel_y = scale_within_module(90.0);
                     break;
                 case 90:
-                    rel_x = SCALE_WITHIN_MODULE(90.0);
-                    rel_y = SCALE_WITHIN_MODULE(90) + tub->module_location_progress() * SCALE_WITHIN_MODULE(90.0);
+                    rel_x = scale_within_module(90.0);
+                    rel_y = scale_within_module(90) + tub->module_location_progress() * scale_within_module(90.0);
                     break;
                 case 180:
-                    rel_x = (1.0 - tub->module_location_progress()) * SCALE_WITHIN_MODULE(90.0);
-                    rel_y = SCALE_WITHIN_MODULE(90.0);
+                    rel_x = (1.0 - tub->module_location_progress()) * scale_within_module(90.0);
+                    rel_y = scale_within_module(90.0);
                     break;
                 case 270:
-                    rel_x = SCALE_WITHIN_MODULE(90.0);
-                    rel_y = (1.0 - tub->module_location_progress()) * SCALE_WITHIN_MODULE(90.0);
+                    rel_x = scale_within_module(90.0);
+                    rel_y = (1.0 - tub->module_location_progress()) * scale_within_module(90.0);
                     break;
 
                 default:
@@ -670,20 +686,20 @@ namespace visualization
                 switch (module_settings.angle)
                 {
                 case 0:
-                    rel_x = SCALE_WITHIN_MODULE(90.0);
-                    rel_y = SCALE_WITHIN_MODULE(105.0) + tub->module_location_progress() * SCALE_WITHIN_MODULE(75.0);
+                    rel_x = scale_within_module(90.0);
+                    rel_y = scale_within_module(105.0) + tub->module_location_progress() * scale_within_module(75.0);
                     break;
                 case 90:
-                    rel_x = SCALE_WITHIN_MODULE(75.0) - tub->module_location_progress() * SCALE_WITHIN_MODULE(75.0);
-                    rel_y = SCALE_WITHIN_MODULE(90.0);
+                    rel_x = scale_within_module(75.0) - tub->module_location_progress() * scale_within_module(75.0);
+                    rel_y = scale_within_module(90.0);
                     break;
                 case 180:
-                    rel_x = SCALE_WITHIN_MODULE(90.0);
-                    rel_y = SCALE_WITHIN_MODULE(75.0) - tub->module_location_progress() * SCALE_WITHIN_MODULE(75.0);
+                    rel_x = scale_within_module(90.0);
+                    rel_y = scale_within_module(75.0) - tub->module_location_progress() * scale_within_module(75.0);
                     break;
                 case 270:
-                    rel_x = SCALE_WITHIN_MODULE(105.0) + tub->module_location_progress() * SCALE_WITHIN_MODULE(75.0);
-                    rel_y = SCALE_WITHIN_MODULE(90.0);
+                    rel_x = scale_within_module(105.0) + tub->module_location_progress() * scale_within_module(75.0);
+                    rel_y = scale_within_module(90.0);
                     break;
 
                 default:
@@ -725,7 +741,7 @@ namespace visualization
         const std::shared_ptr<module::Module> module = module_opt.value();
         const settings::ModuleSettings module_settings = settings::get_module_settings(module_id);
 
-        SDL_Rect bg = {x, y, 180, 180};
+        SDL_Rect bg = {x, y, scale_within_module(180), scale_within_module(180)};
         SDL_SetRenderDrawColor(renderer_, 60, 60, 60, 255);
         SDL_RenderFillRect(renderer_, &bg);
 
@@ -772,8 +788,8 @@ namespace visualization
         window_ = SDL_CreateWindow("Quercus Airport Visualization",
                                    SDL_WINDOWPOS_UNDEFINED,
                                    SDL_WINDOWPOS_UNDEFINED,
-                                   1020,
-                                   1020,
+                                   1000,
+                                   800,
                                    SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
         if (!window_)
         {
@@ -801,31 +817,50 @@ namespace visualization
             return;
         }
 
-        SDL_Event e;
-        while (SDL_PollEvent(&e) != 0)
+        scale = settings::get_setting<double>("scale");
+
+        SDL_Event event;
+        while (SDL_PollEvent(&event) != 0)
         {
-            if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_CLOSE)
+            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)
             {
                 stop();
-            }
-            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_F4)
-            {
-                settings::set_setting("debug", !settings::get_setting<bool>("debug"));
-            }
-            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_UP)
-            {
-                double new_value = settings::get_setting<double>("simulation_speed") + 0.1;
-                settings::set_setting("simulation_speed", new_value);
-                vclock.set_simulation_speed(new_value);
-            }
-            else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_DOWN)
-            {
-                double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - 0.1);
-                settings::set_setting("simulation_speed", new_value);
-                vclock.set_simulation_speed(new_value);
+                return;
             }
 
-            button_pause.handle(e, vclock);
+            if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)
+            {
+                const uint8_t *keyboard = SDL_GetKeyboardState(NULL);
+
+                if (keyboard[SDL_SCANCODE_F4])
+                {
+                    settings::set_setting("debug", !settings::get_setting<bool>("debug"));
+                }
+                if (keyboard[SDL_SCANCODE_UP])
+                {
+                    double new_value = settings::get_setting<double>("simulation_speed") + 0.1;
+                    settings::set_setting("simulation_speed", new_value);
+                    vclock.set_simulation_speed(new_value);
+                }
+                if (keyboard[SDL_SCANCODE_DOWN])
+                {
+                    double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - 0.1);
+                    settings::set_setting("simulation_speed", new_value);
+                    vclock.set_simulation_speed(new_value);
+                }
+                if (keyboard[SDL_SCANCODE_LCTRL] && keyboard[SDL_SCANCODE_MINUS])
+                {
+                    double new_value = fmax(0.0, settings::get_setting<double>("scale") - 0.1);
+                    settings::set_setting("scale", new_value);
+                }
+                if (keyboard[SDL_SCANCODE_LCTRL] && keyboard[SDL_SCANCODE_EQUALS])
+                {
+                    double new_value = fmin(5.0, settings::get_setting<double>("scale") + 0.1);
+                    settings::set_setting("scale", new_value);
+                }
+            }
+
+            button_pause.handle(event, vclock);
         }
 
         if (last_time.count() == 0)
