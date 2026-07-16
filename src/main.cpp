@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <algorithm>
 
 #include "event/events.h"
 #include "tcp/server.h"
@@ -56,7 +57,7 @@ int main(int argc, char const *argv[])
         int attempts = 0;
         while (server::size() < module_index)
         {
-            if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 100)
+            if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 10)
             {
                 tub::stop();
                 server::stop();
@@ -75,11 +76,22 @@ int main(int argc, char const *argv[])
         }
 
         module_index++;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // allow modules to start
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    while (true)
+    {
+        bool all = std::all_of(module::get_modules().begin(), module::get_modules().end(), [](std::shared_ptr<module::Module> module)
+                               { return module->is_initialization_finished(); });
+
+        if (all)
+        {
+            break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // TODO remove this
 
     // initialize schedule
     for (auto &event : events)
@@ -96,7 +108,6 @@ int main(int argc, char const *argv[])
                 }
 
                 module->send(message);
-                std::cout << "send to " << std::to_string(module->id()) << std::endl;
             }
         }
         else if (auto *plane_event = dynamic_cast<events::PlaneEvent *>(event.get()))

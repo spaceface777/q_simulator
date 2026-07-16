@@ -136,7 +136,7 @@ namespace server
      */
     static void parse_packet(unsigned int fd, char *buff)
     {
-        std::optional<message::Init> intro = message::Init::from_toml(buff);
+        const std::optional<message::Init> intro = message::Init::from_toml(buff);
         if (intro)
         {
             const message::Init message = intro.value();
@@ -149,7 +149,7 @@ namespace server
                 return;
             }
 
-            std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id);
+            const std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id);
             ptr->run();
             client::add_client(ptr);
 
@@ -158,13 +158,23 @@ namespace server
             return;
         }
 
-        std::optional<message::Update> update = message::Update::from_toml(buff);
+        const std::optional<message::InitFinish> init_finish = message::InitFinish::from_toml(buff);
+        if (init_finish)
+        {
+            const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(init_finish.value().id());
+            if (ptr)
+            {
+                ptr.value()->set_initialization_finished(true);
+            }
+
+            return;
+        }
+
+        const std::optional<message::Update> update = message::Update::from_toml(buff);
         if (update)
         {
             const message::Update message = update.value();
-            // std::cout << "Received update for " << std::to_string(message.id()) << "'s " << message.device() << ": " << std::to_string(message.value()) << std::endl;
-
-            std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
+            const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
             if (ptr)
             {
                 ptr.value()->update(message);
@@ -173,11 +183,10 @@ namespace server
             return;
         }
 
-        std::optional<message::Packet> sent = message::Packet::from_toml(buff);
+        const std::optional<message::Packet> sent = message::Packet::from_toml(buff);
         if (sent)
         {
             const message::Packet message = sent.value();
-            // std::cout << "Received message send request to " << std::to_string(message.module()) << " with content " << message.content() << std::endl;
             send(message.module(), message);
             return;
         }
