@@ -41,17 +41,13 @@ int main(int argc, char const *argv[])
     settings::parse_settings();
     std::list<std::unique_ptr<events::Event>> events;
     events::parse_events(events);
-
-    const std::string path = settings::get_setting<std::string>("router_path");
-    util::require(std::filesystem::exists(path), "No zephyr.exe found at router_path in settings.toml");
-
     server::run();
 
     uint8_t module_index = 1;
     while (module_index <= settings::get_modules_active())
     {
         std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
-        module->run(path);
+        module->run(settings::get_setting<std::string>("router_path"));
         module::add_module(std::move(module));
 
         int attempts = 0;

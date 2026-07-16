@@ -2,7 +2,12 @@
 router_path = "/home/user/airport-router/build/zephyr/zephyr.exe"
 
 # The speed at which the simulation will be run.
-simulation_speed = 1
+# Must be above 0.
+simulation_speed = 1.0
+
+# The scale of the simulation overview.
+# Must be between 0.25 and 5.
+scale = 1.0
 
 [module.1]
 active = true
