@@ -34,6 +34,7 @@ add_executable(main
     src/message/message.cpp
     src/tub/tub.cpp
     src/visualization/visualization.cpp
+    src/visualization/buttons.cpp
     src/settings.cpp
     src/event/events.cpp)
 

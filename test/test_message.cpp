@@ -31,7 +31,7 @@ TEST(Packet, ToTomlPacket)
 TEST(Packet, FromTo)
 {
     const std::string toml = "  [introduction]\n\n  id  =  4";
-    const message::Introduction intro = message::Introduction::from_toml(toml).value();
+    const message::Init intro = message::Init::from_toml(toml).value();
 
     ASSERT_TRUE(intro.is_valid());
     ASSERT_EQ(4, intro.id());

@@ -19,7 +19,8 @@ namespace module
     private:
         pid_t pid_;
         uint8_t id_;
-        bool running_ = false;
+        bool running_ = false;       // whether the router process spawned by this module is running
+        bool init_finished_ = false; // whether the router process is ready to receive packets
 
         int8_t big_speed_ = 0;
         int8_t small_speed_ = 0;
@@ -140,6 +141,23 @@ namespace module
         void set_rfid_active(bool active) noexcept
         {
             rfid_active_ = active;
+        }
+
+        /**
+         * @return Whether this module has finished initialization.
+         */
+        bool is_initialization_finished() const noexcept
+        {
+            return init_finished_;
+        }
+
+        /**
+         * Sets the initialization state of the router process.
+         * @param active Whether this module's router process has finished initialization.
+         */
+        void set_initialization_finished(bool finished) noexcept
+        {
+            init_finished_ = finished;
         }
 
         /**

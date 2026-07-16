@@ -4,15 +4,27 @@ The details for the Protocol for Unified Real-time Physical-Logical Exchange (PU
 ## Format
 The format of PURPLE follows that of TOML. The header indicates the type of message that is sent. Currently accepted:
 
-### `[introduction]`
-Used to pass the id of the started module to the receiving server.
+### `[init]`
+Used to pass the id of the started module to the simulator.
 
 Required elements:
 - `id = <uint>`: The id of the module.
 
 Example:
 ```toml
-[introduction]
+[init]
+id = 12
+```
+
+### `[init.finish]`
+Used to indicate to the simulator that a module is ready to receive packets.
+
+Required elements:
+- `id = <uint>`: The id of the module.
+
+Example:
+```toml
+[init.finish]
 id = 12
 ```
 
@@ -72,6 +84,7 @@ Required elements:
 - `module = <uint>`: The module that this tub arrives at.
 - `destination = <uint>`: The destination module. 
 - `safe = <bool>`: Whether the tub is safe.
+- `needs_security = <bool>`: Whether the tub should be routed to security.
 
 ```toml
 [tub.arrival]
@@ -79,6 +92,7 @@ id = 3
 module = 12
 destination = 6
 safe = false
+needs_security = false
 ```
 
 ## `[tub.departure]`

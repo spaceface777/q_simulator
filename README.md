@@ -1,9 +1,12 @@
-## todo
-- write processes/threads for objects in digital twin
-- update diagrams 
+# TODO
+**general**
 - add synchronization for processes
-- format for gitlab issues
 - analyze implementing scheduler process that communicates to the router processes
+- make id in events.toml 7 byte rfid
+- remove server/client and fix tcp
+
+**event generator**
+- total amount of tubs, density of tubs/planes
 
 # Quercus Simulation
 The repository for the Quercus Airport Router Simulation.

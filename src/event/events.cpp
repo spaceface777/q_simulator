@@ -20,7 +20,6 @@ namespace events
                              if (seconds >= event->time())
                              {
                                  event->fire();
-                                 std::cout << "Fired at vtime " << std::to_string(seconds) << std::endl;
                                  return true;
                              }
                              return false; });
@@ -40,22 +39,25 @@ namespace events
             module->send(message);
         }
 
-        std::cout << "Fired plane event at " << std::to_string(time_) << std::endl;
+        std::cout << "Fired plane event at " << std::to_string(time_) << "s" << std::endl;
     }
 
     void TubEvent::fire() const
     {
-        const auto message = message::TubArrival(id_, origin_.id, destination_.id, safe_);
-        const auto module = module::get_module(origin_.id);
-
-        util::require(module.has_value(), "No module with id " + std::to_string(origin_.id));
-        (*module)->send(message);
+        // const auto message = message::TubArrival(id_, origin_.id);
+        // const auto module = module::get_module(origin_.id);
+        // if (!module)
+        // {
+        //     return;
+        // }
+        // util::require(module.has_value(), "No module with id " + std::to_string(origin_.id));
+        // (*module)->send(message);
 
         auto tub_ptr = std::make_unique<tub::Tub>(id_, origin_.id, destination_.id, ModuleLocation::SMALL_BELT, rfid_);
         tub_ptr->run();
         tub::add_tub(std::move(tub_ptr));
 
-        std::cout << "Fired tub event at " << std::to_string(time_) << std::endl;
+        std::cout << "Fired tub event at " << std::to_string(time_) << "s" << std::endl;
     }
 
     static std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> parse_rfid(toml::v3::array *rfid_arr)
@@ -135,7 +137,7 @@ namespace events
 
                     auto &event_tbl = *event_value.as_table();
 
-                    int time = event_tbl["time"].value_or(-1);
+                    double time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
                     bool safe = event_tbl["safe"].value_or(false);
                     bool needs_security = event_tbl["needs_security"].value_or(false);
@@ -193,12 +195,17 @@ namespace events
                         }
                     }
 
-                    if (time == -1 || id == -1 || origin.id == -1 || destination.id == -1)
+                    if (time == -1.0 || id == -1 || origin.id == -1 || destination.id == -1)
                     {
                         throw std::invalid_argument("Tub event missing required fields");
                     }
 
-                    result.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, parse_rfid(rfid_arr)));
+                    auto rfid = parse_rfid(rfid_arr);
+                    rfid[0] = {(int8_t)origin.id, (int8_t)(origin.type == LocationType::MODULE ? 0 : 1),
+                               (int8_t)destination.id, (int8_t)(destination.type == LocationType::MODULE ? 0 : 1)};
+                    rfid[1] = {safe, needs_security, 0, 0};
+
+                    result.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, rfid));
                 }
             }
             else if (group == "plane")
@@ -210,18 +217,22 @@ namespace events
 
                     auto &event_tbl = *event_value.as_table();
 
-                    int time = event_tbl["time"].value_or(-1);
+                    int time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
                     int module = event_tbl["module"].value_or(-1);
                     int leaves_in = event_tbl["leaves_in"].value_or(-1);
                     toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
 
-                    if (time == -1 || id == -1 || module == -1 || leaves_in == -1)
+                    if (time == -1.0 || id == -1 || module == -1 || leaves_in == -1)
                     {
                         throw std::invalid_argument("Plane event missing required fields");
                     }
 
-                    result.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, parse_rfid(rfid_arr)));
+                    auto rfid = parse_rfid(rfid_arr);
+                    rfid[0] = {(int8_t)module, 0, 0, 0};
+                    rfid[1] = {(int8_t)(leaves_in & 0xFF), (int8_t)((leaves_in >> 8) & 0xFF), (int8_t)((leaves_in >> 16) & 0xFF), (int8_t)((leaves_in >> 24) & 0xFF)};
+
+                    result.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, rfid));
                 }
             }
         }

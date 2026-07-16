@@ -113,7 +113,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    if (module->servo_angle() < 10)
+                    if (module->servo_angle() < 10 || module->servo_angle() > 170)
                     {
                         location_ = ModuleLocation::RIGHT_BELT;
                     }
@@ -123,7 +123,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    if (module->servo_angle() > 170)
+                    if (module->servo_angle() > 170 || module->servo_angle() < 10)
                     {
                         location_ = ModuleLocation::LEFT_BELT;
                     }
@@ -152,9 +152,9 @@ namespace tub
                     }
                     else if (!in_rfid_ && location_progress_ > RFID_LOCATION - RFID_RANGE && location_progress_ < RFID_LOCATION + RFID_RANGE)
                     {
-                        module->send(message::UpdateRfid(module_, 
-                            bytes_to_hex(reinterpret_cast<int8_t*>(rfid_uid_.data()), rfid_uid_.size()), 
-                            bytes_to_hex(reinterpret_cast<int8_t*>(rfid_.data()), rfid_.size())));
+                        module->send(message::UpdateRfid(module_,
+                                                         bytes_to_hex(reinterpret_cast<int8_t *>(rfid_uid_.data()), rfid_uid_.size()),
+                                                         bytes_to_hex(reinterpret_cast<int8_t *>(rfid_.data()), rfid_.size())));
                         module->set_rfid_active(true);
                         in_rfid_ = true;
                     }

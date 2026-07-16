@@ -5,6 +5,10 @@
 #include <atomic>
 #include <iostream>
 #include <list>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <algorithm>
 
 #include "event/events.h"
 #include "tcp/server.h"
@@ -28,6 +32,8 @@ static void handle_close(int code)
     server::stop();
     visualization::stop();
     client::stop();
+
+    _exit(code);
 }
 
 int main(int argc, char const *argv[])
@@ -35,23 +41,19 @@ int main(int argc, char const *argv[])
     settings::parse_settings();
     std::list<std::unique_ptr<events::Event>> events;
     events::parse_events(events);
-
-    const std::string path = settings::get_setting<std::string>("router_path");
-    util::require(std::filesystem::exists(path), "No zephyr.exe found at router_path in settings.toml");
-
     server::run();
 
     uint8_t module_index = 1;
     while (module_index <= settings::get_modules_active())
     {
         std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
-        module->run(path);
+        module->run(settings::get_setting<std::string>("router_path"));
         module::add_module(std::move(module));
 
         int attempts = 0;
         while (server::size() < module_index)
         {
-            if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 100)
+            if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 10)
             {
                 tub::stop();
                 server::stop();
@@ -70,7 +72,43 @@ int main(int argc, char const *argv[])
         }
 
         module_index++;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    while (true)
+    {
+        bool all = std::all_of(module::get_modules().begin(), module::get_modules().end(), [](std::shared_ptr<module::Module> module)
+                               { return module->is_initialization_finished(); });
+
+        if (all)
+        {
+            break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // TODO remove this
+
+    // initialize schedule
+    for (auto &event : events)
+    {
+        if (auto *tub_event = dynamic_cast<events::TubEvent *>(event.get()))
+        {
+            const auto message = message::TubSchedule(tub_event->id(), tub_event->origin().id,
+                                                      tub_event->destination().id, tub_event->safe(), tub_event->needs_security());
+            for (const auto &module : module::get_modules())
+            {
+                if (!module)
+                {
+                    continue;
+                }
+
+                module->send(message);
+            }
+        }
+        else if (auto *plane_event = dynamic_cast<events::PlaneEvent *>(event.get()))
+        {
+        }
     }
 
     virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();
@@ -95,6 +133,9 @@ int main(int argc, char const *argv[])
             return EXIT_FAILURE;
         }
     }
+
+    ::signal(SIGTERM, handle_close);
+    ::signal(SIGKILL, handle_close);
 
     return EXIT_SUCCESS;
 }

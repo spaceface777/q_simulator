@@ -15,7 +15,7 @@ namespace message
     std::string create_buffer()
     {
         std::string buf;
-        buf.reserve(64);
+        buf.reserve(256);
         return buf;
     }
 
@@ -78,26 +78,26 @@ namespace message
         return std::make_unique<Message>(*this);
     }
 
-    bool Introduction::is_valid() const noexcept
+    bool Init::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string Introduction::to_toml() const noexcept
+    std::string Init::to_toml() const noexcept
     {
         std::string buf = create_buffer();
-        append_header(buf, "introduction");
+        append_header(buf, "init");
         append_value(buf, "id", id_);
         trim_trailing_nl(buf);
         return buf;
     }
 
-    std::unique_ptr<Message> Introduction::clone() const
+    std::unique_ptr<Message> Init::clone() const
     {
-        return std::make_unique<Introduction>(*this);
+        return std::make_unique<Init>(*this);
     }
 
-    std::optional<Introduction> Introduction::from_toml(std::string_view toml)
+    std::optional<Init> Init::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
@@ -112,7 +112,7 @@ namespace message
                 continue;
             }
 
-            if (trimmed == "[introduction]")
+            if (trimmed == "[init]")
             {
                 stage = 1;
                 continue;
@@ -137,7 +137,69 @@ namespace message
             return {};
         }
 
-        return Introduction(id);
+        return Init(id);
+    }
+
+    bool InitFinish::is_valid() const noexcept
+    {
+        return true;
+    }
+
+    std::string InitFinish::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "init.finish");
+        append_value(buf, "id", id_);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::unique_ptr<Message> InitFinish::clone() const
+    {
+        return std::make_unique<InitFinish>(*this);
+    }
+
+    std::optional<InitFinish> InitFinish::from_toml(std::string_view toml)
+    {
+        const std::vector<std::string_view> lines = util::split(toml, "\n");
+
+        int stage = 0;
+        int id = -1;
+        for (const std::string_view line : lines)
+        {
+            const std::string_view trimmed = util::trim(line);
+
+            if (trimmed.empty())
+            {
+                continue;
+            }
+
+            if (trimmed == "[init.finish]")
+            {
+                stage = 1;
+                continue;
+            }
+
+            const std::vector<std::string_view> parts = util::split(trimmed, "=");
+
+            if (parts.size() != 2)
+            {
+                return {};
+            }
+
+            const std::string_view left = util::trim(parts[0]);
+            const std::string right = std::string(util::trim(parts[1]));
+
+            if (left == "id" && stage == 1)
+            {
+                id = std::stoi(right);
+                continue;
+            }
+
+            return {};
+        }
+
+        return InitFinish(id);
     }
 
     bool Update::is_valid() const noexcept
@@ -318,27 +380,48 @@ namespace message
         return Packet(module, length, content);
     }
 
-    bool TubArrival::is_valid() const noexcept
+    bool TubSchedule::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string TubArrival::to_toml() const noexcept
+    std::string TubSchedule::to_toml() const noexcept
     {
         std::string buf = create_buffer();
-        append_header(buf, "tub.arrival");
+        append_header(buf, "tub.schedule");
         append_value(buf, "id", id_);
         append_value(buf, "module", module_);
         append_value(buf, "destination", destination_);
         append_value(buf, "safe", safe_);
+        append_value(buf, "needs_security", needs_security_);
         trim_trailing_nl(buf);
         return buf;
     }
 
-    std::unique_ptr<Message> TubArrival::clone() const
+    std::unique_ptr<Message> TubSchedule::clone() const
     {
-        return std::make_unique<TubArrival>(*this);
+        return std::make_unique<TubSchedule>(*this);
     }
+
+    // bool TubArrival::is_valid() const noexcept
+    // {
+    //     return true;
+    // }
+
+    // std::string TubArrival::to_toml() const noexcept
+    // {
+    //     std::string buf = create_buffer();
+    //     append_header(buf, "tub.arrival");
+    //     append_value(buf, "id", id_);
+    //     append_value(buf, "module", module_);
+    //     trim_trailing_nl(buf);
+    //     return buf;
+    // }
+
+    // std::unique_ptr<Message> TubArrival::clone() const
+    // {
+    //     return std::make_unique<TubArrival>(*this);
+    // }
 
     bool TubDeparture::is_valid() const noexcept
     {
@@ -387,19 +470,6 @@ namespace message
         append_header(buf, "plane.departure");
         append_value(buf, "id", id_);
         append_value(buf, "module", module_);
-        trim_trailing_nl(buf);
-        return buf;
-    }
-
-    bool Shutdown::is_valid() const noexcept
-    {
-        return true;
-    }
-
-    std::string Shutdown::to_toml() const noexcept
-    {
-        std::string buf = create_buffer();
-        append_header(buf, "shutdown");
         trim_trailing_nl(buf);
         return buf;
     }

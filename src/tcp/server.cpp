@@ -46,6 +46,13 @@ namespace server
             .sin_port = ::htons(PORT),
             .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
 
+        int opt = 1;
+        if (::setsockopt(socket.fd(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+        {
+            stop();
+            throw std::runtime_error("Failed to set SO_REUSEADDR: " + std::string(::strerror(errno)));
+        }
+
         // assign fd to port
         if (::bind(socket.fd(), (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {
@@ -129,10 +136,10 @@ namespace server
      */
     static void parse_packet(unsigned int fd, char *buff)
     {
-        std::optional<message::Introduction> intro = message::Introduction::from_toml(buff);
+        const std::optional<message::Init> intro = message::Init::from_toml(buff);
         if (intro)
         {
-            const message::Introduction message = intro.value();
+            const message::Init message = intro.value();
             const unsigned int id = message.id();
 
             const std::optional<std::shared_ptr<client::Client>> existing_client = client::get_client(id);
@@ -142,7 +149,7 @@ namespace server
                 return;
             }
 
-            std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id);
+            const std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id);
             ptr->run();
             client::add_client(ptr);
 
@@ -151,13 +158,23 @@ namespace server
             return;
         }
 
-        std::optional<message::Update> update = message::Update::from_toml(buff);
+        const std::optional<message::InitFinish> init_finish = message::InitFinish::from_toml(buff);
+        if (init_finish)
+        {
+            const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(init_finish.value().id());
+            if (ptr)
+            {
+                ptr.value()->set_initialization_finished(true);
+            }
+
+            return;
+        }
+
+        const std::optional<message::Update> update = message::Update::from_toml(buff);
         if (update)
         {
             const message::Update message = update.value();
-            // std::cout << "Received update for " << std::to_string(message.id()) << "'s " << message.device() << ": " << std::to_string(message.value()) << std::endl;
-
-            std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
+            const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
             if (ptr)
             {
                 ptr.value()->update(message);
@@ -166,11 +183,10 @@ namespace server
             return;
         }
 
-        std::optional<message::Packet> sent = message::Packet::from_toml(buff);
+        const std::optional<message::Packet> sent = message::Packet::from_toml(buff);
         if (sent)
         {
             const message::Packet message = sent.value();
-            // std::cout << "Received message send request to " << std::to_string(message.module()) << " with content " << message.content() << std::endl;
             send(message.module(), message);
             return;
         }

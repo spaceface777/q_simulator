@@ -2,12 +2,25 @@
 #include "lib/toml.h"
 #include "settings.h"
 #include "util.h"
+#include <functional>
 
 namespace settings
 {
 
     static ModuleSettings module_settings[MAX_MODULES];
     static toml::table table;
+
+    template <typename T, typename Predicate>
+    static void parse_setting(std::string_view setting, T default_value, Predicate pred)
+    {
+        toml::node *node = table.get(setting);
+        util::require(node, "Missing setting '" + std::string(setting) + "' in settings.toml");
+
+        T value = static_cast<T>(node->value_or(default_value));
+        util::require(pred(value), "Invalid value for '" + std::string(setting) + "' in settings.toml");
+
+        settings::set_setting(setting, value);
+    }
 
     void parse_settings()
     {
@@ -20,15 +33,18 @@ namespace settings
             throw err;
         }
 
-        toml::node *ss_node = table.get("simulation_speed");
-        util::require(ss_node, "Missing simulation speed in settings.yml");
-        double ss = static_cast<double>(ss_node->value_or(-1));
-        util::require(ss >= 0, "Invalid simulation speed in settings.yml");
+        parse_setting("router_path", "", [](std::string value)
+                      { util::require(std::filesystem::exists(value), "No zephyr.exe found at router_path in settings.toml");
+                        return true; });
+        parse_setting("simulation_speed", -1.0, [](double value)
+                      { return value >= 0; });
+        parse_setting("scale", -1.0, [](double value)
+                      { return value >= 0.25 && value <= 5; });
 
         for (uint8_t id = 1; id < MAX_MODULES; id++)
         {
             toml::node *module_node = table.get("module");
-            util::require(module_node && module_node->is_table(), "Invalid setting 'module' in settings.yml");
+            util::require(module_node && module_node->is_table(), "Invalid setting 'module' in settings.toml");
 
             toml::table module_table = *module_node->as_table();
             toml::node *node = module_table.get(std::to_string(id));

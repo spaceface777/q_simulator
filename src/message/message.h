@@ -49,13 +49,13 @@ namespace message
         }
     };
 
-    class Introduction : public Message
+    class Init : public Message
     {
     private:
         uint8_t id_;
 
     public:
-        Introduction(uint8_t id)
+        Init(uint8_t id)
         {
             id_ = id;
         }
@@ -75,9 +75,40 @@ namespace message
         /**
          * Creates a new instance on this class based on the passed TOML info.
          * @param toml The TOML info.
-         * @return A new Introduction instance.
+         * @return A new Init instance.
          */
-        static std::optional<Introduction> from_toml(std::string_view toml);
+        static std::optional<Init> from_toml(std::string_view toml);
+    };
+
+    class InitFinish : public Message
+    {
+    private:
+        uint8_t id_;
+
+    public:
+        InitFinish(uint8_t id)
+        {
+            id_ = id;
+        }
+
+        /**
+         * @return The id of the module.
+         */
+        uint8_t id() const noexcept
+        {
+            return id_;
+        }
+
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
+        std::unique_ptr<Message> clone() const override;
+
+        /**
+         * Creates a new instance on this class based on the passed TOML info.
+         * @param toml The TOML info.
+         * @return A new Init instance.
+         */
+        static std::optional<InitFinish> from_toml(std::string_view toml);
     };
 
     class Update : public Message
@@ -146,34 +177,9 @@ namespace message
             data_ = data;
         }
 
-        /**
-         * @return The id of the module.
-         */
-        uint8_t module() const noexcept
-        {
-            return module_;
-        }
-
-        /**
-         * @return The uid.
-         */
-        std::string uid() const noexcept
-        {
-            return uid_;
-        }
-
-        /**
-         * @return The data.
-         */
-        std::string data() const noexcept
-        {
-            return data_;
-        }
-
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
         std::unique_ptr<Message> clone() const override;
-
     };
 
     class Packet : public Message
@@ -199,22 +205,6 @@ namespace message
             return module_;
         }
 
-        /**
-         * @return The length of the content.
-         */
-        std::size_t length() const noexcept
-        {
-            return length_;
-        }
-
-        /**
-         * @return The content.
-         */
-        std::string content() const noexcept
-        {
-            return content_;
-        }
-
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
         std::unique_ptr<Message> clone() const override;
@@ -227,59 +217,47 @@ namespace message
         static std::optional<Packet> from_toml(std::string_view toml);
     };
 
-    class TubArrival : public Message
+    class TubSchedule : public Message
     {
     private:
         uint8_t id_;
         uint8_t module_;
         uint8_t destination_;
         bool safe_;
+        bool needs_security_;
 
     public:
-        TubArrival(uint8_t id, uint8_t module, uint8_t destination, bool safe)
+        TubSchedule(uint8_t id, uint8_t module, uint8_t destination, bool safe, bool needs_security)
         {
             id_ = id;
             module_ = module;
             destination_ = destination;
             safe_ = safe;
-        }
-
-        /**
-         * @return The id of the plane.
-         */
-        uint8_t id() const noexcept
-        {
-            return id_;
-        }
-
-        /**
-         * @return The id of the module.
-         */
-        uint8_t module() const noexcept
-        {
-            return module_;
-        }
-
-        /**
-         * @return The amount of time until the plane leaves.
-         */
-        uint8_t destination() const noexcept
-        {
-            return destination_;
-        }
-
-        /**
-         * @return Whether this tub is safe.
-         */
-        bool safe() const noexcept
-        {
-            return safe_;
+            needs_security_ = needs_security;
         }
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
         std::unique_ptr<Message> clone() const override;
     };
+
+    // class TubArrival : public Message
+    // {
+    // private:
+    //     uint8_t id_;
+    //     uint8_t module_;
+
+    // public:
+    //     TubArrival(uint8_t id, uint8_t module)
+    //     {
+    //         id_ = id;
+    //         module_ = module;
+    //     }
+
+    //     bool is_valid() const noexcept override;
+    //     std::string to_toml() const noexcept override;
+    //     std::unique_ptr<Message> clone() const override;
+    // };
 
     class TubDeparture : public Message
     {
@@ -292,22 +270,6 @@ namespace message
         {
             id_ = id;
             module_ = module;
-        }
-
-        /**
-         * @return The id of the plane.
-         */
-        uint8_t id() const noexcept
-        {
-            return id_;
-        }
-
-        /**
-         * @return The id of the module.
-         */
-        uint8_t module() const noexcept
-        {
-            return module_;
         }
 
         bool is_valid() const noexcept override;
@@ -330,30 +292,6 @@ namespace message
             leaves_in_ = leaves_in;
         }
 
-        /**
-         * @return The id of the plane.
-         */
-        uint8_t id() const noexcept
-        {
-            return id_;
-        }
-
-        /**
-         * @return The id of the module.
-         */
-        uint8_t module() const noexcept
-        {
-            return module_;
-        }
-
-        /**
-         * @return The amount of time until the plane leaves.
-         */
-        unsigned int leaves_in() const noexcept
-        {
-            return leaves_in_;
-        }
-
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;
     };
@@ -370,31 +308,6 @@ namespace message
             id_ = id;
             module_ = module;
         }
-
-        /**
-         * @return The id of the plane.
-         */
-        uint8_t id() const noexcept
-        {
-            return id_;
-        }
-
-        /**
-         * @return The id of the module.
-         */
-        uint8_t module() const noexcept
-        {
-            return module_;
-        }
-
-        bool is_valid() const noexcept override;
-        std::string to_toml() const noexcept override;
-    };
-
-    class Shutdown : public Message
-    {
-    public:
-        Shutdown() {};
 
         bool is_valid() const noexcept override;
         std::string to_toml() const noexcept override;

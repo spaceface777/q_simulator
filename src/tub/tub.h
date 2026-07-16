@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 #include <future>
+#include <array>
 
 #include "../defs.h"
 
