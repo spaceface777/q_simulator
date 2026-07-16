@@ -75,8 +75,8 @@ namespace visualization::buttons
         {
         }
 
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept {};
-        virtual void on_render(SDL_Renderer *renderer) noexcept {};
+        virtual void on_click([[maybe_unused]] virtual_clock::VirtualClock &vclock) noexcept {};
+        virtual void on_render([[maybe_unused]] SDL_Renderer *renderer) noexcept {};
 
         void handle(const SDL_Event &event, virtual_clock::VirtualClock &vclock) noexcept;
         void render(SDL_Renderer *renderer) noexcept;

@@ -41,10 +41,10 @@ namespace server
      */
     static void setup_port(const Socket &socket)
     {
-        const struct sockaddr_in addr_in = {
-            .sin_family = AF_INET,
-            .sin_port = ::htons(PORT),
-            .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
+        struct sockaddr_in addr_in;
+        addr_in.sin_family = AF_INET;
+        addr_in.sin_port = ::htons(PORT);
+        addr_in.sin_addr.s_addr = INADDR_ANY;
 
         int opt = 1;
         if (::setsockopt(socket.fd(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
@@ -74,11 +74,10 @@ namespace server
      */
     static void handle_connection_requests(const Socket &socket)
     {
-        struct pollfd pfd = {
-            .fd = socket.fd(),
-            .events = POLLIN | POLLERR | POLLNVAL,
-            .revents = 0,
-        };
+        struct pollfd pfd;
+        pfd.fd = socket.fd();
+        pfd.events = POLLIN | POLLERR | POLLNVAL;
+        pfd.revents = 0;
 
         int selected = ::poll(&pfd, 1, TIMEOUT.count());
         if (selected <= 0)
@@ -134,7 +133,7 @@ namespace server
     /**
      * Parses a buffer to a message::Packet, and performs the appropriate action.
      */
-    static void parse_packet(unsigned int fd, char *buff)
+    static void parse_packet(char *buff)
     {
         const std::optional<message::Init> intro = message::Init::from_toml(buff);
         if (intro)
@@ -197,21 +196,20 @@ namespace server
      */
     static void handle_packets()
     {
-        struct pollfd pfds[fds.size()];
+        std::vector<struct pollfd> pfds(fds.size());
 
         // populate pfds
         for (std::size_t i = 0; i < fds.size(); i++)
         {
-            struct pollfd pollfd = {
-                .fd = static_cast<int>(fds.at(i)),
-                .events = POLLIN | POLLERR | POLLNVAL,
-                .revents = 0,
-            };
+            struct pollfd pollfd;
+            pollfd.fd = static_cast<int>(fds.at(i));
+            pollfd.events = POLLIN | POLLERR | POLLNVAL;
+            pollfd.revents = 0;
 
             pfds[i] = pollfd;
         }
 
-        int selected = ::poll(pfds, fds.size(), TIMEOUT.count());
+        int selected = ::poll(pfds.data(), fds.size(), TIMEOUT.count());
         if (selected == 0)
         {
             return;
@@ -252,7 +250,8 @@ namespace server
                 continue;
             }
 
-            parse_packet(fd, buff);
+            ;
+            parse_packet(buff);
         }
     }
 

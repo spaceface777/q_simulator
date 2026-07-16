@@ -163,7 +163,7 @@ namespace visualization
 
     static void get_module_coords(int module_id, int &x, int &y)
     {
-        int coords[settings::get_modules_active() + 1][2] = {
+        int coords[MAX_MODULES][2] = {
             {-1, -1}, // padding
             {0, 4},
             {1, 4}, // 2
@@ -769,7 +769,6 @@ namespace visualization
         SDL_Quit();
     }
 
-    static double pre_pause_simulation_speed = 0;
     static buttons::PauseButton button_pause;
 
     void init()

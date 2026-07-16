@@ -84,7 +84,7 @@ namespace visualization::buttons
         }
     }
 
-    void PauseButton::on_render(SDL_Renderer *renderer) noexcept
+    void PauseButton::on_render([[maybe_unused]] SDL_Renderer *renderer) noexcept
     {
         if (settings::get_setting<double>("simulation_speed") == 0)
         {

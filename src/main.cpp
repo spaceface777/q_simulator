@@ -36,7 +36,7 @@ static void handle_close(int code)
     _exit(code);
 }
 
-int main(int argc, char const *argv[])
+int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 {
     settings::parse_settings();
     std::list<std::unique_ptr<events::Event>> events;
@@ -105,9 +105,6 @@ int main(int argc, char const *argv[])
 
                 module->send(message);
             }
-        }
-        else if (auto *plane_event = dynamic_cast<events::PlaneEvent *>(event.get()))
-        {
         }
     }
 
