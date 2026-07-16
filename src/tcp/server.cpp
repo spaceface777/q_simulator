@@ -46,6 +46,13 @@ namespace server
             .sin_port = ::htons(PORT),
             .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
 
+        int opt = 1;
+        if (::setsockopt(socket.fd(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+        {
+            stop();
+            throw std::runtime_error("Failed to set SO_REUSEADDR: " + std::string(::strerror(errno)));
+        }
+
         // assign fd to port
         if (::bind(socket.fd(), (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
         {

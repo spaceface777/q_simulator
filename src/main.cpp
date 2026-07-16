@@ -5,6 +5,9 @@
 #include <atomic>
 #include <iostream>
 #include <list>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "event/events.h"
 #include "tcp/server.h"
@@ -28,6 +31,8 @@ static void handle_close(int code)
     server::stop();
     visualization::stop();
     client::stop();
+
+    _exit(code);
 }
 
 int main(int argc, char const *argv[])
@@ -71,6 +76,32 @@ int main(int argc, char const *argv[])
 
         module_index++;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // allow modules to start
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    // initialize schedule
+    for (auto &event : events)
+    {
+        if (auto *tub_event = dynamic_cast<events::TubEvent *>(event.get()))
+        {
+            const auto message = message::TubSchedule(tub_event->id(), tub_event->origin().id,
+                                                      tub_event->destination().id, tub_event->safe(), tub_event->needs_security());
+            for (const auto &module : module::get_modules())
+            {
+                if (!module)
+                {
+                    continue;
+                }
+
+                module->send(message);
+                std::cout << "send to " << std::to_string(module->id()) << std::endl;
+            }
+        }
+        else if (auto *plane_event = dynamic_cast<events::PlaneEvent *>(event.get()))
+        {
+        }
     }
 
     virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();

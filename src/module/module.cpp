@@ -19,10 +19,10 @@ namespace module
 
 	void Module::run(std::string path)
 	{
-		pid_ = ::fork();
-		util::require(pid_ > -1, "Failed to fork: " + std::string(std::strerror(errno)));
+		pid_t pid = ::fork();
+		util::require(pid > -1, "Failed to fork: " + std::string(std::strerror(errno)));
 
-		const bool child = pid_ == 0;
+		const bool child = pid == 0;
 		if (child)
 		{
 			::prctl(PR_SET_PDEATHSIG, SIGKILL);
@@ -50,6 +50,10 @@ namespace module
 			const int success = ::execl(path.c_str(), module_name.c_str(), (char *)0);
 
 			util::require(success >= 0, "Failed to execl: " + std::string(::strerror(errno)));
+		}
+		else
+		{
+			pid_ = pid;
 		}
 	}
 

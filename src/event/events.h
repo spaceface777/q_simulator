@@ -159,6 +159,11 @@ namespace events
             return rfid_;
         }
 
+        bool needs_security() const noexcept
+        {
+            return needs_security_;
+        }
+
         virtual void fire() const override;
     };
 

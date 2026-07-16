@@ -318,6 +318,29 @@ namespace message
         return Packet(module, length, content);
     }
 
+    bool TubSchedule::is_valid() const noexcept
+    {
+        return true;
+    }
+
+    std::string TubSchedule::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "tub.schedule");
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
+        append_value(buf, "destination", destination_);
+        append_value(buf, "safe", safe_);
+        append_value(buf, "needs_security", needs_security_);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::unique_ptr<Message> TubSchedule::clone() const
+    {
+        return std::make_unique<TubSchedule>(*this);
+    }
+
     bool TubArrival::is_valid() const noexcept
     {
         return true;
@@ -329,9 +352,6 @@ namespace message
         append_header(buf, "tub.arrival");
         append_value(buf, "id", id_);
         append_value(buf, "module", module_);
-        append_value(buf, "destination", destination_);
-        append_value(buf, "safe", safe_);
-        append_value(buf, "needs_security", needs_security_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -388,19 +408,6 @@ namespace message
         append_header(buf, "plane.departure");
         append_value(buf, "id", id_);
         append_value(buf, "module", module_);
-        trim_trailing_nl(buf);
-        return buf;
-    }
-
-    bool Shutdown::is_valid() const noexcept
-    {
-        return true;
-    }
-
-    std::string Shutdown::to_toml() const noexcept
-    {
-        std::string buf = create_buffer();
-        append_header(buf, "shutdown");
         trim_trailing_nl(buf);
         return buf;
     }
