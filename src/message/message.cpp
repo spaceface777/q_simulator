@@ -403,25 +403,25 @@ namespace message
         return std::make_unique<TubSchedule>(*this);
     }
 
-    bool TubArrival::is_valid() const noexcept
-    {
-        return true;
-    }
+    // bool TubArrival::is_valid() const noexcept
+    // {
+    //     return true;
+    // }
 
-    std::string TubArrival::to_toml() const noexcept
-    {
-        std::string buf = create_buffer();
-        append_header(buf, "tub.arrival");
-        append_value(buf, "id", id_);
-        append_value(buf, "module", module_);
-        trim_trailing_nl(buf);
-        return buf;
-    }
+    // std::string TubArrival::to_toml() const noexcept
+    // {
+    //     std::string buf = create_buffer();
+    //     append_header(buf, "tub.arrival");
+    //     append_value(buf, "id", id_);
+    //     append_value(buf, "module", module_);
+    //     trim_trailing_nl(buf);
+    //     return buf;
+    // }
 
-    std::unique_ptr<Message> TubArrival::clone() const
-    {
-        return std::make_unique<TubArrival>(*this);
-    }
+    // std::unique_ptr<Message> TubArrival::clone() const
+    // {
+    //     return std::make_unique<TubArrival>(*this);
+    // }
 
     bool TubDeparture::is_valid() const noexcept
     {

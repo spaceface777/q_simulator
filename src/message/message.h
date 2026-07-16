@@ -241,23 +241,23 @@ namespace message
         std::unique_ptr<Message> clone() const override;
     };
 
-    class TubArrival : public Message
-    {
-    private:
-        uint8_t id_;
-        uint8_t module_;
+    // class TubArrival : public Message
+    // {
+    // private:
+    //     uint8_t id_;
+    //     uint8_t module_;
 
-    public:
-        TubArrival(uint8_t id, uint8_t module)
-        {
-            id_ = id;
-            module_ = module;
-        }
+    // public:
+    //     TubArrival(uint8_t id, uint8_t module)
+    //     {
+    //         id_ = id;
+    //         module_ = module;
+    //     }
 
-        bool is_valid() const noexcept override;
-        std::string to_toml() const noexcept override;
-        std::unique_ptr<Message> clone() const override;
-    };
+    //     bool is_valid() const noexcept override;
+    //     std::string to_toml() const noexcept override;
+    //     std::unique_ptr<Message> clone() const override;
+    // };
 
     class TubDeparture : public Message
     {
