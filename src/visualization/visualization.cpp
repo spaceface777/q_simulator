@@ -498,29 +498,29 @@ namespace visualization
         }
 
         int x1, y1, x2, y2;
-        int margin = 36; // 20% of 180
+        int margin = scale_within_module(36); // 20% of 180
 
         switch (rotation)
         {
         case 0:
-            x1 = x2 = module_x + (is_left ? margin : 180 - margin);
+            x1 = x2 = module_x + (is_left ? margin : scale_within_module(180) - margin);
             y1 = module_y + scale_within_module(75);
             y2 = module_y + scale_within_module(105);
             break;
         case 90:
             x1 = module_x + scale_within_module(75);
             x2 = module_x + scale_within_module(105);
-            y1 = y2 = module_y + (is_left ? margin : 180 - margin);
+            y1 = y2 = module_y + (is_left ? margin : scale_within_module(180) - margin);
             break;
         case 180:
-            x1 = x2 = module_x + (is_left ? 180 - margin : margin);
+            x1 = x2 = module_x + (is_left ? scale_within_module(180) - margin : margin);
             y1 = module_y + scale_within_module(75);
             y2 = module_y + scale_within_module(105);
             break;
         case 270:
             x1 = module_x + scale_within_module(75);
             x2 = module_x + scale_within_module(105);
-            y1 = y2 = module_y + (is_left ? 180 - margin : margin);
+            y1 = y2 = module_y + (is_left ? scale_within_module(180) - margin : margin);
             break;
 
         default:
