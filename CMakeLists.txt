@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.10.0)
-project(quercus-router-shadow VERSION 0.1.0 LANGUAGES C CXX)
+project(app VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Debug)
+
+add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 
 # === Libraries ===
 
@@ -27,15 +29,16 @@ find_package(SDL2 REQUIRED)
 
 add_executable(main 
     src/main.cpp 
-    src/event/parser.cpp 
     src/tcp/server.cpp 
     src/tcp/client.cpp 
     src/util.cpp 
     src/module/module.cpp
-    src/packet/packet.cpp
+    src/message/message.cpp
     src/tub/tub.cpp
     src/visualization/visualization.cpp
-    src/settings.cpp)
+    src/visualization/buttons.cpp
+    src/settings.cpp
+    src/event/events.cpp)
 
 target_link_libraries(main pthread 
     tomlplusplus::tomlplusplus

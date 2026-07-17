@@ -3,6 +3,8 @@
 #ifndef VISUALIZATION_H
 #define VISUALIZATION_H
 
+#include "../synchronization/virtual_clock.h"
+
 namespace visualization
 {
 
@@ -14,7 +16,7 @@ namespace visualization
     /**
      * Updates the visualization.
      */
-    void update();
+    void update(virtual_clock::VirtualClock &vclock);
 
     /**
      * Signals the visualization loop to stop.
@@ -25,8 +27,6 @@ namespace visualization
      * @return Whether the visualization is still running or whether it has been closed/finished.
      */
     bool is_running();
-
-    void rethrow();
 
 }
 

@@ -7,12 +7,18 @@
 # - time: The time at which the tub arrives in seconds.
 # - id: The tub id.
 # - origin: The origin of the tub. 
-#           Should be an array with the first element being either "plane" or "module".
-#           The second element is the id of the module or plane.
+#       Should be an array with the first element being either "plane" or "module".
+#       The second element is the id of the module or plane.
 # - destination: The destination of the tub. 
-#           Should be an array with the first element being either "plane" or "module".
-#           The second element is the id of the module or plane.
+#       Should be an array with the first element being either "plane" or "module".
+#       The second element is the id of the module or plane.
 # - safe: Whether the payload of the tub is safe.
+# - needs_security: Whether this tub should be routed to security.
+# - rfid: The changes to the RFID data for rows 2 to 35.
+#       All rows are initially set to [0, 0, 0, 0].
+#       When you add a row, such as setting `rfid = [[1, 2, 3, 4], [5, 6, 7, 8]]`,
+#       The first two rows will be updated to these values.
+#       Changing only the third row uses, for example, `rfid = [[0, 0, 0, 0], [0, 0, 0, 0], [1, 2, 3, 4]]`.
 
 # === Planes ===
 # Planes have the following attributes:
@@ -20,6 +26,11 @@
 # - id: The plane id.
 # - module: The module at which the plane arrives.
 # - leaves_in: The time in seconds after "time" the plane leaves.
+# - rfid: The changes to the RFID data for rows 2 to 35.
+#       All rows are initially set to [0, 0, 0, 0].
+#       When you add a row, such as setting `rfid = [[1, 2, 3, 4], [5, 6, 7, 8]]`,
+#       The first two rows will be updated to these values.
+#       Changing only the third row uses, for example, `rfid = [[0, 0, 0, 0], [0, 0, 0, 0], [1, 2, 3, 4]]`.
 
 [tub.1]
 time = 0
@@ -27,6 +38,8 @@ id = 1
 origin = ["module", 1]
 destination = ["module", 12]
 safe = true
+needs_security = false
+rfid = []
 
 [tub.2]
 time = 15
@@ -34,12 +47,15 @@ id = 2
 origin = ["module", 1]
 destination = ["module", 10]
 safe = false
+needs_security = false
+rfid = []
 
 [plane.1]
 time = 20
 id = 1
 module = 3
 leaves_in = 60
+rfid = []
 
 [tub.3]
 time = 30
@@ -47,9 +63,12 @@ id = 4
 origin = ["plane", 3]
 destination = ["plane", 4]
 safe = true
+needs_security = false
+rfid = []
 
 [plane.2]
 time = 40
 id = 1
 module = 3
 leaves_in = 60
+rfid = []

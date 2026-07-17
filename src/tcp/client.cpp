@@ -9,7 +9,7 @@
 #include <queue>
 #include <map>
 
-#include "../packet/packet.h"
+#include "../message/message.h"
 #include "../util.h"
 #include "../defs.h"
 #include "socket.h"
@@ -17,96 +17,108 @@
 
 namespace client
 {
-    static std::exception_ptr exception_ptr;
-    static std::atomic_bool stopped = false;
+
+    static std::map<uint8_t, std::shared_ptr<Client>> map;
 
     void stop()
     {
-        stopped = true;
+        for (auto &[key, val] : map)
+        {
+            val->stop();
+        }
+        map.clear();
     }
 
-    static void setup_connection(int fd, unsigned int port, unsigned int id)
+    static bool setup_connection(int fd, unsigned int port, unsigned int id)
     {
-        const struct sockaddr_in addr_in = {
-            .sin_family = AF_INET,
-            .sin_port = htons(port),
-            .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
+        struct sockaddr_in addr_in;
+        addr_in.sin_family = AF_INET;
+        addr_in.sin_port = ::htons(port);
+        addr_in.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
 
         std::cout << "Connecting to module " << std::to_string(id) << " at port " << std::to_string(port) << " and fd " << std::to_string(fd) << std::endl;
         if (::connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
-            stop();
-            throw std::runtime_error("Failed to connect to socket");
+            return false;
         }
+        return true;
     }
 
-    void Client::_run()
+    void Client::run_()
     {
-        const Socket socket;
-        if (!socket.is_valid())
+        while (!stopped_)
         {
-            stop();
-            throw std::runtime_error("Failed to bind socket");
-        }
-
-        setup_connection(socket.fd(), port_, id_);
-        fd_ = socket.fd();
-
-        std::cout << "Connected to module " << std::to_string(id_) << std::endl;
-
-        while (!stopped)
-        {
-            std::unique_ptr<packet::Packet> packet;
-            size_t current_size = 0;
+            const Socket socket;
+            if (!socket.is_valid())
             {
-                std::lock_guard<std::mutex> lock(mutex_);
-                if (!queue_.empty())
-                {
-                    packet = std::move(queue_.front());
-                    queue_.pop();
-                    current_size = queue_.size();
-                }
+                stop();
+                throw std::runtime_error("Failed to bind socket");
             }
 
-            if (!packet)
+            if (!setup_connection(socket.fd(), port_, id_))
             {
-                std::this_thread::sleep_for(TIMEOUT);
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
 
-            std::cout << "Size " << std::to_string(current_size) << std::endl;
-            std::cout << "Sending " << packet->to_toml() << " to " << std::to_string(socket.fd()) << std::endl;
-            const std::string toml = packet->to_toml();
-            if (::write(socket.fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
+            fd_ = socket.fd();
+            std::cout << "Connected to module " << std::to_string(id_) << std::endl;
+
+            while (!stopped_)
             {
-                std::this_thread::sleep_for(TIMEOUT);
+                std::unique_ptr<message::Message> message;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (!queue_.empty())
+                    {
+                        message = std::move(queue_.front());
+                        queue_.pop();
+                    }
+                }
+
+                if (!message)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+
+                const std::string toml = message->to_toml();
+                if (::write(socket.fd(), toml.c_str(), toml.length() + 1) < 0) // include '\0'
+                {
+                    break;
+                }
             }
+
+            close(fd_);
         }
     }
 
     void Client::run()
     {
-        if (thread_ptr_)
-        {
-            stop();
-            throw std::runtime_error("Double client instantiation");
-        }
+        util::require(!stopped_, "Cannot run the same client twice");
 
-        thread_ptr_ = std::make_unique<std::thread>(
-            [this]
-            {
-                try
-                {
-                    this->_run();
-                }
-                catch (...)
-                {
-                    exception_ptr = std::current_exception();
-                }
-            });
+        client_future_ = std::async(std::launch::async, [this]
+                                    { run_(); });
     }
 
-    static std::map<uint8_t, std::shared_ptr<Client>> map;
+    void Client::check()
+    {
+        if (!client_future_.valid())
+        {
+            return;
+        }
+
+        auto status = client_future_.wait_for(std::chrono::seconds(0));
+        if (status == std::future_status::ready)
+        {
+            client_future_.get();
+        }
+    }
+
+    void Client::stop()
+    {
+        stopped_ = true;
+    }
 
     void add_client(std::shared_ptr<Client> ptr)
     {
@@ -126,22 +138,11 @@ namespace client
         return {};
     }
 
-    void close_clients()
+    void check()
     {
         for (auto &[key, val] : map)
         {
-            val->queue(packet::Shutdown());
-        }
-        map.clear();
-    }
-
-    void rethrow()
-    {
-        if (exception_ptr)
-        {
-            stop();
-            std::cerr << "Rethrowing exception from client thread" << std::endl;
-            std::rethrow_exception(exception_ptr);
+            val->check();
         }
     }
 

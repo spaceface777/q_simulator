@@ -8,7 +8,7 @@
 #include <memory>
 #include <thread>
 
-#include "../packet/packet.h"
+#include "../message/message.h"
 #include "../tub/tub.h"
 
 namespace module
@@ -19,10 +19,11 @@ namespace module
     private:
         pid_t pid_;
         uint8_t id_;
-        bool running_ = false;
+        bool running_ = false;       // whether the router process spawned by this module is running
+        bool init_finished_ = false; // whether the router process is ready to receive packets
 
-        uint8_t big_speed_ = 0;
-        uint8_t small_speed_ = 0;
+        int8_t big_speed_ = 0;
+        int8_t small_speed_ = 0;
         uint16_t servo_degrees_ = 0;
         int led_color_ = 0;
         bool left_laser_active_ = false;
@@ -62,7 +63,7 @@ namespace module
         /**
          * @return The speed of the big belt.
          */
-        uint8_t big_belt_speed() const noexcept
+        int8_t big_belt_speed() const noexcept
         {
             return big_speed_;
         }
@@ -70,7 +71,7 @@ namespace module
         /**
          * @return The speed of the small belt.
          */
-        uint8_t small_belt_speed() const noexcept
+        int8_t small_belt_speed() const noexcept
         {
             return small_speed_;
         }
@@ -143,6 +144,23 @@ namespace module
         }
 
         /**
+         * @return Whether this module has finished initialization.
+         */
+        bool is_initialization_finished() const noexcept
+        {
+            return init_finished_;
+        }
+
+        /**
+         * Sets the initialization state of the router process.
+         * @param active Whether this module's router process has finished initialization.
+         */
+        void set_initialization_finished(bool finished) noexcept
+        {
+            init_finished_ = finished;
+        }
+
+        /**
          * Run this module as the executable found at path.
          *
          * @param path The file to execute.
@@ -150,18 +168,18 @@ namespace module
         void run(std::string path);
 
         /**
-         * Sends a packet to this module.
+         * Sends a message to this module.
          *
-         * @param packet The packet to send.
+         * @param message The message to send.
          */
-        void send(const packet::Packet &packet);
+        void send(const message::Message &message);
 
         /**
-         * Runs when an update packet has been sent from this module's simulation.
+         * Runs when an update message has been sent from this module's simulation.
          *
-         * @param packet The packet that was sent to this module's simulation.
+         * @param message The message that was sent to this module's simulation.
          */
-        void update(const packet::ModuleUpdate packet);
+        void update(const message::Update message);
     };
 
     /**

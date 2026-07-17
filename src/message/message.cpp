@@ -2,12 +2,12 @@
 #include <string_view>
 #include <stdexcept>
 
-#include "packet.h"
+#include "message.h"
 #include "../util.h"
 #include "../defs.h"
 #include <optional>
 
-namespace packet
+namespace message
 {
     /**
      * @return A buffer to create a TOML representation.
@@ -15,7 +15,7 @@ namespace packet
     std::string create_buffer()
     {
         std::string buf;
-        buf.reserve(64);
+        buf.reserve(256);
         return buf;
     }
 
@@ -63,41 +63,41 @@ namespace packet
         }
     }
 
-    bool Packet::is_valid() const noexcept
+    bool Message::is_valid() const noexcept
     {
         return false;
     }
 
-    std::string Packet::to_toml() const noexcept
+    std::string Message::to_toml() const noexcept
     {
         return std::string();
     }
 
-    std::unique_ptr<Packet> Packet::clone() const
+    std::unique_ptr<Message> Message::clone() const
     {
-        return std::make_unique<Packet>(*this);
+        return std::make_unique<Message>(*this);
     }
 
-    bool Introduction::is_valid() const noexcept
+    bool Init::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string Introduction::to_toml() const noexcept
+    std::string Init::to_toml() const noexcept
     {
         std::string buf = create_buffer();
-        append_header(buf, "introduction");
-        append_value(buf, "id", _id);
+        append_header(buf, "init");
+        append_value(buf, "id", id_);
         trim_trailing_nl(buf);
         return buf;
     }
 
-    std::unique_ptr<Packet> Introduction::clone() const
+    std::unique_ptr<Message> Init::clone() const
     {
-        return std::make_unique<Introduction>(*this);
+        return std::make_unique<Init>(*this);
     }
 
-    std::optional<Introduction> Introduction::from_toml(std::string_view toml)
+    std::optional<Init> Init::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
@@ -112,7 +112,7 @@ namespace packet
                 continue;
             }
 
-            if (trimmed == "[introduction]")
+            if (trimmed == "[init]")
             {
                 stage = 1;
                 continue;
@@ -137,36 +137,93 @@ namespace packet
             return {};
         }
 
-        return Introduction(id);
+        return Init(id);
     }
 
-    bool ModuleUpdate::is_valid() const noexcept
+    bool InitFinish::is_valid() const noexcept
     {
-        if (_device.empty())
-        {
-            return false;
-        }
-
         return true;
     }
 
-    std::string ModuleUpdate::to_toml() const noexcept
+    std::string InitFinish::to_toml() const noexcept
     {
         std::string buf = create_buffer();
-        append_header(buf, "update");
-        append_value(buf, "id", _id);
-        append_value(buf, "device", _device);
-        append_value(buf, "value", _value);
+        append_header(buf, "init.finish");
+        append_value(buf, "id", id_);
         trim_trailing_nl(buf);
         return buf;
     }
 
-    std::unique_ptr<Packet> ModuleUpdate::clone() const
+    std::unique_ptr<Message> InitFinish::clone() const
     {
-        return std::make_unique<ModuleUpdate>(*this);
+        return std::make_unique<InitFinish>(*this);
     }
 
-    std::optional<ModuleUpdate> ModuleUpdate::from_toml(std::string_view toml)
+    std::optional<InitFinish> InitFinish::from_toml(std::string_view toml)
+    {
+        const std::vector<std::string_view> lines = util::split(toml, "\n");
+
+        int stage = 0;
+        int id = -1;
+        for (const std::string_view line : lines)
+        {
+            const std::string_view trimmed = util::trim(line);
+
+            if (trimmed.empty())
+            {
+                continue;
+            }
+
+            if (trimmed == "[init.finish]")
+            {
+                stage = 1;
+                continue;
+            }
+
+            const std::vector<std::string_view> parts = util::split(trimmed, "=");
+
+            if (parts.size() != 2)
+            {
+                return {};
+            }
+
+            const std::string_view left = util::trim(parts[0]);
+            const std::string right = std::string(util::trim(parts[1]));
+
+            if (left == "id" && stage == 1)
+            {
+                id = std::stoi(right);
+                continue;
+            }
+
+            return {};
+        }
+
+        return InitFinish(id);
+    }
+
+    bool Update::is_valid() const noexcept
+    {
+        return !device_.empty();
+    }
+
+    std::string Update::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "update");
+        append_value(buf, "module", module_);
+        append_value(buf, "device", device_);
+        append_value(buf, "value", value_);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::unique_ptr<Message> Update::clone() const
+    {
+        return std::make_unique<Update>(*this);
+    }
+
+    std::optional<Update> Update::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
@@ -218,12 +275,33 @@ namespace packet
             return {};
         }
 
-        return ModuleUpdate(module, device, value);
+        return Update(module, device, value);
     }
 
-    bool ModulePacket::is_valid() const noexcept
+    bool UpdateRfid::is_valid() const noexcept
     {
-        if (_content.length() != _length)
+        return !uid_.empty() && !data_.empty();
+    }
+
+    std::string UpdateRfid::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "update.rfid");
+        append_value(buf, "module", module_);
+        append_value(buf, "uid", uid_);
+        append_value(buf, "data", data_);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::unique_ptr<Message> UpdateRfid::clone() const
+    {
+        return std::make_unique<UpdateRfid>(*this);
+    }
+
+    bool Packet::is_valid() const noexcept
+    {
+        if (content_.length() != length_)
         {
             return false;
         }
@@ -231,23 +309,23 @@ namespace packet
         return true;
     }
 
-    std::string ModulePacket::to_toml() const noexcept
+    std::string Packet::to_toml() const noexcept
     {
         std::string buf = create_buffer();
         append_header(buf, "packet");
-        append_value(buf, "module", _module);
-        append_value(buf, "length", _length);
-        append_value(buf, "content", _content);
+        append_value(buf, "module", module_);
+        append_value(buf, "length", length_);
+        append_value(buf, "content", content_);
         trim_trailing_nl(buf);
         return buf;
     }
 
-    std::unique_ptr<Packet> ModulePacket::clone() const
+    std::unique_ptr<Message> Packet::clone() const
     {
-        return std::make_unique<ModulePacket>(*this);
+        return std::make_unique<Packet>(*this);
     }
 
-    std::optional<ModulePacket> ModulePacket::from_toml(std::string_view toml)
+    std::optional<Packet> Packet::from_toml(std::string_view toml)
     {
         const std::vector<std::string_view> lines = util::split(toml, "\n");
 
@@ -299,52 +377,51 @@ namespace packet
             return {};
         }
 
-        return ModulePacket(module, length, content);
+        return Packet(module, length, content);
     }
 
-    bool SimulationUpdate::is_valid() const noexcept
-    {
-        // Device name must not be empty
-        return !_device.empty();
-    }
-
-    std::string SimulationUpdate::to_toml() const noexcept
-    {
-        std::string buf = create_buffer();
-        append_header(buf, "update.simulation");
-        append_value(buf, "id", _id);
-        append_value(buf, "device", _device);
-        append_value(buf, "value", _value);
-        trim_trailing_nl(buf);
-        return buf;
-    }
-
-    std::unique_ptr<Packet> SimulationUpdate::clone() const
-    {
-        return std::make_unique<SimulationUpdate>(*this);
-    }
-
-    bool TubArrival::is_valid() const noexcept
+    bool TubSchedule::is_valid() const noexcept
     {
         return true;
     }
 
-    std::string TubArrival::to_toml() const noexcept
+    std::string TubSchedule::to_toml() const noexcept
     {
         std::string buf = create_buffer();
-        append_header(buf, "tub.arrival");
-        append_value(buf, "id", _id);
-        append_value(buf, "module", _module);
-        append_value(buf, "destination", _destination);
-        append_value(buf, "safe", _safe);
+        append_header(buf, "tub.schedule");
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
+        append_value(buf, "destination", destination_);
+        append_value(buf, "safe", safe_);
+        append_value(buf, "needs_security", needs_security_);
         trim_trailing_nl(buf);
         return buf;
     }
 
-    std::unique_ptr<Packet> TubArrival::clone() const
+    std::unique_ptr<Message> TubSchedule::clone() const
     {
-        return std::make_unique<TubArrival>(*this);
+        return std::make_unique<TubSchedule>(*this);
     }
+
+    // bool TubArrival::is_valid() const noexcept
+    // {
+    //     return true;
+    // }
+
+    // std::string TubArrival::to_toml() const noexcept
+    // {
+    //     std::string buf = create_buffer();
+    //     append_header(buf, "tub.arrival");
+    //     append_value(buf, "id", id_);
+    //     append_value(buf, "module", module_);
+    //     trim_trailing_nl(buf);
+    //     return buf;
+    // }
+
+    // std::unique_ptr<Message> TubArrival::clone() const
+    // {
+    //     return std::make_unique<TubArrival>(*this);
+    // }
 
     bool TubDeparture::is_valid() const noexcept
     {
@@ -355,13 +432,13 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "tub.departure");
-        append_value(buf, "id", _id);
-        append_value(buf, "module", _module);
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
         trim_trailing_nl(buf);
         return buf;
     }
 
-    std::unique_ptr<Packet> TubDeparture::clone() const
+    std::unique_ptr<Message> TubDeparture::clone() const
     {
         return std::make_unique<TubDeparture>(*this);
     }
@@ -375,9 +452,9 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "plane.arrival");
-        append_value(buf, "id", _id);
-        append_value(buf, "module", _module);
-        append_value(buf, "leaves_in", _leaves_in);
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
+        append_value(buf, "leaves_in", leaves_in_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -391,21 +468,8 @@ namespace packet
     {
         std::string buf = create_buffer();
         append_header(buf, "plane.departure");
-        append_value(buf, "id", _id);
-        append_value(buf, "module", _module);
-        trim_trailing_nl(buf);
-        return buf;
-    }
-
-    bool Shutdown::is_valid() const noexcept
-    {
-        return true;
-    }
-
-    std::string Shutdown::to_toml() const noexcept
-    {
-        std::string buf = create_buffer();
-        append_header(buf, "shutdown");
+        append_value(buf, "id", id_);
+        append_value(buf, "module", module_);
         trim_trailing_nl(buf);
         return buf;
     }

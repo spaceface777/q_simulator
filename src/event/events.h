@@ -3,8 +3,12 @@
 
 #include <list>
 #include <cstdint>
+#include <memory>
+#include <cstring>
 #include <string_view>
+#include <array>
 #include "../synchronization/virtual_clock.h"
+#include "../defs.h"
 
 namespace events
 {
@@ -15,20 +19,18 @@ namespace events
     class Event
     {
     protected:
-        unsigned int _time;
-        unsigned int _id;
+        double time_;
+        unsigned int id_;
 
     public:
-        virtual ~Event() {}
-
-        virtual void fire() const;
+        virtual void fire() const = 0;
 
         /**
          * Returns the arrival time of the object.
          */
-        unsigned int time() const noexcept
+        double time() const noexcept
         {
-            return _time;
+            return time_;
         }
 
         /**
@@ -36,8 +38,15 @@ namespace events
          */
         unsigned int id() const noexcept
         {
-            return _id;
+            return id_;
         }
+
+        bool operator==(const Event &other) const
+        {
+            return this->id() == other.id();
+        }
+
+        virtual ~Event() = default;
     };
 
     /**
@@ -45,16 +54,19 @@ namespace events
      */
     class PlaneEvent : public Event
     {
-        uint8_t _module;
-        unsigned int _leaves_in;
+        uint8_t module_;
+        unsigned int leaves_in_;
+        std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        PlaneEvent(uint8_t time, uint8_t id, uint8_t module, unsigned int leaves_in)
+        PlaneEvent(double time, uint8_t id, uint8_t module, unsigned int leaves_in,
+                   std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
         {
-            _time = time;
-            _id = id;
-            _module = module;
-            _leaves_in = leaves_in;
+            time_ = time;
+            id_ = id;
+            module_ = module;
+            leaves_in_ = leaves_in;
+            rfid_ = rfid;
         }
 
         /**
@@ -62,7 +74,7 @@ namespace events
          */
         uint8_t module() const noexcept
         {
-            return _module;
+            return module_;
         }
 
         /**
@@ -70,7 +82,12 @@ namespace events
          */
         unsigned int leaves_in() const noexcept
         {
-            return _leaves_in;
+            return leaves_in_;
+        }
+
+        std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid() const noexcept
+        {
+            return rfid_;
         }
 
         virtual void fire() const override;
@@ -93,26 +110,24 @@ namespace events
      */
     class TubEvent : public Event
     {
-        bool _safe;
-        TubData _origin;
-        TubData _destination;
+        TubData origin_;
+        TubData destination_;
+        bool safe_;
+        bool needs_security_;
+        std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        TubEvent(unsigned int time, uint8_t id, bool safe, TubData origin, TubData destination)
+        TubEvent(double time, uint8_t id, TubData origin, TubData destination,
+                 bool safe, bool needs_security,
+                 std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
         {
-            _time = time;
-            _id = id;
-            _safe = safe;
-            _origin = origin;
-            _destination = destination;
-        }
-
-        /**
-         * Returns whether this tub is safe.
-         */
-        bool safe() const noexcept
-        {
-            return _safe;
+            time_ = time;
+            id_ = id;
+            safe_ = safe;
+            origin_ = origin;
+            destination_ = destination;
+            needs_security_ = needs_security;
+            rfid_ = rfid;
         }
 
         /**
@@ -120,7 +135,7 @@ namespace events
          */
         TubData origin() const noexcept
         {
-            return _origin;
+            return origin_;
         }
 
         /**
@@ -128,7 +143,25 @@ namespace events
          */
         TubData destination() const noexcept
         {
-            return _destination;
+            return destination_;
+        }
+
+        /**
+         * Returns whether this tub is safe.
+         */
+        bool safe() const noexcept
+        {
+            return safe_;
+        }
+
+        std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid() const noexcept
+        {
+            return rfid_;
+        }
+
+        bool needs_security() const noexcept
+        {
+            return needs_security_;
         }
 
         virtual void fire() const override;
@@ -139,7 +172,13 @@ namespace events
      * @param vclock The current clock.
      * @param events The remaining events.
      */
-    void fire_events(virtual_clock::VirtualClock &vclock, std::list<events::Event> &events);
+    void fire_events(virtual_clock::VirtualClock &vclock, std::list<std::unique_ptr<events::Event>> &events);
+
+    /**
+     * Parses the events in the events.toml file.
+     * @param events Vector to populate with parsed events.
+     */
+    void parse_events(std::list<std::unique_ptr<events::Event>> &events);
 
 };
 

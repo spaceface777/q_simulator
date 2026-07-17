@@ -1,11 +1,17 @@
 ## todo
 - add custom parsing handling
 - add all sensors
+# TODO
+**general**
 - add synchronization for processes
-- format for gitlab issues
 - analyze implementing scheduler process that communicates to the router processes
 - for hybrid mode send through pi, add separate interface for communication
 - int -> double for event time
+- make id in events.toml 7 byte rfid
+- remove server/client and fix tcp
+
+**event generator**
+- total amount of tubs, density of tubs/planes
 
 # Quercus Simulation
 The repository for the Quercus Airport Router Simulation.
@@ -28,6 +34,8 @@ Run the project with the `Run` button when using the C/C++ VSCode extension, or 
 ```sh
 make -C build -j && ./build/main
 ```
+
+To enable debug mode, which shows simulation-only information, press `F4`.
 
 If any errors appear about addresses already being in use, make sure to kill any potential runaway Zephyr processes.
 You can usually find these in a task manager or system monitor.

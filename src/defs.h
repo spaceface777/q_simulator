@@ -26,13 +26,17 @@ inline constexpr uint8_t MAX_TCP_BACKLOG = 25;
 /**
  * A constant timeout value.
  */
-inline constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(50);
+inline constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(16);
 
 enum ModuleLocation
 {
     LEFT_BELT,
     RIGHT_BELT,
-    BOTTOM_BELT,
+    SMALL_BELT,
 };
+
+inline constexpr uint8_t RFID_UID_SIZE_BYTES = 7;
+inline constexpr uint8_t RFID_BLOCK_SIZE_BYTES = 4;
+inline constexpr uint8_t RFID_CONTENT_BLOCK_COUNT = 36;
 
 #endif

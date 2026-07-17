@@ -4,7 +4,9 @@ project(test)
 enable_testing()
 
 add_executable(tests 
-    test_packet.cpp ../src/packet/packet.cpp
+    test_message.cpp 
+    
+    ../src/message/message.cpp
     ../src/util.cpp)
 
 target_link_libraries(tests gtest gtest_main)

@@ -1,0 +1,136 @@
+# The path to the router Zephyr executable.
+router_path = "/home/efy/Projects/airport-router/build/zephyr/zephyr.exe"
+
+# The speed at which the simulation will be run.
+# Must be above 0.
+simulation_speed = 1.0
+
+# The scale of the simulation overview.
+# Must be between 0.25 and 5.
+scale = 1.0
+
+[module.1]
+active = true
+left = 0
+right = 5
+bottom = 2
+angle = 270
+
+[module.2]
+active = true
+left = 1
+right = 3
+bottom = 0
+angle = 0
+
+[module.3]
+active = true
+left = 2
+right = 4
+bottom = 0
+angle = 0
+
+[module.4]
+active = true
+left = 0
+right = 3
+bottom = 6
+angle = 180
+
+[module.5]
+active = true
+left = 7
+right = 1
+bottom = 0
+angle = 90
+
+[module.6]
+active = true
+left = 4
+right = 10
+bottom = 0
+angle = 270
+
+[module.7]
+active = true
+left = 5
+right = 11
+bottom = 8
+angle = 270
+
+[module.8]
+active = true
+left = 9
+right = 7
+bottom = 12
+angle = 180
+
+[module.9]
+active = true
+left = 10
+right = 8
+bottom = 13
+angle = 180
+
+[module.10]
+active = true
+left = 14
+right = 6
+bottom = 9
+angle = 90
+
+[module.11]
+active = true
+left = 0
+right = 7
+bottom = 0
+angle = 90
+
+[module.12]
+active = true
+left = 8
+right = 0
+bottom = 13
+angle = 270
+
+[module.13]
+active = true
+left = 16
+right = 9
+bottom = 12
+angle = 90
+
+[module.14]
+active = true
+left = 10
+right = 17
+bottom = 15
+angle = 270
+
+[module.15]
+active = true
+left = 0
+right = 14
+bottom = 18
+angle = 180
+
+[module.16]
+active = true
+left = 13
+right = 0
+bottom = 17
+angle = 270
+
+[module.17]
+active = true
+left = 16
+right = 18
+bottom = 14
+angle = 0
+
+[module.18]
+active = true
+left = 0
+right = 15
+bottom = 17
+angle = 90

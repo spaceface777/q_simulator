@@ -11,6 +11,7 @@
 
 #include "module.h"
 #include "../tcp/server.h"
+#include "../util.h"
 #include <map>
 
 namespace module
@@ -18,13 +19,10 @@ namespace module
 
 	void Module::run(std::string path)
 	{
-		pid_ = ::fork();
-		if (pid_ == -1)
-		{
-			throw std::runtime_error("Failed to fork: " + std::string(std::strerror(errno)));
-		}
+		pid_t pid = ::fork();
+		util::require(pid > -1, "Failed to fork: " + std::string(std::strerror(errno)));
 
-		const bool child = pid_ == 0;
+		const bool child = pid == 0;
 		if (child)
 		{
 			::prctl(PR_SET_PDEATHSIG, SIGKILL);
@@ -35,57 +33,52 @@ namespace module
 
 			const std::string id_path = "/tmp/qaid";
 			std::ofstream id_of(id_path);
-			if (!id_of.is_open())
-			{
-				throw std::runtime_error("Failed to create ofstream for " + std::to_string(id_));
-			}
+			util::require(id_of.is_open(), "Failed to create ofstream for " + std::to_string(id_));
+
 			id_of << std::to_string(id_);
 			id_of.flush();
 			id_of.close();
 
-			if (!std::filesystem::exists(id_path))
-			{
-				throw std::runtime_error("Failed to create file for " + std::to_string(id_));
-			}
+			util::require(std::filesystem::exists(id_path), "Failed to create file for " + std::to_string(id_));
 
 			// exec
 
 			const std::string module_name = "Module " + std::to_string(id_);
 			running_ = true;
-			std::cerr << "Started module " << std::to_string(id_) << std::endl;
+			std::cerr << "Starting module " << std::to_string(id_) << std::endl;
 
 			const int success = ::execl(path.c_str(), module_name.c_str(), (char *)0);
 
-			if (success < 0)
-			{
-				throw std::runtime_error("Failed to execl: " + std::string(::strerror(errno)));
-			}
-			std::cerr << "Started module " << std::to_string(id_) << std::endl;
+			util::require(success >= 0, "Failed to execl: " + std::string(::strerror(errno)));
+		}
+		else
+		{
+			pid_ = pid;
 		}
 	}
 
-	void Module::send(const packet::Packet &packet)
+	void Module::send(const message::Message &message)
 	{
-		server::send(id_, packet);
+		server::send(id_, message);
 	}
 
-	void Module::update(const packet::ModuleUpdate packet)
+	void Module::update(const message::Update message)
 	{
-		if (packet.device() == "big belt")
+		if (message.device() == "big belt")
 		{
-			big_speed_ = packet.value();
+			big_speed_ = message.value();
 		}
-		else if (packet.device() == "small belt")
+		else if (message.device() == "small belt")
 		{
-			small_speed_ = packet.value();
+			small_speed_ = message.value();
 		}
-		else if (packet.device() == "servo")
+		else if (message.device() == "servo")
 		{
-			servo_degrees_ = packet.value();
+			servo_degrees_ = message.value();
 		}
-		else if (packet.device() == "led")
+		else if (message.device() == "led")
 		{
-			led_color_ = packet.value();
+			led_color_ = message.value();
 		}
 	}
 
@@ -95,10 +88,7 @@ namespace module
 	void add_module(std::unique_ptr<module::Module> ptr)
 	{
 		std::lock_guard<std::mutex> lock(map_mutex);
-		if (map.count(ptr->id()))
-		{
-			throw std::invalid_argument("Attempted to double register modules");
-		}
+		util::require(!map.count(ptr->id()), "Attempted to double register modules");
 
 		uint8_t id = ptr->id();
 		map[id] = std::move(ptr);

@@ -20,18 +20,20 @@
 #include "server.h"
 #include "client.h"
 #include "socket.h"
-#include "../packet/packet.h"
+#include "../message/message.h"
 #include "../util.h"
 #include "../defs.h"
 #include "../module/module.h"
 
+#include <future>
+
 namespace server
 {
-    inline constexpr int PORT = 7777;
-
-    static std::unique_ptr<std::thread> thread_ptr_;
-    static std::exception_ptr exception_ptr;
+    static std::future<void> server_future_;
     static std::atomic_bool stopped = false;
+
+    static constexpr int PORT = 7777;
+
     static std::vector<unsigned int> fds;
 
     /**
@@ -39,10 +41,17 @@ namespace server
      */
     static void setup_port(const Socket &socket)
     {
-        const struct sockaddr_in addr_in = {
-            .sin_family = AF_INET,
-            .sin_port = ::htons(PORT),
-            .sin_addr = {.s_addr = ::htonl(INADDR_ANY)}};
+        struct sockaddr_in addr_in;
+        addr_in.sin_family = AF_INET;
+        addr_in.sin_port = ::htons(PORT);
+        addr_in.sin_addr.s_addr = INADDR_ANY;
+
+        int opt = 1;
+        if (::setsockopt(socket.fd(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+        {
+            stop();
+            throw std::runtime_error("Failed to set SO_REUSEADDR: " + std::string(::strerror(errno)));
+        }
 
         // assign fd to port
         if (::bind(socket.fd(), (const struct sockaddr *)&addr_in, sizeof(addr_in)) != 0)
@@ -65,11 +74,10 @@ namespace server
      */
     static void handle_connection_requests(const Socket &socket)
     {
-        struct pollfd pfd = {
-            .fd = socket.fd(),
-            .events = POLLIN | POLLERR | POLLNVAL,
-            .revents = 0,
-        };
+        struct pollfd pfd;
+        pfd.fd = socket.fd();
+        pfd.events = POLLIN | POLLERR | POLLNVAL;
+        pfd.revents = 0;
 
         int selected = ::poll(&pfd, 1, TIMEOUT.count());
         if (selected <= 0)
@@ -106,7 +114,7 @@ namespace server
         fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
     }
 
-    void send(unsigned int id, const packet::Packet &packet)
+    void send(unsigned int id, const message::Message &message)
     {
         if (stopped || id > MAX_MODULES)
         {
@@ -119,19 +127,19 @@ namespace server
             return;
         }
 
-        client.value()->queue(packet);
+        client.value()->queue(message);
     }
 
     /**
-     * Parses a buffer to a packet::Packet, and performs the appropriate action.
+     * Parses a buffer to a message::Packet, and performs the appropriate action.
      */
-    static void parse_packet(unsigned int fd, char *buff)
+    static void parse_packet(char *buff)
     {
-        std::optional<packet::Introduction> intro = packet::Introduction::from_toml(buff);
+        const std::optional<message::Init> intro = message::Init::from_toml(buff);
         if (intro)
         {
-            const packet::Introduction packet = intro.value();
-            const unsigned int id = packet.id();
+            const message::Init message = intro.value();
+            const unsigned int id = message.id();
 
             const std::optional<std::shared_ptr<client::Client>> existing_client = client::get_client(id);
             if (existing_client)
@@ -140,7 +148,7 @@ namespace server
                 return;
             }
 
-            std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id);
+            const std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id);
             ptr->run();
             client::add_client(ptr);
 
@@ -149,27 +157,36 @@ namespace server
             return;
         }
 
-        std::optional<packet::ModuleUpdate> update = packet::ModuleUpdate::from_toml(buff);
-        if (update)
+        const std::optional<message::InitFinish> init_finish = message::InitFinish::from_toml(buff);
+        if (init_finish)
         {
-            const packet::ModuleUpdate packet = update.value();
-            std::cout << "Received update for " << std::to_string(packet.id()) << "'s " << packet.device() << ": " << std::to_string(packet.value()) << std::endl;
-
-            std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(packet.id());
+            const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(init_finish.value().id());
             if (ptr)
             {
-                ptr.value()->update(packet);
+                ptr.value()->set_initialization_finished(true);
             }
 
             return;
         }
 
-        std::optional<packet::ModulePacket> sent = packet::ModulePacket::from_toml(buff);
+        const std::optional<message::Update> update = message::Update::from_toml(buff);
+        if (update)
+        {
+            const message::Update message = update.value();
+            const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
+            if (ptr)
+            {
+                ptr.value()->update(message);
+            }
+
+            return;
+        }
+
+        const std::optional<message::Packet> sent = message::Packet::from_toml(buff);
         if (sent)
         {
-            const packet::ModulePacket packet = sent.value();
-            std::cout << "Received packet send request to " << std::to_string(packet.module()) << " with content " << packet.content() << std::endl;
-            send(packet.module(), packet);
+            const message::Packet message = sent.value();
+            send(message.module(), message);
             return;
         }
     }
@@ -179,21 +196,20 @@ namespace server
      */
     static void handle_packets()
     {
-        struct pollfd pfds[fds.size()];
+        std::vector<struct pollfd> pfds(fds.size());
 
         // populate pfds
         for (std::size_t i = 0; i < fds.size(); i++)
         {
-            struct pollfd pollfd = {
-                .fd = static_cast<int>(fds.at(i)),
-                .events = POLLIN | POLLERR | POLLNVAL,
-                .revents = 0,
-            };
+            struct pollfd pollfd;
+            pollfd.fd = static_cast<int>(fds.at(i));
+            pollfd.events = POLLIN | POLLERR | POLLNVAL;
+            pollfd.revents = 0;
 
             pfds[i] = pollfd;
         }
 
-        int selected = ::poll(pfds, fds.size(), TIMEOUT.count());
+        int selected = ::poll(pfds.data(), fds.size(), TIMEOUT.count());
         if (selected == 0)
         {
             return;
@@ -234,23 +250,25 @@ namespace server
                 continue;
             }
 
-            parse_packet(fd, buff);
+            ;
+            parse_packet(buff);
         }
     }
 
-    static void _run()
+    static void run_()
     {
         const Socket socket;
         if (!socket.is_valid())
         {
             stop();
+            close(socket.fd());
             throw std::runtime_error("Failed to initialize socket");
         }
         setup_port(socket);
 
         fds.reserve(MAX_MODULES);
 
-        std::cerr << "Server waiting for connections" << std::endl;
+        std::cout << "Server waiting for connections" << std::endl;
 
         while (!stopped)
         {
@@ -260,38 +278,25 @@ namespace server
 
             std::this_thread::sleep_for(TIMEOUT);
         }
+
+        close(socket.fd());
     }
 
     void run()
     {
-        if (thread_ptr_)
-        {
-            throw std::runtime_error("Double tub instantiation");
-        }
+        util::require(!stopped, "Cannot run two servers");
 
-        thread_ptr_ = std::make_unique<std::thread>(
-            []
-            {
-                try
-                {
-                    _run();
-                }
-                catch (...)
-                {
-                    exception_ptr = std::current_exception();
-                }
-            });
+        server_future_ = std::async(std::launch::async, []
+                                    { run_(); });
     }
 
     void stop()
     {
         stopped = true;
 
-        client::close_clients();
-
-        if (thread_ptr_->joinable())
+        for (size_t i = 0; i < fds.size(); i++)
         {
-            thread_ptr_->join();
+            close(fds[i]);
         }
     }
 
@@ -300,14 +305,17 @@ namespace server
         return fds.size();
     }
 
-    void rethrow()
+    void check()
     {
-        if (exception_ptr)
+        if (!server_future_.valid())
         {
-            stop();
-            std::cerr << "Rethrowing exception from server thread" << std::endl;
-            std::rethrow_exception(exception_ptr);
+            return;
+        }
+
+        auto status = server_future_.wait_for(std::chrono::seconds(0));
+        if (status == std::future_status::ready)
+        {
+            server_future_.get();
         }
     }
-
 }

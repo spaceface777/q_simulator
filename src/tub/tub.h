@@ -6,6 +6,8 @@
 #include <thread>
 #include <optional>
 #include <vector>
+#include <future>
+#include <array>
 
 #include "../defs.h"
 
@@ -17,27 +19,27 @@ namespace tub
     private:
         uint8_t id_;
         uint8_t module_;
-        ModuleLocation location_;
+        ModuleLocation location_ = ModuleLocation::SMALL_BELT;
 
         uint8_t target_module_;
         ModuleLocation target_module_location_;
 
         bool in_laser_ = false;
         bool in_rfid_ = false;
-        double location_progress_ = 0;
-        std::unique_ptr<std::thread> thread_ptr_;
+        // 0 = middle, 1 = extremity
+        double location_progress_ = 0.5;
+
+        std::future<void> tub_future_;
+        std::atomic_bool stopped_ = false;
+        std::array<int8_t, RFID_UID_SIZE_BYTES> rfid_uid_;
+        std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        Tub(uint8_t id, uint8_t module, uint8_t target_module, ModuleLocation target_module_location) : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location)
+        Tub(uint8_t id, uint8_t module, uint8_t target_module,
+            ModuleLocation target_module_location, std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
+            : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location), rfid_(rfid)
         {
-        }
-
-        ~Tub()
-        {
-            if (thread_ptr_ && thread_ptr_->joinable())
-            {
-                thread_ptr_->join();
-            }
+            rfid_uid_ = {static_cast<int8_t>(id), 0, 0, 0, 0, 0, 0};
         }
 
         uint8_t id() const noexcept
@@ -81,13 +83,23 @@ namespace tub
         }
 
     private:
-        void _run();
+        void run_();
 
     public:
         /**
          * Starts the update process of this tub.
          */
         void run();
+
+        void check();
+
+        void stop();
+
+        Tub(Tub &&) noexcept = default;
+        Tub &operator=(Tub &&) noexcept = default;
+
+        Tub(const Tub &) = delete;
+        Tub &operator=(const Tub &) = delete;
     };
 
     /**
@@ -113,10 +125,7 @@ namespace tub
      */
     std::vector<std::shared_ptr<tub::Tub>> get_tubs();
 
-    /**
-     * Throws any exceptions that may have occurred during the execution of the thread.
-     */
-    void rethrow();
+    void check();
 
 }
 

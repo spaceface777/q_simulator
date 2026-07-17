@@ -1,27 +1,39 @@
-# PURPLE 2
-The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE), version 2.
+# PURPLE 3
+The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE), version 3.
 
 ## Format
 The format of PURPLE follows that of TOML. The header indicates the type of message that is sent. Currently accepted:
 
-### `[introduction]`
-Used to pass the id of the started module to the receiving server.
+### `[init]`
+Used to pass the id of the started module to the simulator.
 
 Required elements:
 - `id = <uint>`: The id of the module.
 
 Example:
 ```toml
-[introduction]
+[init]
+id = 12
+```
+
+### `[init.finish]`
+Used to indicate to the simulator that a module is ready to receive packets.
+
+Required elements:
+- `id = <uint>`: The id of the module.
+
+Example:
+```toml
+[init.finish]
 id = 12
 ```
 
 ### `[update]`
-Used to indicate the value of a hardware component, sent from a module.
+Used to indicate the value of a hardware component.
 
 Required elements:
 - `module = <uint>`: The module that this component belongs to.
-- `device = <string>`: The changed device. Currently accepted: `"led", "big belt", "small belt", "servo"`.
+- `device = <string>`: The changed device. Currently accepted: `"led", "big belt", "small belt", "servo", "left laser", "right laser"`.
 - `value = <num>`: The updated value.
 
 Example:
@@ -32,20 +44,20 @@ device = "led"
 value = 2298889
 ```
 
-### `[update.simulation]`
-Used to indicate the value of a hardware component sent from the simulation, not a module.
+### `[update.rfid]`
+Used to indicate the value of the RFID chip on a sensor sent from the simulation.
 
 Required elements:
 - `module = <uint>`: The module that this component belongs to.
-- `device = <string>`: The changed device. Currently accepted: `"left laser", "right laser", "rfid"`.
-- `value = <num>`: The updated value.
+- `uid = <string>`: The UID of the RFID chip.
+- `data = <string>`: The data contained in the rest of the RFID chip.
 
 Example:
 ```toml
-[update.simulation]
+[update.rfid]
 module = 12
-device = "left laser"
-value = 1
+uid = "asda"
+data = ""
 ```
 
 ### `[packet]`
@@ -58,7 +70,7 @@ Required elements:
 
 Example:
 ```toml
-[update]
+[packet]
 module = 12
 length = 12
 content = "2394823492"
@@ -72,6 +84,7 @@ Required elements:
 - `module = <uint>`: The module that this tub arrives at.
 - `destination = <uint>`: The destination module. 
 - `safe = <bool>`: Whether the tub is safe.
+- `needs_security = <bool>`: Whether the tub should be routed to security.
 
 ```toml
 [tub.arrival]
@@ -79,6 +92,7 @@ id = 3
 module = 12
 destination = 6
 safe = false
+needs_security = false
 ```
 
 ## `[tub.departure]`

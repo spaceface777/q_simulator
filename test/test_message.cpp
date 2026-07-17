@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
-#include "../src/packet/packet.h"
+#include "../src/message/message.h"
 #include "../src/util.h"
 
 TEST(Packet, ToToml)
 {
-    packet::ModuleUpdate update(1, "2", 3);
+    message::Update update(1, "2", 3);
     const std::string toml = update.to_toml();
     const std::vector<std::string_view> parts = util::split(toml, "\n");
 
@@ -17,7 +17,7 @@ TEST(Packet, ToToml)
 
 TEST(Packet, ToTomlPacket)
 {
-    packet::ModulePacket packet(1, 4, "heyy");
+    message::Packet packet(1, 4, "heyy");
     const std::string toml = packet.to_toml();
     const std::vector<std::string_view> parts = util::split(toml, "\n");
 
@@ -31,7 +31,7 @@ TEST(Packet, ToTomlPacket)
 TEST(Packet, FromTo)
 {
     const std::string toml = "  [introduction]\n\n  id  =  4";
-    const packet::Introduction intro = packet::Introduction::from_toml(toml).value();
+    const message::Init intro = message::Init::from_toml(toml).value();
 
     ASSERT_TRUE(intro.is_valid());
     ASSERT_EQ(4, intro.id());
