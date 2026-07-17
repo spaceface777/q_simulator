@@ -1,9 +1,11 @@
 ## todo
-- write processes/threads for objects in digital twin
-- update diagrams 
+- add custom parsing handling
+- add all sensors
 - add synchronization for processes
 - format for gitlab issues
 - analyze implementing scheduler process that communicates to the router processes
+- for hybrid mode send through pi, add separate interface for communication
+- int -> double for event time
 
 # Quercus Simulation
 The repository for the Quercus Airport Router Simulation.
