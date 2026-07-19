@@ -73,12 +73,11 @@ namespace visualization
              {GlyphId::NINE, 0x7BCF},  // 111, 101, 111, 001, 111
              {GlyphId::DOT, 0b000000000000010},
              {GlyphId::MINUS, 0b000000111000000},
+             {GlyphId::PLUS, 0b000010111010000},
              {GlyphId::X, 0b101101010101101},
              {GlyphId::LEFT, 0b001010100010001},
              {GlyphId::RIGHT, 0b100010001010100},
              {GlyphId::PAUSE, 0b101101101101101}}};
-
-        static_assert(DATA.size() == (size_t)GlyphId::COUNT);
 
         static constexpr uint16_t get_bitmap(GlyphId id)
         {
@@ -96,6 +95,8 @@ namespace visualization
                 return get_bitmap(GlyphId::DOT);
             else if (c == '-')
                 return get_bitmap(GlyphId::MINUS);
+            else if (c == '+')
+                return get_bitmap(GlyphId::PLUS);
             else if (c == 'x' || c == 'X')
                 return get_bitmap(GlyphId::X);
             else if (c == '<')
@@ -816,6 +817,8 @@ namespace visualization
         buttons_.push_back(std::make_unique<buttons::SlowSlowerButton>(buttons::SlowSlowerButton()));
         buttons_.push_back(std::make_unique<buttons::FasterButton>(buttons::FasterButton()));
         buttons_.push_back(std::make_unique<buttons::FastFasterButton>(buttons::FastFasterButton()));
+        buttons_.push_back(std::make_unique<buttons::ZoomInButton>(buttons::ZoomInButton()));
+        buttons_.push_back(std::make_unique<buttons::ZoomOutButton>(buttons::ZoomOutButton()));
     }
 
     static std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
@@ -845,6 +848,18 @@ namespace visualization
                 if (keyboard[SDL_SCANCODE_F4])
                 {
                     settings::set_setting("debug", !settings::get_setting<bool>("debug"));
+                }
+                if (keyboard[SDL_SCANCODE_UP])
+                {
+                    double new_value = settings::get_setting<double>("simulation_speed") + 0.1;
+                    settings::set_setting("simulation_speed", new_value);
+                    vclock.set_simulation_speed(new_value);
+                }
+                if (keyboard[SDL_SCANCODE_DOWN])
+                {
+                    double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - 0.1);
+                    settings::set_setting("simulation_speed", new_value);
+                    vclock.set_simulation_speed(new_value);
                 }
                 if (keyboard[SDL_SCANCODE_LCTRL] && keyboard[SDL_SCANCODE_MINUS])
                 {

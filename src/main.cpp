@@ -126,6 +126,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         }
         catch (...)
         {
+            std::cerr << "Shutting down due to failed check" << std::endl;
+
             handle_close(-1);
             return EXIT_FAILURE;
         }

@@ -43,6 +43,7 @@ namespace visualization
         NINE,
         DOT,
         MINUS,
+        PLUS,
         X,
         LEFT,
         RIGHT,

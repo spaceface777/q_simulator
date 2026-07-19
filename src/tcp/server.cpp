@@ -272,11 +272,11 @@ namespace server
 
         while (!stopped)
         {
-            if (settings::get_setting<double>("simulation_speed") == 0.0)
-            {
-                std::this_thread::sleep_for(TIMEOUT);
-                continue;
-            }
+            // if (settings::get_setting<double>("simulation_speed") == 0.0)
+            // {
+            //     std::this_thread::sleep_for(TIMEOUT);
+            //     continue;
+            // }
 
             handle_connection_requests(socket);
 

@@ -88,7 +88,7 @@ namespace visualization::buttons
 
     static constexpr int SCALE = 5;
     static constexpr double LARGE_STEP = 1.0;
-    static constexpr double SMALl_STEP = 0.1;
+    static constexpr double SMALL_STEP = 0.1;
 
     void PauseButton::on_render(SDL_Renderer *renderer) noexcept
     {
@@ -115,7 +115,7 @@ namespace visualization::buttons
 
     void SlowerButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
     {
-        double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - SMALl_STEP);
+        double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - SMALL_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
@@ -128,7 +128,7 @@ namespace visualization::buttons
 
     void FastFasterButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
     {
-        double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + 1.0);
+        double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + LARGE_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
@@ -142,7 +142,7 @@ namespace visualization::buttons
 
     void FasterButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
     {
-        double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + SMALl_STEP);
+        double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + SMALL_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
@@ -151,6 +151,30 @@ namespace visualization::buttons
     {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::RIGHT, SCALE);
+    }
+
+    void ZoomInButton::on_click([[maybe_unused]] virtual_clock::VirtualClock &vclock) noexcept
+    {
+        double new_value = fmin(5.0, settings::get_setting<double>("scale") + SMALL_STEP);
+        settings::set_setting("scale", new_value);
+    }
+
+    void ZoomInButton::on_render(SDL_Renderer *renderer) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::PLUS, SCALE);
+    }
+
+    void ZoomOutButton::on_click([[maybe_unused]] virtual_clock::VirtualClock &vclock) noexcept
+    {
+        double new_value = fmax(0.0, settings::get_setting<double>("scale") - SMALL_STEP);
+        settings::set_setting("scale", new_value);
+    }
+
+    void ZoomOutButton::on_render(SDL_Renderer *renderer) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::MINUS, SCALE);
     }
 
 }

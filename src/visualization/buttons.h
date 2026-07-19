@@ -61,8 +61,8 @@ namespace visualization::buttons
                 render_y = h - rect_.y - rect_.h;
                 break;
             case ScreenAnchor::BOTTOM_RIGHT:
-                render_x = w - rect_.x;
-                render_y = h - rect_.y;
+                render_x = w - rect_.x - rect_.w;
+                render_y = h - rect_.y - rect_.h;
                 break;
             }
 
@@ -94,7 +94,7 @@ namespace visualization::buttons
 
     public:
         PauseButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 20, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 140, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -111,7 +111,7 @@ namespace visualization::buttons
 
     public:
         SlowSlowerButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 80, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 20, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -128,7 +128,7 @@ namespace visualization::buttons
 
     public:
         SlowerButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 140, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 80, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -145,7 +145,7 @@ namespace visualization::buttons
 
     public:
         FastFasterButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 200, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 260, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -162,7 +162,41 @@ namespace visualization::buttons
 
     public:
         FasterButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 260, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 200, 20, 40, 40,
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{230, 230, 230, 120},
+                     SDL_Color{150, 150, 150, 255})
+        {
+        }
+
+    protected:
+        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+    };
+
+    class ZoomInButton : public Button
+    {
+
+    public:
+        ZoomInButton()
+            : Button(ScreenAnchor::BOTTOM_RIGHT, 80, 20, 40, 40,
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{230, 230, 230, 120},
+                     SDL_Color{150, 150, 150, 255})
+        {
+        }
+
+    protected:
+        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+    };
+
+    class ZoomOutButton : public Button
+    {
+
+    public:
+        ZoomOutButton()
+            : Button(ScreenAnchor::BOTTOM_RIGHT, 20, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
