@@ -23,6 +23,7 @@
 #include "../message/message.h"
 #include "../util.h"
 #include "../defs.h"
+#include "../settings.h"
 #include "../module/module.h"
 
 #include <future>
@@ -250,7 +251,6 @@ namespace server
                 continue;
             }
 
-            ;
             parse_packet(buff);
         }
     }
@@ -272,6 +272,12 @@ namespace server
 
         while (!stopped)
         {
+            if (settings::get_setting<double>("simulation_speed") == 0.0)
+            {
+                std::this_thread::sleep_for(TIMEOUT);
+                continue;
+            }
+
             handle_connection_requests(socket);
 
             handle_packets();
