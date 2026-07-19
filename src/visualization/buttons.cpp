@@ -66,6 +66,8 @@ namespace visualization::buttons
         project_(renderer);
         SDL_SetRenderDrawColor(renderer, current.r, current.g, current.b, current.a);
         SDL_RenderFillRect(renderer, &projected_);
+
+        on_render(renderer);
     }
 
     void PauseButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
@@ -84,11 +86,71 @@ namespace visualization::buttons
         }
     }
 
-    void PauseButton::on_render([[maybe_unused]] SDL_Renderer *renderer) noexcept
+    static constexpr int SCALE = 5;
+    static constexpr double LARGE_STEP = 1.0;
+    static constexpr double SMALl_STEP = 0.1;
+
+    void PauseButton::on_render(SDL_Renderer *renderer) noexcept
     {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         if (settings::get_setting<double>("simulation_speed") == 0)
-        {
-        }
+            visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::RIGHT, SCALE);
+        else
+            visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::PAUSE, SCALE);
+    }
+
+    void SlowSlowerButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    {
+        double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - LARGE_STEP);
+        settings::set_setting("simulation_speed", new_value);
+        vclock.set_simulation_speed(new_value);
+    }
+
+    void SlowSlowerButton::on_render(SDL_Renderer *renderer) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        visualization::draw_char(renderer, projected_.x + 2, projected_.y + 6, GlyphId::LEFT, SCALE);
+        visualization::draw_char(renderer, projected_.x + 2 + 4 * SCALE, projected_.y + 6, GlyphId::LEFT, SCALE);
+    }
+
+    void SlowerButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    {
+        double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - SMALl_STEP);
+        settings::set_setting("simulation_speed", new_value);
+        vclock.set_simulation_speed(new_value);
+    }
+
+    void SlowerButton::on_render(SDL_Renderer *renderer) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::LEFT, SCALE);
+    }
+
+    void FastFasterButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    {
+        double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + 1.0);
+        settings::set_setting("simulation_speed", new_value);
+        vclock.set_simulation_speed(new_value);
+    }
+
+    void FastFasterButton::on_render(SDL_Renderer *renderer) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        visualization::draw_char(renderer, projected_.x + 2, projected_.y + 6, GlyphId::RIGHT, SCALE);
+        visualization::draw_char(renderer, projected_.x + 2 + 4 * SCALE, projected_.y + 6, GlyphId::RIGHT, SCALE);
+    }
+
+    void FasterButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    {
+        double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + SMALl_STEP);
+        settings::set_setting("simulation_speed", new_value);
+        vclock.set_simulation_speed(new_value);
+    }
+
+    void FasterButton::on_render(SDL_Renderer *renderer) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::RIGHT, SCALE);
     }
 
 }

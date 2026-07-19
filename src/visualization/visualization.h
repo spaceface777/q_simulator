@@ -3,6 +3,7 @@
 #ifndef VISUALIZATION_H
 #define VISUALIZATION_H
 
+#include <SDL.h>
 #include "../synchronization/virtual_clock.h"
 
 namespace visualization
@@ -28,6 +29,28 @@ namespace visualization
      */
     bool is_running();
 
+    enum class GlyphId : uint8_t
+    {
+        ZERO,
+        ONE,
+        TWO,
+        THREE,
+        FOUR,
+        FIVE,
+        SIX,
+        SEVEN,
+        EIGHT,
+        NINE,
+        DOT,
+        MINUS,
+        X,
+        LEFT,
+        RIGHT,
+        PAUSE,
+        COUNT
+    };
+
+    void draw_char(SDL_Renderer *renderer, int x, int y, GlyphId glyph, int scale);
 }
 
 #endif

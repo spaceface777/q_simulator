@@ -5,7 +5,6 @@
 #include <iostream>
 #include <string>
 #include <map>
-#include <SDL.h>
 #include <atomic>
 #include <memory>
 #include <vector>
@@ -49,35 +48,73 @@ namespace visualization
 
     static double belt_offset_ = 0.0;
 
-    const uint16_t PIXEL_FONT[13] = {
-        0x7B6F, // 0: 111, 101, 101, 101, 111
-        0x2492, // 1: 010, 010, 010, 010, 010
-        0x73E7, // 2: 111, 001, 111, 100, 111
-        0x73CF, // 3: 111, 001, 111, 001, 111
-        0x5BC9, // 4: 101, 101, 111, 001, 001
-        0x79CF, // 5: 111, 100, 111, 001, 111
-        0x79EF, // 6: 111, 100, 111, 101, 111
-        0x7292, // 7: 111, 001, 010, 010, 010
-        0x7BEF, // 8: 111, 101, 111, 101, 111
-        0x7BCF, // 9: 111, 101, 111, 001, 111
-        0x5AAD, // x: 101, 101, 010, 101, 101
-        0x2E93, // t: 010, 111, 010, 010, 011
-        0x410,  // :: 000, 010, 000, 010, 000
+    struct Glyph
+    {
+        GlyphId id;
+        uint16_t bitmap;
     };
 
-    static void draw_digit(SDL_Renderer *renderer, int x, int y, int digit, int scale)
+    class PixelFont
     {
-        if (digit < 0 || digit > 12)
+    public:
+        static constexpr uint8_t WIDTH = 3;
+        static constexpr uint8_t HEIGHT = 5;
+
+        static constexpr std::array<Glyph, static_cast<size_t>(GlyphId::COUNT)> DATA = {
+            {{GlyphId::ZERO, 0x7B6F},  // 111, 101, 101, 101, 111
+             {GlyphId::ONE, 0x2492},   // 010, 010, 010, 010, 010
+             {GlyphId::TWO, 0x73E7},   // 111, 001, 111, 100, 111
+             {GlyphId::THREE, 0x73CF}, // 111, 001, 111, 001, 111
+             {GlyphId::FOUR, 0x5BC9},  // 101, 101, 111, 001, 001
+             {GlyphId::FIVE, 0x79CF},  // 111, 100, 111, 001, 111
+             {GlyphId::SIX, 0x79EF},   // 111, 100, 111, 101, 111
+             {GlyphId::SEVEN, 0x7292}, // 111, 001, 010, 010, 010
+             {GlyphId::EIGHT, 0x7BEF}, // 111, 101, 111, 101, 111
+             {GlyphId::NINE, 0x7BCF},  // 111, 101, 111, 001, 111
+             {GlyphId::DOT, 0b000000000000010},
+             {GlyphId::MINUS, 0b000000111000000},
+             {GlyphId::X, 0b101101010101101},
+             {GlyphId::LEFT, 0b001010100010001},
+             {GlyphId::RIGHT, 0b100010001010100},
+             {GlyphId::PAUSE, 0b101101101101101}}};
+
+        static_assert(DATA.size() == (size_t)GlyphId::COUNT);
+
+        static constexpr uint16_t get_bitmap(GlyphId id)
         {
-            return;
+            size_t index = static_cast<size_t>(id);
+            if (index < DATA.size())
+                return DATA[index].bitmap;
+            throw std::invalid_argument("Invalid glyph id");
         }
 
-        uint16_t bits = PIXEL_FONT[digit];
-        for (int row = 0; row < 5; ++row)
+        static constexpr uint16_t get_bitmap_from_char(char c)
         {
-            for (int col = 0; col < 3; ++col)
+            if (c >= '0' && c <= '9')
+                return get_bitmap(static_cast<GlyphId>(c - '0'));
+            else if (c == '.')
+                return get_bitmap(GlyphId::DOT);
+            else if (c == '-')
+                return get_bitmap(GlyphId::MINUS);
+            else if (c == 'x' || c == 'X')
+                return get_bitmap(GlyphId::X);
+            else if (c == '<')
+                return get_bitmap(GlyphId::LEFT);
+            else if (c == '>')
+                return get_bitmap(GlyphId::RIGHT);
+
+            throw std::invalid_argument("Invalid char");
+        }
+    };
+
+    void draw_char(SDL_Renderer *renderer, int x, int y, char digit, int scale)
+    {
+        uint16_t bits = PixelFont::get_bitmap_from_char(digit);
+        for (int row = 0; row < PixelFont::HEIGHT; ++row)
+        {
+            for (int col = 0; col < PixelFont::WIDTH; ++col)
             {
-                if (bits & (1 << (14 - (row * 3 + col))))
+                if (bits & (1 << (14 - (row * PixelFont::WIDTH + col))))
                 {
                     SDL_Rect r = {x + col * scale, y + row * scale, scale, scale};
                     SDL_RenderFillRect(renderer, &r);
@@ -86,16 +123,20 @@ namespace visualization
         }
     }
 
-    static void draw_minus(SDL_Renderer *renderer, int x, int y, int scale)
+    void draw_char(SDL_Renderer *renderer, int x, int y, GlyphId glyph, int scale)
     {
-        SDL_Rect r = {x, y + 2 * scale, 3 * scale, scale};
-        SDL_RenderFillRect(renderer, &r);
-    }
-
-    static void draw_dot(SDL_Renderer *renderer, int x, int y, int scale)
-    {
-        SDL_Rect r = {x + scale, y + 4 * scale, scale, scale};
-        SDL_RenderFillRect(renderer, &r);
+        uint16_t bits = PixelFont::get_bitmap(glyph);
+        for (int row = 0; row < PixelFont::HEIGHT; ++row)
+        {
+            for (int col = 0; col < PixelFont::WIDTH; ++col)
+            {
+                if (bits & (1 << (14 - (row * PixelFont::WIDTH + col))))
+                {
+                    SDL_Rect r = {x + col * scale, y + row * scale, scale, scale};
+                    SDL_RenderFillRect(renderer, &r);
+                }
+            }
+        }
     }
 
     // Overload to draw integers
@@ -104,26 +145,13 @@ namespace visualization
         std::string s = std::to_string(number);
         for (size_t i = 0; i < s.length(); ++i)
         {
-            if (s[i] == '-')
-            {
-                draw_minus(renderer, x + i * 4 * scale, y, scale);
-            }
-            else
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, s[i] - '0', scale);
-            }
+            draw_char(renderer, x + i * 4 * scale, y, s[i], scale);
         }
     }
 
-    static void draw_number(SDL_Renderer *renderer, int x, int y, double number, int scale, bool append_x = false, bool add_t = false)
+    static void draw_number(SDL_Renderer *renderer, int x, int y, double number, int scale, bool append_x = false)
     {
         std::stringstream ss;
-
-        if (add_t)
-        {
-            ss << "t:";
-        }
-
         ss << std::fixed << std::setprecision(1) << number;
         std::string s = ss.str();
 
@@ -134,30 +162,7 @@ namespace visualization
 
         for (size_t i = 0; i < s.length(); ++i)
         {
-            if (s[i] == '-')
-            {
-                draw_minus(renderer, x + i * 4 * scale, y, scale);
-            }
-            else if (s[i] == '.')
-            {
-                draw_dot(renderer, x + i * 4 * scale, y, scale);
-            }
-            else if (s[i] == 'x')
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, 10, scale); // 10 is index of 'x'
-            }
-            else if (s[i] == 't')
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, 11, scale); // 11 is index of 'x'
-            }
-            else if (s[i] == ':')
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, 12, scale); // 12 is index of 'x'
-            }
-            else
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, s[i] - '0', scale);
-            }
+            draw_char(renderer, x + i * 4 * scale, y, s[i], scale);
         }
     }
 
@@ -769,7 +774,7 @@ namespace visualization
         SDL_Quit();
     }
 
-    static buttons::PauseButton button_pause;
+    static std::vector<std::unique_ptr<buttons::Button>> buttons_;
 
     void init()
     {
@@ -805,6 +810,12 @@ namespace visualization
             stop();
             return;
         }
+
+        buttons_.push_back(std::make_unique<buttons::PauseButton>(buttons::PauseButton()));
+        buttons_.push_back(std::make_unique<buttons::SlowerButton>(buttons::SlowerButton()));
+        buttons_.push_back(std::make_unique<buttons::SlowSlowerButton>(buttons::SlowSlowerButton()));
+        buttons_.push_back(std::make_unique<buttons::FasterButton>(buttons::FasterButton()));
+        buttons_.push_back(std::make_unique<buttons::FastFasterButton>(buttons::FastFasterButton()));
     }
 
     static std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
@@ -835,18 +846,6 @@ namespace visualization
                 {
                     settings::set_setting("debug", !settings::get_setting<bool>("debug"));
                 }
-                if (keyboard[SDL_SCANCODE_UP])
-                {
-                    double new_value = settings::get_setting<double>("simulation_speed") + 0.1;
-                    settings::set_setting("simulation_speed", new_value);
-                    vclock.set_simulation_speed(new_value);
-                }
-                if (keyboard[SDL_SCANCODE_DOWN])
-                {
-                    double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - 0.1);
-                    settings::set_setting("simulation_speed", new_value);
-                    vclock.set_simulation_speed(new_value);
-                }
                 if (keyboard[SDL_SCANCODE_LCTRL] && keyboard[SDL_SCANCODE_MINUS])
                 {
                     double new_value = fmax(0.0, settings::get_setting<double>("scale") - 0.1);
@@ -859,7 +858,10 @@ namespace visualization
                 }
             }
 
-            button_pause.handle(event, vclock);
+            for (auto &button : buttons_)
+            {
+                button->handle(event, vclock);
+            }
         }
 
         if (last_time.count() == 0)
@@ -885,10 +887,12 @@ namespace visualization
 
         SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
         draw_number(renderer_, 0, 0, settings::get_setting<double>("simulation_speed"), 3, true);
-        draw_number(renderer_, 75, 0, current_time.count() / 1000.0, 3, false, true);
+        draw_number(renderer_, 75, 0, current_time.count() / 1000.0, 3, false);
 
-        button_pause.render(renderer_);
-
+        for (auto &button : buttons_)
+        {
+            button->render(renderer_);
+        }
         belt_offset_ += (dt.count() / 16.0) * 0.3;
 
         SDL_RenderPresent(renderer_);
