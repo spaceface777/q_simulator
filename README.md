@@ -1,7 +1,12 @@
+## todo
+- add custom parsing handling
+- add all sensors
 # TODO
 **general**
 - add synchronization for processes
 - analyze implementing scheduler process that communicates to the router processes
+- for hybrid mode send through pi, add separate interface for communication
+- int -> double for event time
 - make id in events.toml 7 byte rfid
 - remove server/client and fix tcp
 
