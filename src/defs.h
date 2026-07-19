@@ -28,7 +28,7 @@ inline constexpr uint8_t MAX_TCP_BACKLOG = 25;
  */
 inline constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(16);
 
-enum ModuleLocation
+enum class ModuleLocation
 {
     LEFT_BELT,
     RIGHT_BELT,

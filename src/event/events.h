@@ -93,7 +93,7 @@ namespace events
         virtual void fire() const override;
     };
 
-    enum LocationType
+    enum class LocationType
     {
         MODULE,
         PLANE
