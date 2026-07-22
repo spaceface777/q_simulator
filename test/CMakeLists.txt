@@ -6,6 +6,7 @@ enable_testing()
 add_executable(tests 
     test_message.cpp 
     test_settings.cpp 
+    test_vclock.cpp 
     
     ../src/message/message.cpp
     ../src/settings.cpp
