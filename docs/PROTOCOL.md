@@ -71,7 +71,7 @@ Required elements:
 - `module = <uint>`: The module that this component belongs to.
 - `size = <uint>`: The amount of modules in this graph.
 - `length = <uint>`: The length of the graph data.
-- `data = <string>`: The data of the graph.
+- `data = <string>`: The data of the graph. Format: `module:left,middle,right`.
 
 Example:
 ```toml
@@ -79,7 +79,7 @@ Example:
 module = 12
 count = 2
 data_length = 11
-data = "1,2,3|3,2,1"
+data = "1:1,2,3|2:3,2,1"
 ```
 
 ### `[packet]`

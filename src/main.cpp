@@ -48,15 +48,17 @@ static void handle_close(int code)
  */
 static void init_modules()
 {
-    size_t module_index = 1;
-    while (module_index <= settings::get_modules_active())
+    for (std::size_t id = 1; id < MAX_MODULES; id++)
     {
-        std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
+        if (!settings::get_module_settings(id).active)
+            continue;
+
+        std::unique_ptr<module::Module> module = std::make_unique<module::Module>(id);
         module->run(settings::get_setting<std::string>("router_path"));
         module::add_module(std::move(module));
 
         int attempts = 0;
-        while (server::size() < module_index)
+        while (server::size() < id)
         {
             if (attempts > std::chrono::duration_cast<std::chrono::seconds>(MODULE_CONNECT_TIMEOUT).count() * 10)
             {
@@ -65,7 +67,7 @@ static void init_modules()
                 visualization::stop();
                 client::stop();
 
-                throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after " + std::to_string(MODULE_CONNECT_TIMEOUT.count()) + " seconds");
+                throw std::runtime_error("Failed to establish connection with module " + std::to_string(id) + " after " + std::to_string(MODULE_CONNECT_TIMEOUT.count()) + " seconds");
             }
 
             server::check();
@@ -75,8 +77,6 @@ static void init_modules()
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             attempts++;
         }
-
-        module_index++;
     }
 
     // wait until init.finish is sent
@@ -92,6 +92,42 @@ static void init_modules()
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+}
+
+static void init_layout()
+{
+    std::stringstream ss;
+    bool first = true;
+
+    std::size_t size = 0;
+    for (std::size_t id = 1; id < MAX_MODULES; id++)
+    {
+        const auto settings = settings::get_module_settings(id);
+        if (!settings.active)
+            continue;
+
+        if (!first)
+            ss << "|";
+
+        first = false;
+
+        ss << static_cast<int>(id) << ":"
+           << static_cast<int>(settings.left) << ","
+           << static_cast<int>(settings.middle) << ","
+           << static_cast<int>(settings.right);
+        size++;
+    }
+    std::string data = ss.str();
+
+    for (const auto &module : module::get_modules())
+    {
+        if (!module)
+        {
+            continue;
+        }
+
+        module->send(message::UpdateGraph(module->id(), size, data));
     }
 }
 
@@ -129,6 +165,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // TODO remove this
 
+    init_layout();
     init_schedule(events);
 
     virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();

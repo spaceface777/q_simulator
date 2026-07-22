@@ -184,10 +184,10 @@ namespace settings
         table.insert_or_assign(std::string(setting), value);
     }
 
-    uint8_t get_modules_active()
+    std::size_t get_modules_active()
     {
-        uint8_t count = 0;
-        for (uint8_t id = 1; id < MAX_MODULES; id++)
+        std::size_t count = 0;
+        for (std::size_t id = 1; id < MAX_MODULES; id++)
         {
             if (module_settings[id].active)
             {

@@ -26,8 +26,8 @@ inline constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(16);
 enum class ModuleLocation
 {
     LEFT,
-    RIGHT,
     MIDDLE,
+    RIGHT,
 };
 
 inline constexpr uint8_t RFID_UID_SIZE_BYTES = 7;

@@ -50,7 +50,7 @@ namespace settings
     /**
      * @return The amount of active modules.
      */
-    uint8_t get_modules_active();
+    std::size_t get_modules_active();
 
     /**
      * Gets the settings of a specific module.

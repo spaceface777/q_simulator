@@ -11,9 +11,9 @@ scale = 1.0
 
 [module.1]
 active = true # Whether this module should be started.
-neighbors = [0, 5, 2] # Module neighbors in order: left, middle, right
+neighbors = [0, 2, 5] # Module id of neighbors in order of left, middle, right.
 pos = [0, 4] # The (x, y) position of this module in the visualization, with the top left being (0, 0).
-angle = 270 # The angle of this module in the visualization.
+angle = 270 # The angle of this module in the visualization. 0 degrees = T shape. Clockwise rotation.
 
 [module.2]
 active = true

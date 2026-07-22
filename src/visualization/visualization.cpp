@@ -177,7 +177,7 @@ namespace visualization
 
         int col = 0;
         int row = 0;
-        if (module_id >= 1 && module_id <= settings::get_modules_active())
+        if (module_id >= 1 && module_id < MAX_MODULES)
         {
             const settings::ModuleSettings settings = settings::get_module_settings(module_id);
             col = settings.x;
@@ -886,8 +886,11 @@ namespace visualization
         SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
         SDL_RenderClear(renderer_);
 
-        for (int i = 1; i <= settings::get_modules_active(); ++i)
+        for (int i = 1; i < MAX_MODULES; ++i)
         {
+            if (!settings::get_module_settings(i).active)
+                continue;
+
             int x, y;
             get_module_coords(i, x, y);
             render_module(i, x, y);
