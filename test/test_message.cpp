@@ -100,11 +100,12 @@ TEST(UpdateTest, ValidityCheck)
 
 TEST(UpdateTest, FromTomlParsing)
 {
-    const std::string toml =
-        "[update]\n"
-        "module = 3\n"
-        "device = \"LED\"\n"
-        "value = 1\n";
+    const std::string toml = R"(
+[update]
+module = 3
+device = "LED"
+value = 1
+)";
 
     auto parsed = message::Update::from_toml(toml);
     ASSERT_TRUE(parsed.has_value());
@@ -154,11 +155,12 @@ TEST(PacketTest, Validity)
 
 TEST(PacketTest, FromTomlParsing)
 {
-    const std::string toml =
-        "[packet]\n"
-        "module = 2\n"
-        "length = 4\n"
-        "content = \"test\"\n";
+    const std::string toml = R"(
+[packet]
+module = 2
+length = 4
+content = "test"
+)";
 
     auto parsed = message::Packet::from_toml(toml);
     ASSERT_TRUE(parsed.has_value());
