@@ -122,7 +122,10 @@ namespace settings
         for (uint8_t id = 1; id < MAX_MODULES; id++)
         {
             toml::node *module_node = table.get("module");
-            util::require(module_node && module_node->is_table(), "Invalid setting 'module' in settings.toml");
+            if (!module_node || !module_node->is_table())
+            {
+                break;
+            }
 
             toml::table module_table = *module_node->as_table();
             toml::node *node = module_table.get(std::to_string(id));
