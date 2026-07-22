@@ -144,7 +144,7 @@ namespace tub
                 switch (location_)
                 {
                 case ModuleLocation::MIDDLE:
-                    location_progress_ += simulation_speed * module->small_belt_speed() * MOVEMENT_FACTOR;
+                    location_progress_ += simulation_speed * module->small_belt_speed() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
 
                     if (in_rfid_ && (location_progress_ < RFID_LOCATION - RFID_RANGE || location_progress_ > RFID_LOCATION + RFID_RANGE))
                     {
@@ -162,7 +162,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT:
-                    location_progress_ += simulation_speed * module->big_belt_speed() * MOVEMENT_FACTOR;
+                    location_progress_ += simulation_speed * module->big_belt_speed() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {
@@ -179,7 +179,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT:
-                    location_progress_ += simulation_speed * -module->big_belt_speed() * MOVEMENT_FACTOR;
+                    location_progress_ += simulation_speed * -module->big_belt_speed() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {

@@ -274,7 +274,7 @@ namespace server
         {
             if (settings::get_setting<double>("simulation_speed") == 0.0)
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                std::this_thread::sleep_for(TIMEOUT);
                 continue;
             }
 

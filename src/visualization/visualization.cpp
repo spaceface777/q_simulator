@@ -22,10 +22,18 @@ namespace visualization
 {
 
     /**
+     * Target FPS.
+     */
+    static constexpr double FPS_TARGET = 60;
+
+    /**
      * Default scaling is kind of large, so reduce by a factor.
      */
     static constexpr double SCALING_FACTOR = 0.7;
 
+    /**
+     * Belt movement reduction.
+     */
     static constexpr double BELT_FACTOR = 0.4;
 
     /**
@@ -904,7 +912,7 @@ namespace visualization
         belt_offset_ += (dt.count() / 16.0) * BELT_FACTOR;
 
         SDL_RenderPresent(renderer_);
-        SDL_Delay(TIMEOUT.count());
+        SDL_Delay(FPS_TARGET / 1000);
     }
 
     bool is_running()
