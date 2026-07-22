@@ -10,7 +10,7 @@ TEST(Packet, ToToml)
 
     ASSERT_EQ(4, parts.size());
     ASSERT_STREQ("[update]", std::string(parts[0]).c_str());
-    ASSERT_STREQ("id = 1", std::string(parts[1]).c_str());
+    ASSERT_STREQ("module = 1", std::string(parts[1]).c_str());
     ASSERT_STREQ("device = \"2\"", std::string(parts[2]).c_str());
     ASSERT_STREQ("value = 3", std::string(parts[3]).c_str());
 }

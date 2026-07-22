@@ -55,13 +55,11 @@ namespace settings
 
             toml::table table = *node->as_table();
 
-            module_settings[id] = {
-                .active = static_cast<bool>(table["active"].value_or(false)),
-                .left = static_cast<uint8_t>(table["left"].value_or(0)),
-                .right = static_cast<uint8_t>(table["right"].value_or(0)),
-                .bottom = static_cast<uint8_t>(table["bottom"].value_or(0)),
-                .angle = static_cast<uint16_t>(table["angle"].value_or(0)),
-            };
+            module_settings[id].active = static_cast<bool>(table["active"].value_or(false));
+            module_settings[id].left = static_cast<uint8_t>(table["left"].value_or(0));
+            module_settings[id].right = static_cast<uint8_t>(table["right"].value_or(0));
+            module_settings[id].bottom = static_cast<uint8_t>(table["bottom"].value_or(0));
+            module_settings[id].angle = static_cast<uint16_t>(table["angle"].value_or(0));
 
             util::require(module_settings[id].angle < 360, "Invalid angle '" + std::to_string(module_settings[id].angle) + "' for module " + std::to_string(id));
         }

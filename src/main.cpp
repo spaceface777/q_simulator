@@ -36,7 +36,7 @@ static void handle_close(int code)
     _exit(code);
 }
 
-int main(int argc, char const *argv[])
+int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 {
     settings::parse_settings();
     std::list<std::unique_ptr<events::Event>> events;
@@ -106,9 +106,6 @@ int main(int argc, char const *argv[])
                 module->send(message);
             }
         }
-        else if (auto *plane_event = dynamic_cast<events::PlaneEvent *>(event.get()))
-        {
-        }
     }
 
     virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();
@@ -127,8 +124,10 @@ int main(int argc, char const *argv[])
             tub::check();
             client::check();
         }
-        catch (...)
+        catch (std::exception &ex)
         {
+            std::cerr << "Shutting down due to failed check: " << ex.what() << std::endl;
+
             handle_close(-1);
             return EXIT_FAILURE;
         }

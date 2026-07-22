@@ -11,13 +11,13 @@
 namespace events
 {
 
-    void fire_events(virtual_clock::VirtualClock &vclock, std::list<std::unique_ptr<Event>> &events)
+    void fire_events(virtual_clock::ISimulationClock &vclock, std::list<std::unique_ptr<Event>> &events)
     {
-        int64_t seconds = std::chrono::duration_cast<std::chrono::seconds>(vclock.get_virtual_time()).count();
+        int64_t ms = vclock.get_virtual_time().count();
 
-        events.remove_if([seconds](const auto &event)
+        events.remove_if([ms](const auto &event)
                          {
-                             if (seconds >= event->time())
+                             if ((ms / 1000.0) >= event->time())
                              {
                                  event->fire();
                                  return true;
@@ -217,7 +217,7 @@ namespace events
 
                     auto &event_tbl = *event_value.as_table();
 
-                    int time = event_tbl["time"].value_or(-1.0);
+                    double time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
                     int module = event_tbl["module"].value_or(-1);
                     int leaves_in = event_tbl["leaves_in"].value_or(-1);

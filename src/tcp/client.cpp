@@ -10,6 +10,7 @@
 #include <map>
 
 #include "../message/message.h"
+#include "../settings.h"
 #include "../util.h"
 #include "../defs.h"
 #include "socket.h"
@@ -31,10 +32,10 @@ namespace client
 
     static bool setup_connection(int fd, unsigned int port, unsigned int id)
     {
-        const struct sockaddr_in addr_in = {
-            .sin_family = AF_INET,
-            .sin_port = htons(port),
-            .sin_addr = {.s_addr = htonl(INADDR_LOOPBACK)}};
+        struct sockaddr_in addr_in;
+        addr_in.sin_family = AF_INET;
+        addr_in.sin_port = ::htons(port);
+        addr_in.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
 
         std::cout << "Connecting to module " << std::to_string(id) << " at port " << std::to_string(port) << " and fd " << std::to_string(fd) << std::endl;
         if (::connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
@@ -57,7 +58,7 @@ namespace client
 
             if (!setup_connection(socket.fd(), port_, id_))
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(TIMEOUT);
                 continue;
             }
 
@@ -66,21 +67,25 @@ namespace client
 
             while (!stopped_)
             {
+                if (settings::get_setting<double>("simulation_speed") == 0.0)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    continue;
+                }
+
                 std::unique_ptr<message::Message> message;
-                size_t current_size = 0;
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     if (!queue_.empty())
                     {
                         message = std::move(queue_.front());
                         queue_.pop();
-                        current_size = queue_.size();
                     }
                 }
 
                 if (!message)
                 {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    std::this_thread::sleep_for(TIMEOUT);
                     continue;
                 }
 
