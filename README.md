@@ -35,8 +35,6 @@ Run the project with the `Run` button when using the C/C++ VSCode extension, or 
 make -C build -j && ./build/main
 ```
 
-To enable debug mode, which shows simulation-only information, press `F4`.
-
 If any errors appear about addresses already being in use, make sure to kill any potential runaway Zephyr processes.
 You can usually find these in a task manager or system monitor.
 

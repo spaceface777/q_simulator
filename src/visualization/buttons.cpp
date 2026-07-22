@@ -204,4 +204,15 @@ namespace visualization::buttons
         visualization::draw_string(renderer, projected_.x - 3, projected_.y + 12, ss.str(), 3);
     }
 
+    void DbgButton::on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
+    {
+        settings::set_setting("debug", !settings::get_setting<bool>("debug"));
+    }
+
+    void DbgButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        visualization::draw_string(renderer, projected_.x + 3, projected_.y + Y_OFFSET, "dbg", SCALE);
+    }
+
 }

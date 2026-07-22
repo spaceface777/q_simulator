@@ -24,7 +24,9 @@ namespace visualization
     /**
      * Default scaling is kind of large, so reduce by a factor.
      */
-    static inline constexpr double DEFAULT_SCALING_OFFSET = 0.7;
+    static constexpr double SCALING_FACTOR = 0.7;
+
+    static constexpr double BELT_FACTOR = 0.4;
 
     /**
      * The current scale.
@@ -38,7 +40,7 @@ namespace visualization
      */
     int scale_within_module(int x)
     {
-        return (int)(x * DEFAULT_SCALING_OFFSET * scale);
+        return (int)(x * SCALING_FACTOR * scale);
     }
 
     static std::atomic<bool> running_;
@@ -71,6 +73,9 @@ namespace visualization
              {GlyphId::SEVEN, 0x7292}, // 111, 001, 010, 010, 010
              {GlyphId::EIGHT, 0x7BEF}, // 111, 101, 111, 101, 111
              {GlyphId::NINE, 0x7BCF},  // 111, 101, 111, 001, 111
+             {GlyphId::D, 0b110101101101110},
+             {GlyphId::B, 0b110101110101110},
+             {GlyphId::G, 0b111100101101111},
              {GlyphId::DOT, 0b000000000000010},
              {GlyphId::MINUS, 0b000000111000000},
              {GlyphId::PLUS, 0b000010111010000},
@@ -91,14 +96,20 @@ namespace visualization
         {
             if (c >= '0' && c <= '9')
                 return get_bitmap(static_cast<GlyphId>(c - '0'));
+            else if (c == 'd')
+                return get_bitmap(GlyphId::D);
+            else if (c == 'b')
+                return get_bitmap(GlyphId::B);
+            else if (c == 'g')
+                return get_bitmap(GlyphId::G);
+            else if (c == 'x')
+                return get_bitmap(GlyphId::X);
             else if (c == '.')
                 return get_bitmap(GlyphId::DOT);
             else if (c == '-')
                 return get_bitmap(GlyphId::MINUS);
             else if (c == '+')
                 return get_bitmap(GlyphId::PLUS);
-            else if (c == 'x' || c == 'X')
-                return get_bitmap(GlyphId::X);
             else if (c == '<')
                 return get_bitmap(GlyphId::LEFT);
             else if (c == '>')
@@ -815,6 +826,7 @@ namespace visualization
         buttons_.push_back(std::make_unique<buttons::ZoomInButton>(buttons::ZoomInButton()));
         buttons_.push_back(std::make_unique<buttons::ZoomOutButton>(buttons::ZoomOutButton()));
         buttons_.push_back(std::make_unique<buttons::ZoomButton>(buttons::ZoomButton()));
+        buttons_.push_back(std::make_unique<buttons::DbgButton>(buttons::DbgButton()));
     }
 
     static std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
@@ -899,7 +911,7 @@ namespace visualization
         {
             button->render(renderer_, vclock);
         }
-        belt_offset_ += (dt.count() / 16.0) * 0.3;
+        belt_offset_ += (dt.count() / 16.0) * BELT_FACTOR;
 
         SDL_RenderPresent(renderer_);
         SDL_Delay(TIMEOUT.count());

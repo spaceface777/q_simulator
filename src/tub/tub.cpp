@@ -20,6 +20,8 @@ namespace tub
     static constexpr double LASER_LOCATION = 0.75;
     static constexpr double LASER_RANGE = 0.1;
 
+    static constexpr double MOVEMENT_FACTOR = 1.0 / 100.0 / 60.0 / 2.0;
+
     static std::string bytes_to_hex(const int8_t *data, std::size_t len)
     {
         if (data == nullptr || len == 0)
@@ -142,7 +144,7 @@ namespace tub
                 switch (location_)
                 {
                 case ModuleLocation::SMALL_BELT:
-                    location_progress_ += simulation_speed * module->small_belt_speed() / 100.0 / 60.0 / 4.0;
+                    location_progress_ += simulation_speed * module->small_belt_speed() * MOVEMENT_FACTOR;
 
                     if (in_rfid_ && (location_progress_ < RFID_LOCATION - RFID_RANGE || location_progress_ > RFID_LOCATION + RFID_RANGE))
                     {
@@ -160,7 +162,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT_BELT:
-                    location_progress_ += simulation_speed * module->big_belt_speed() / 100.0 / 60.0 / 4.0;
+                    location_progress_ += simulation_speed * module->big_belt_speed() * MOVEMENT_FACTOR;
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {
@@ -177,7 +179,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT_BELT:
-                    location_progress_ += simulation_speed * -module->big_belt_speed() / 100.0 / 60.0 / 4.0;
+                    location_progress_ += simulation_speed * -module->big_belt_speed() * MOVEMENT_FACTOR;
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {

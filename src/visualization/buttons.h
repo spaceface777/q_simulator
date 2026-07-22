@@ -258,6 +258,23 @@ namespace visualization::buttons
         virtual void on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept override {};
         virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
     };
+
+    class DbgButton : public Button
+    {
+
+    public:
+        DbgButton()
+            : Button(ScreenAnchor::BOTTOM_RIGHT, 160, 20, 40, 40,
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{230, 230, 230, 120},
+                     SDL_Color{150, 150, 150, 255})
+        {
+        }
+
+    protected:
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
+    };
 }
 
 #endif
