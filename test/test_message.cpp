@@ -13,7 +13,7 @@ TEST(MessageTest, BaseMessageDefaultBehavior)
     EXPECT_FALSE(cloned->is_valid());
 }
 
-TEST(Packet, ToToml)
+TEST(PacketTest, ToToml)
 {
     message::Update update(1, "2", 3);
     const std::string toml = update.to_toml();
@@ -26,7 +26,7 @@ TEST(Packet, ToToml)
     ASSERT_STREQ("value = 3", std::string(parts[3]).c_str());
 }
 
-TEST(Packet, ToTomlPacket)
+TEST(PacketTest, ToTomlPacket)
 {
     message::Packet packet(1, 4, "heyy");
     const std::string toml = packet.to_toml();
@@ -36,10 +36,10 @@ TEST(Packet, ToTomlPacket)
     ASSERT_STREQ("[packet]", std::string(parts[0]).c_str());
     ASSERT_STREQ("module = 1", std::string(parts[1]).c_str());
     ASSERT_STREQ("length = 4", std::string(parts[2]).c_str());
-    ASSERT_STREQ("content = \"heyy\"", std::string(parts[3]).c_str());
+    ASSERT_STREQ("data = \"heyy\"", std::string(parts[3]).c_str());
 }
 
-TEST(Packet, FromTo)
+TEST(PacketTest, FromTo)
 
 {
     const std::string toml = " [init]\n\n id = 4";
@@ -167,7 +167,7 @@ TEST(PacketTest, FromTomlParsing)
 [packet]
 module = 2
 length = 4
-content = "test"
+data = "test"
 )";
 
     auto parsed = message::Packet::from_toml(toml);

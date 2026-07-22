@@ -35,13 +35,6 @@ namespace settings
         settings::set_setting(setting, value);
     }
 
-    enum class OutputType
-    {
-        LEFT,
-        RIGHT,
-        BOTTOM
-    };
-
     static void validate_module_connections()
     {
         std::set<std::pair<uint8_t, ModuleLocation>> claimed_ports;
@@ -73,10 +66,10 @@ namespace settings
                     connects_back = true;
                     targeted_port = ModuleLocation::RIGHT;
                 }
-                else if (dest.bottom == id)
+                else if (dest.middle == id)
                 {
                     connects_back = true;
-                    targeted_port = ModuleLocation::BOTTOM;
+                    targeted_port = ModuleLocation::MIDDLE;
                 }
 
                 util::require(connects_back,
@@ -94,7 +87,7 @@ namespace settings
 
             check_connection(src.left, "left");
             check_connection(src.right, "right");
-            check_connection(src.bottom, "bottom");
+            check_connection(src.middle, "middle");
         }
     }
 
@@ -136,36 +129,41 @@ namespace settings
 
             toml::table table = *node->as_table();
 
-            auto opt_active = table["active"].value_exact<bool>();
-            util::require(opt_active.has_value(), "Missing or invalid 'active' attribute in module " + std::to_string(id));
-            module_settings[id].active = opt_active.value();
+            {
+                auto opt_active = table["active"].value_exact<bool>();
+                util::require(opt_active.has_value(), "Missing or invalid 'active' attribute in module " + std::to_string(id));
+                module_settings[id].active = opt_active.value();
+            }
+            {
+                auto opt_angle = table["angle"].value_exact<int64_t>();
+                util::require(opt_angle.has_value() && opt_angle.value() >= 0 && opt_angle.value() < 360,
+                              "Missing or invalid 'angle' attribute in module " + std::to_string(id));
+                module_settings[id].angle = static_cast<uint16_t>(opt_angle.value());
+            }
+            {
+                toml::v3::array *pos = table["pos"].as_array();
+                util::require(pos != nullptr && pos->is_array(), "Attribute 'pos' not found for module " + std::to_string(id));
+                util::require(pos->size() == 2, "Invalid value for attribute 'pos' of module " + std::to_string(id));
 
-            auto opt_left = table["left"].value_exact<int64_t>();
-            util::require(opt_left.has_value() && opt_left.value() >= 0 && opt_left.value() < MAX_MODULES,
-                          "Missing or invalid 'left' attribute in module " + std::to_string(id));
-            module_settings[id].left = static_cast<uint8_t>(opt_left.value());
+                module_settings[id].x = static_cast<uint8_t>(pos->get(0)->value_exact<int64_t>().value());
+                module_settings[id].y = static_cast<uint8_t>(pos->get(1)->value_exact<int64_t>().value());
 
-            auto opt_right = table["right"].value_exact<int64_t>();
-            util::require(opt_right.has_value() && opt_right.value() >= 0 && opt_right.value() < MAX_MODULES,
-                          "Missing or invalid 'right' attribute in module " + std::to_string(id));
-            module_settings[id].right = static_cast<uint8_t>(opt_right.value());
+                util::require(module_settings[id].x <= 10, "Invalid value for attribute 'pos' of module " + std::to_string(id));
+                util::require(module_settings[id].y <= 10, "Invalid value for attribute 'pos' of module " + std::to_string(id));
+            }
+            {
+                toml::v3::array *neighbors = table["neighbors"].as_array();
+                util::require(neighbors != nullptr && neighbors->is_array(), "Attribute 'neighbors' not found for module " + std::to_string(id));
+                util::require(neighbors->size() == 3, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
 
-            auto opt_bottom = table["bottom"].value_exact<int64_t>();
-            util::require(opt_bottom.has_value() && opt_bottom.value() >= 0 && opt_bottom.value() < MAX_MODULES,
-                          "Missing or invalid 'bottom' attribute in module " + std::to_string(id));
-            module_settings[id].bottom = static_cast<uint8_t>(opt_bottom.value());
+                module_settings[id].left = static_cast<uint8_t>(neighbors->get(0)->value_exact<int64_t>().value());
+                module_settings[id].middle = static_cast<uint8_t>(neighbors->get(1)->value_exact<int64_t>().value());
+                module_settings[id].right = static_cast<uint8_t>(neighbors->get(2)->value_exact<int64_t>().value());
 
-            auto opt_angle = table["angle"].value_exact<int64_t>();
-            util::require(opt_angle.has_value() && opt_angle.value() >= 0 && opt_angle.value() < 360,
-                          "Missing or invalid 'angle' attribute in module " + std::to_string(id));
-            module_settings[id].angle = static_cast<uint16_t>(opt_angle.value());
-
-            toml::v3::array *pos = table["pos"].as_array();
-            util::require(pos != nullptr && pos->is_array(), "Attribute 'pos' not found for module " + std::to_string(id));
-            util::require(pos->size() == 2, "Invalid value for attribute 'pos' of module " + std::to_string(id));
-
-            module_settings[id].x = static_cast<uint8_t>(pos->get(0)->value_exact<int64_t>().value());
-            module_settings[id].y = static_cast<uint8_t>(pos->get(1)->value_exact<int64_t>().value());
+                util::require(module_settings[id].left < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
+                util::require(module_settings[id].middle < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
+                util::require(module_settings[id].right < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
+            }
         }
 
         validate_module_connections();

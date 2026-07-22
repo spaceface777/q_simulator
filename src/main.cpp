@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <algorithm>
+#include <chrono>
 
 #include "event/events.h"
 #include "tcp/server.h"
@@ -24,28 +25,30 @@
 /**
  * The amount of seconds before a module connection times out.
  */
-static constexpr int MODULE_CONNECT_TIMEOUT_SECONDS = 3;
+static constexpr std::chrono::seconds MODULE_CONNECT_TIMEOUT = std::chrono::seconds(3);
 
+/**
+ * Handles closing interrupts.
+ * @param code The interrupt.
+ */
 static void handle_close(int code)
 {
     tub::stop();
+    tub::join();
     server::stop();
-    visualization::stop();
+    server::join();
     client::stop();
+    visualization::stop();
 
     _exit(code);
 }
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
+/**
+ * Initializes all module instances and starts the router processes.
+ */
+static void init_modules()
 {
-    ::signal(SIGTERM, handle_close);
-
-    settings::parse_settings("settings.toml");
-    std::list<std::unique_ptr<events::Event>> events;
-    events::parse_events("events.toml", events);
-    server::run();
-
-    uint8_t module_index = 1;
+    size_t module_index = 1;
     while (module_index <= settings::get_modules_active())
     {
         std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
@@ -55,14 +58,14 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         int attempts = 0;
         while (server::size() < module_index)
         {
-            if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 10)
+            if (attempts > std::chrono::duration_cast<std::chrono::seconds>(MODULE_CONNECT_TIMEOUT).count() * 10)
             {
                 tub::stop();
                 server::stop();
                 visualization::stop();
                 client::stop();
 
-                throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after " + std::to_string(MODULE_CONNECT_TIMEOUT_SECONDS) + " seconds");
+                throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after " + std::to_string(MODULE_CONNECT_TIMEOUT.count()) + " seconds");
             }
 
             server::check();
@@ -76,6 +79,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         module_index++;
     }
 
+    // wait until init.finish is sent
     while (true)
     {
         const auto modules = module::get_modules();
@@ -89,10 +93,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+}
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // TODO remove this
-
-    // initialize schedule
+static void init_schedule(const std::list<std::unique_ptr<events::Event>> &events)
+{
     for (auto &event : events)
     {
         if (auto *tub_event = dynamic_cast<events::TubEvent *>(event.get()))
@@ -110,6 +114,22 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
             }
         }
     }
+}
+
+int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
+{
+    ::signal(SIGTERM, handle_close);
+
+    settings::parse_settings("settings.toml");
+    std::list<std::unique_ptr<events::Event>> events;
+    events::parse_events("events.toml", events);
+    server::run();
+
+    init_modules();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // TODO remove this
+
+    init_schedule(events);
 
     virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();
     vclock.set_simulation_speed(settings::get_setting<double>("simulation_speed"));
@@ -141,6 +161,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
     server::stop();
     server::join();
     client::stop();
+    visualization::stop();
 
     return EXIT_SUCCESS;
 }

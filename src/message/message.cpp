@@ -399,7 +399,9 @@ namespace message
         std::string buf = create_buffer();
         append_header(buf, "update.rfid");
         append_value(buf, "module", module_);
+        append_value(buf, "uid_length", uid_.length());
         append_value(buf, "uid", uid_);
+        append_value(buf, "data_length", data_.length());
         append_value(buf, "data", data_);
         trim_trailing_nl(buf);
         return buf;
@@ -410,9 +412,31 @@ namespace message
         return std::make_unique<UpdateRfid>(*this);
     }
 
+    bool UpdateGraph::is_valid() const noexcept
+    {
+        return size_ > 0 && !data_.empty();
+    }
+
+    std::string UpdateGraph::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "update.graph");
+        append_value(buf, "module", module_);
+        append_value(buf, "size", size_);
+        append_value(buf, "data_length", data_.length());
+        append_value(buf, "data", data_);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::unique_ptr<Message> UpdateGraph::clone() const
+    {
+        return std::make_unique<UpdateGraph>(*this);
+    }
+
     bool Packet::is_valid() const noexcept
     {
-        if (content_.length() != length_)
+        if (data_.length() != length_)
         {
             return false;
         }
@@ -426,7 +450,7 @@ namespace message
         append_header(buf, "packet");
         append_value(buf, "module", module_);
         append_value(buf, "length", length_);
-        append_value(buf, "content", content_);
+        append_value(buf, "data", data_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -443,7 +467,7 @@ namespace message
         int stage = 0;
         int module = -1;
         std::size_t length;
-        std::string content;
+        std::string data;
         for (const std::string_view line : lines)
         {
             const std::string_view trimmed = util::trim(line);
@@ -491,22 +515,22 @@ namespace message
                 length = parsed_length.value();
                 continue;
             }
-            else if (left == "content" && stage == 1)
+            else if (left == "data" && stage == 1)
             {
-                const auto parsed_content = parse_quoted_string(right);
-                if (!parsed_content.has_value())
+                const auto parsed_data = parse_quoted_string(right);
+                if (!parsed_data.has_value())
                 {
                     return {};
                 }
 
-                content = parsed_content.value();
+                data = parsed_data.value();
                 continue;
             }
 
             return {};
         }
 
-        return Packet(module, length, content);
+        return Packet(module, length, data);
     }
 
     bool TubSchedule::is_valid() const noexcept

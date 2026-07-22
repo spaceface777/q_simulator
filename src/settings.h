@@ -15,8 +15,8 @@ namespace settings
     {
         bool active;
         uint8_t left;
+        uint8_t middle;
         uint8_t right;
-        uint8_t bottom;
         uint16_t angle;
         uint8_t x;
         uint8_t y;

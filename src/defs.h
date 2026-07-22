@@ -27,7 +27,7 @@ enum class ModuleLocation
 {
     LEFT,
     RIGHT,
-    BOTTOM,
+    MIDDLE,
 };
 
 inline constexpr uint8_t RFID_UID_SIZE_BYTES = 7;

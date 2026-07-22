@@ -49,15 +49,37 @@ Used to indicate the value of the RFID chip on a sensor sent from the simulation
 
 Required elements:
 - `module = <uint>`: The module that this component belongs to.
+- `uid_length = <uint>`: The length of the UID data.
 - `uid = <string>`: The UID of the RFID chip.
-- `data = <string>`: The data contained in the rest of the RFID chip.
+- `data_length = <uint>`: The length of the data.
+- `data = <string>`: The data contained in the rest of the RFID chip, with each byte being encoded as a hex value.
 
 Example:
 ```toml
 [update.rfid]
 module = 12
-uid = "asda"
-data = ""
+uid_length = 10
+uid = "88EA3D46DD"
+data_length = 12
+data = "0A306B2A4EEE"
+```
+
+### `[update.graph]`
+Used to update the graph of a module.
+
+Required elements:
+- `module = <uint>`: The module that this component belongs to.
+- `size = <uint>`: The amount of modules in this graph.
+- `length = <uint>`: The length of the graph data.
+- `data = <string>`: The data of the graph.
+
+Example:
+```toml
+[update.graph]
+module = 12
+count = 2
+data_length = 11
+data = "1,2,3|3,2,1"
 ```
 
 ### `[packet]`
@@ -65,15 +87,15 @@ Used to send a packet from one module to another module.
 
 Required elements:
 - `module = <uint>`: The module that this packet is being sent to.
-- `length = <uint>`: The length of the contents.
-- `content = <string>`: The content.
+- `length = <uint>`: The length of the data.
+- `data = <string>`: The data.
 
 Example:
 ```toml
 [packet]
 module = 12
 length = 12
-content = "2394823492"
+data = "2394823492"
 ```
 
 <!-- ## `[tub.arrival]`

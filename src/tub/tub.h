@@ -19,7 +19,7 @@ namespace tub
     private:
         uint8_t id_;
         uint8_t module_;
-        ModuleLocation location_ = ModuleLocation::BOTTOM;
+        ModuleLocation location_ = ModuleLocation::MIDDLE;
 
         uint8_t target_module_;
         ModuleLocation target_module_location_;

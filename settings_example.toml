@@ -10,145 +10,109 @@ simulation_speed = 1.0
 scale = 1.0
 
 [module.1]
-active = true
-left = 0
-right = 5
-bottom = 2
-pos = [0, 4]
-angle = 270
+active = true # Whether this module should be started.
+neighbors = [0, 5, 2] # Module neighbors in order: left, middle, right
+pos = [0, 4] # The (x, y) position of this module in the visualization, with the top left being (0, 0).
+angle = 270 # The angle of this module in the visualization.
 
 [module.2]
 active = true
-left = 1
-right = 3
-bottom = 0
+neighbors = [1, 0, 3]
 pos = [1, 4]
 angle = 0
 
 [module.3]
 active = true
-left = 2
-right = 4
-bottom = 0
+neighbors = [2, 0, 4]
 pos = [2, 4]
 angle = 0
 
 [module.4]
 active = true
-left = 0
-right = 3
-bottom = 6
+neighbors = [0, 6, 3]
 pos = [3, 4]
 angle = 180
 
 [module.5]
 active = true
-left = 7
-right = 1
-bottom = 0
+neighbors = [7, 0, 1]
 pos = [0, 3]
 angle = 90
 
 [module.6]
 active = true
-left = 4
-right = 10
-bottom = 0
+neighbors = [4, 0, 10]
 pos = [3, 3]
 angle = 270
 
 [module.7]
 active = true
-left = 5
-right = 11
-bottom = 8
+neighbors = [5, 8, 11]
 pos = [0, 2]
 angle = 270
 
 [module.8]
 active = true
-left = 9
-right = 7
-bottom = 12
+neighbors = [9, 12, 7]
 pos = [1, 2]
 angle = 180
 
 [module.9]
 active = true
-left = 10
-right = 8
-bottom = 13
+neighbors = [10, 13, 8]
 pos = [2, 2]
 angle = 180
 
 [module.10]
 active = true
-left = 14
-right = 6
-bottom = 9
+neighbors = [14, 9, 6]
 pos = [3, 2]
 angle = 90
 
 [module.11]
 active = true
-left = 0
-right = 7
-bottom = 0
+neighbors = [0, 0, 7]
 pos = [0, 1]
 angle = 90
 
 [module.12]
 active = true
-left = 8
-right = 0
-bottom = 13
+neighbors = [8, 13, 0]
 pos = [1, 1]
 angle = 270
 
 [module.13]
 active = true
-left = 16
-right = 9
-bottom = 12
+neighbors = [16, 12, 9]
 pos = [2, 1]
 angle = 90
 
 [module.14]
 active = true
-left = 10
-right = 17
-bottom = 15
+neighbors = [10, 15, 17]
 pos = [3, 1]
 angle = 270
 
 [module.15]
 active = true
-left = 0
-right = 14
-bottom = 18
+neighbors = [0, 18, 14]
 pos = [4, 1]
 angle = 180
 
 [module.16]
 active = true
-left = 13
-right = 0
-bottom = 17
+neighbors = [13, 17, 0]
 pos = [2, 0]
 angle = 270
 
 [module.17]
 active = true
-left = 16
-right = 18
-bottom = 14
+neighbors = [16, 14, 18]
 pos = [3, 0]
 angle = 0
 
 [module.18]
 active = true
-left = 0
-right = 15
-bottom = 17
+neighbors = [0, 17, 15]
 pos = [4, 0]
 angle = 90

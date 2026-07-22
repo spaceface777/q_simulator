@@ -67,8 +67,8 @@ namespace tub
                 uint8_t new_module = -1;
                 switch (location_)
                 {
-                case ModuleLocation::BOTTOM:
-                    new_module = settings.bottom;
+                case ModuleLocation::MIDDLE:
+                    new_module = settings.middle;
                     break;
                 case ModuleLocation::LEFT:
                     new_module = settings.left;
@@ -79,9 +79,9 @@ namespace tub
                 }
 
                 const settings::ModuleSettings new_settings = settings::get_module_settings(new_module);
-                if (new_settings.bottom == old_module)
+                if (new_settings.middle == old_module)
                 {
-                    location_ = ModuleLocation::BOTTOM;
+                    location_ = ModuleLocation::MIDDLE;
                 }
                 else if (new_settings.left == old_module)
                 {
@@ -104,7 +104,7 @@ namespace tub
             {
                 switch (location_)
                 {
-                case ModuleLocation::BOTTOM:
+                case ModuleLocation::MIDDLE:
                     if (module->servo_angle() > 90)
                     {
                         location_ = ModuleLocation::RIGHT;
@@ -121,7 +121,7 @@ namespace tub
                     }
                     else
                     {
-                        location_ = ModuleLocation::BOTTOM;
+                        location_ = ModuleLocation::MIDDLE;
                     }
                     break;
                 case ModuleLocation::RIGHT:
@@ -131,7 +131,7 @@ namespace tub
                     }
                     else
                     {
-                        location_ = ModuleLocation::BOTTOM;
+                        location_ = ModuleLocation::MIDDLE;
                     }
                     break;
                 }
@@ -143,7 +143,7 @@ namespace tub
 
                 switch (location_)
                 {
-                case ModuleLocation::BOTTOM:
+                case ModuleLocation::MIDDLE:
                     location_progress_ += simulation_speed * module->small_belt_speed() * MOVEMENT_FACTOR;
 
                     if (in_rfid_ && (location_progress_ < RFID_LOCATION - RFID_RANGE || location_progress_ > RFID_LOCATION + RFID_RANGE))
