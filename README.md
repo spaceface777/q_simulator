@@ -15,6 +15,24 @@
 # Quercus Simulation
 The repository for the Quercus Airport Simulation. Please read the entire README before starting.
 
+![A screenshot of the simulator GUI](docs/images/gui.png)
+
+## Repository Structure
+
+```
+simulation/
+├── .gitlab/                 # GitLab issue formats 
+├── docs/                    # Architecture overview and diagrams
+├── layouts/                 # Example layouts for use in settings.toml
+├── src/                     # The source code
+├── test/                    # All tests
+├── .gitlab-ci.yml           # GitLab CI runner details
+├── events_example.toml      # Example event schedule input
+├── README.md                # Project overview
+├── settings_example.toml    # Example simulator configuration input
+└── CMakeLists.txt           # Main build script for the application and tests
+```
+
 ## Requirements
 - Ubuntu 24 or higher / Debian 13 or higher
 - Internet connection

@@ -4,7 +4,7 @@
 
 1. [Project Overview](#1-project-overview)
 1. [Software Architecture Overview](#2-software-architecture-overview)
-1. [Repository Structure](#3-repository-structure)
+1. [File Structure](#3-file-structure)
 
 ## 1. Project Overview
 
@@ -45,7 +45,7 @@ A GUI is provided which shows the current state of all modules and actuators. Ad
            └──────────────────────────────────────────────────────────────┘
 ```
 
-## 3. Repository Structure
+## 3. File Structure
 
 ```
 simulation/
