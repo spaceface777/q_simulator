@@ -65,21 +65,24 @@ TEST_F(SettingsTest, ParseValidSettings)
 {
     std::string valid_toml =
         "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(simulation_speed = 1.5
+        R"(
+simulation_speed = 1.5
 scale = 2.0
 
 [module.1]
 active = true
-left = 10
-right = 20
-bottom = 30
+left = 2
+right = 0
+bottom = 0
+pos = [2, 2]
 angle = 180
 
 [module.2]
 active = false
 left = 0
-right = 0
+right = 1
 bottom = 0
+pos = [1, 1]
 angle = 90
 )";
 
@@ -93,10 +96,12 @@ angle = 90
 
     settings::ModuleSettings mod1 = settings::get_module_settings(1);
     EXPECT_TRUE(mod1.active);
-    EXPECT_EQ(10, mod1.left);
-    EXPECT_EQ(20, mod1.right);
-    EXPECT_EQ(30, mod1.bottom);
+    EXPECT_EQ(2, mod1.left);
+    EXPECT_EQ(0, mod1.right);
+    EXPECT_EQ(0, mod1.bottom);
     EXPECT_EQ(180, mod1.angle);
+    EXPECT_EQ(2, mod1.x);
+    EXPECT_EQ(2, mod1.y);
 
     EXPECT_EQ(1, settings::get_modules_active());
 }
@@ -138,6 +143,70 @@ scale = 1.0
 [module.1]
 active = true
 angle = 400
+)";
+
+    write_toml(invalid_toml);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+}
+
+TEST_F(SettingsTest, ParseSettingsOneWayConnectionThrows)
+{
+    std::string invalid_toml =
+        "router_path = \"" + temp_router_path.string() + "\"\n" +
+        R"(simulation_speed = 1.0
+scale = 1.0
+
+[module.1]
+active = true
+left = 0
+right = 2
+bottom = 0
+pos = [0, 4]
+angle = 0
+
+[module.2]
+active = true
+left = 0
+right = 0
+bottom = 0
+pos = [1, 4]
+angle = 0
+)";
+
+    write_toml(invalid_toml);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+}
+
+TEST_F(SettingsTest, ParseSettingsDuplicatePortConnectionThrows)
+{
+    std::string invalid_toml =
+        "router_path = \"" + temp_router_path.string() + "\"\n" +
+        R"(simulation_speed = 1.0
+scale = 1.0
+
+[module.1]
+active = true
+left = 0
+right = 2
+bottom = 0
+pos = [0, 4]
+angle = 0
+
+[module.2]
+active = true
+left = 1
+right = 0
+bottom = 0
+pos = [1, 4]
+angle = 0
+
+[module.3]
+active = true
+left = 2
+right = 0
+bottom = 0
+pos = [2, 4]
+angle = 0
 )";
 
     write_toml(invalid_toml);

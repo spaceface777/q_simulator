@@ -628,7 +628,7 @@ namespace visualization
             get_module_coords(tub->module(), module_x, module_y);
 
             double rel_x = 0, rel_y = 0;
-            if (tub->module_location() == ModuleLocation::LEFT_BELT)
+            if (tub->module_location() == ModuleLocation::LEFT)
             {
                 switch (module_settings.angle)
                 {
@@ -653,7 +653,7 @@ namespace visualization
                     throw std::invalid_argument("Invalid module angle " + std::to_string(module_settings.angle));
                 }
             }
-            else if (tub->module_location() == ModuleLocation::RIGHT_BELT)
+            else if (tub->module_location() == ModuleLocation::RIGHT)
             {
                 switch (module_settings.angle)
                 {

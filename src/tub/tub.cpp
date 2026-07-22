@@ -67,13 +67,13 @@ namespace tub
                 uint8_t new_module = -1;
                 switch (location_)
                 {
-                case ModuleLocation::SMALL_BELT:
+                case ModuleLocation::BOTTOM:
                     new_module = settings.bottom;
                     break;
-                case ModuleLocation::LEFT_BELT:
+                case ModuleLocation::LEFT:
                     new_module = settings.left;
                     break;
-                case ModuleLocation::RIGHT_BELT:
+                case ModuleLocation::RIGHT:
                     new_module = settings.right;
                     break;
                 }
@@ -81,15 +81,15 @@ namespace tub
                 const settings::ModuleSettings new_settings = settings::get_module_settings(new_module);
                 if (new_settings.bottom == old_module)
                 {
-                    location_ = ModuleLocation::SMALL_BELT;
+                    location_ = ModuleLocation::BOTTOM;
                 }
                 else if (new_settings.left == old_module)
                 {
-                    location_ = ModuleLocation::LEFT_BELT;
+                    location_ = ModuleLocation::LEFT;
                 }
                 else if (new_settings.right == old_module)
                 {
-                    location_ = ModuleLocation::RIGHT_BELT;
+                    location_ = ModuleLocation::RIGHT;
                 }
                 else
                 {
@@ -104,34 +104,34 @@ namespace tub
             {
                 switch (location_)
                 {
-                case ModuleLocation::SMALL_BELT:
+                case ModuleLocation::BOTTOM:
                     if (module->servo_angle() > 90)
                     {
-                        location_ = ModuleLocation::RIGHT_BELT;
+                        location_ = ModuleLocation::RIGHT;
                     }
                     else
                     {
-                        location_ = ModuleLocation::LEFT_BELT;
+                        location_ = ModuleLocation::LEFT;
                     }
                     break;
-                case ModuleLocation::LEFT_BELT:
+                case ModuleLocation::LEFT:
                     if (module->servo_angle() < 10 || module->servo_angle() > 170)
                     {
-                        location_ = ModuleLocation::RIGHT_BELT;
+                        location_ = ModuleLocation::RIGHT;
                     }
                     else
                     {
-                        location_ = ModuleLocation::SMALL_BELT;
+                        location_ = ModuleLocation::BOTTOM;
                     }
                     break;
-                case ModuleLocation::RIGHT_BELT:
+                case ModuleLocation::RIGHT:
                     if (module->servo_angle() > 170 || module->servo_angle() < 10)
                     {
-                        location_ = ModuleLocation::LEFT_BELT;
+                        location_ = ModuleLocation::LEFT;
                     }
                     else
                     {
-                        location_ = ModuleLocation::SMALL_BELT;
+                        location_ = ModuleLocation::BOTTOM;
                     }
                     break;
                 }
@@ -143,7 +143,7 @@ namespace tub
 
                 switch (location_)
                 {
-                case ModuleLocation::SMALL_BELT:
+                case ModuleLocation::BOTTOM:
                     location_progress_ += simulation_speed * module->small_belt_speed() * MOVEMENT_FACTOR;
 
                     if (in_rfid_ && (location_progress_ < RFID_LOCATION - RFID_RANGE || location_progress_ > RFID_LOCATION + RFID_RANGE))
@@ -161,7 +161,7 @@ namespace tub
                         in_rfid_ = true;
                     }
                     break;
-                case ModuleLocation::LEFT_BELT:
+                case ModuleLocation::LEFT:
                     location_progress_ += simulation_speed * module->big_belt_speed() * MOVEMENT_FACTOR;
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
@@ -178,7 +178,7 @@ namespace tub
                         in_laser_ = true;
                     }
                     break;
-                case ModuleLocation::RIGHT_BELT:
+                case ModuleLocation::RIGHT:
                     location_progress_ += simulation_speed * -module->big_belt_speed() * MOVEMENT_FACTOR;
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))

@@ -9,11 +9,6 @@
 inline constexpr uint8_t MAX_MODULES = 25;
 
 /**
- * The module amount currently being used.
- */
-inline constexpr uint8_t MODULE_COUNT = 19;
-
-/**
  * Max size for TCP messages.
  */
 inline constexpr uint16_t MAX_TCP_BYTES_SIZE = 512;
@@ -30,9 +25,9 @@ inline constexpr std::chrono::duration TIMEOUT = std::chrono::milliseconds(16);
 
 enum class ModuleLocation
 {
-    LEFT_BELT,
-    RIGHT_BELT,
-    SMALL_BELT,
+    LEFT,
+    RIGHT,
+    BOTTOM,
 };
 
 inline constexpr uint8_t RFID_UID_SIZE_BYTES = 7;
