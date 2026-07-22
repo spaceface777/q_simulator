@@ -17,7 +17,7 @@ namespace visualization
     /**
      * Updates the visualization.
      */
-    void update(virtual_clock::VirtualClock &vclock);
+    void update(virtual_clock::ISimulationClock &vclock);
 
     /**
      * Signals the visualization loop to stop.
@@ -52,6 +52,7 @@ namespace visualization
     };
 
     void draw_char(SDL_Renderer *renderer, int x, int y, GlyphId glyph, int scale);
+    void draw_string(SDL_Renderer *renderer, int x, int y, std::string str, int scale);
 }
 
 #endif

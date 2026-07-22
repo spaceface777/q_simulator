@@ -2,11 +2,12 @@
 #include "../defs.h"
 #include "../settings.h"
 #include "../synchronization/virtual_clock.h"
+#include <chrono>
 
 namespace visualization::buttons
 {
 
-    void Button::handle(const SDL_Event &event, virtual_clock::VirtualClock &vclock) noexcept
+    void Button::handle(const SDL_Event &event, virtual_clock::ISimulationClock &vclock) noexcept
     {
         if (event.type == SDL_MOUSEMOTION ||
             event.type == SDL_MOUSEBUTTONDOWN ||
@@ -50,7 +51,7 @@ namespace visualization::buttons
         }
     }
 
-    void Button::render(SDL_Renderer *renderer) noexcept
+    void Button::render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         SDL_Color current = base_color_;
 
@@ -67,10 +68,10 @@ namespace visualization::buttons
         SDL_SetRenderDrawColor(renderer, current.r, current.g, current.b, current.a);
         SDL_RenderFillRect(renderer, &projected_);
 
-        on_render(renderer);
+        on_render(renderer, vclock);
     }
 
-    void PauseButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    void PauseButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
         if (settings::get_setting<double>("simulation_speed") == 0)
         {
@@ -86,95 +87,121 @@ namespace visualization::buttons
         }
     }
 
-    static constexpr int SCALE = 5;
+    static constexpr int SCALE = 3;
+    static constexpr int X_OFFSET = 15;
+    static constexpr int Y_OFFSET = 11;
     static constexpr double LARGE_STEP = 1.0;
     static constexpr double SMALL_STEP = 0.1;
 
-    void PauseButton::on_render(SDL_Renderer *renderer) noexcept
+    void PauseButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         if (settings::get_setting<double>("simulation_speed") == 0)
-            visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::RIGHT, SCALE);
+            visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::RIGHT, SCALE);
         else
-            visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::PAUSE, SCALE);
+            visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::PAUSE, SCALE);
     }
 
-    void SlowSlowerButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    void SlowSlowerButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
         double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - LARGE_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
 
-    void SlowSlowerButton::on_render(SDL_Renderer *renderer) noexcept
+    void SlowSlowerButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        visualization::draw_char(renderer, projected_.x + 2, projected_.y + 6, GlyphId::LEFT, SCALE);
-        visualization::draw_char(renderer, projected_.x + 2 + 4 * SCALE, projected_.y + 6, GlyphId::LEFT, SCALE);
+        visualization::draw_char(renderer, projected_.x + 8, projected_.y + Y_OFFSET, GlyphId::LEFT, SCALE);
+        visualization::draw_char(renderer, projected_.x + 8 + 4 * SCALE, projected_.y + Y_OFFSET, GlyphId::LEFT, SCALE);
     }
 
-    void SlowerButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    void SlowerButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
         double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - SMALL_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
 
-    void SlowerButton::on_render(SDL_Renderer *renderer) noexcept
+    void SlowerButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::LEFT, SCALE);
+        visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::LEFT, SCALE);
     }
 
-    void FastFasterButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    void FastFasterButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
         double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + LARGE_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
 
-    void FastFasterButton::on_render(SDL_Renderer *renderer) noexcept
+    void FastFasterButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        visualization::draw_char(renderer, projected_.x + 2, projected_.y + 6, GlyphId::RIGHT, SCALE);
-        visualization::draw_char(renderer, projected_.x + 2 + 4 * SCALE, projected_.y + 6, GlyphId::RIGHT, SCALE);
+        visualization::draw_char(renderer, projected_.x + 8, projected_.y + Y_OFFSET, GlyphId::RIGHT, SCALE);
+        visualization::draw_char(renderer, projected_.x + 8 + 4 * SCALE, projected_.y + Y_OFFSET, GlyphId::RIGHT, SCALE);
     }
 
-    void FasterButton::on_click(virtual_clock::VirtualClock &vclock) noexcept
+    void FasterButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
         double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + SMALL_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
 
-    void FasterButton::on_render(SDL_Renderer *renderer) noexcept
+    void FasterButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::RIGHT, SCALE);
+        visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::RIGHT, SCALE);
     }
 
-    void ZoomInButton::on_click([[maybe_unused]] virtual_clock::VirtualClock &vclock) noexcept
+    void SpeedButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(1) << settings::get_setting<double>("simulation_speed") << "x";
+        visualization::draw_string(renderer, projected_.x, projected_.y + 12, ss.str(), 3);
+    }
+
+    void TimeButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(1) << (vclock.get_virtual_time().count() / 1000.0);
+        visualization::draw_string(renderer, projected_.x, projected_.y + 12, ss.str(), 3);
+    }
+
+    void ZoomInButton::on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         double new_value = fmin(5.0, settings::get_setting<double>("scale") + SMALL_STEP);
         settings::set_setting("scale", new_value);
     }
 
-    void ZoomInButton::on_render(SDL_Renderer *renderer) noexcept
+    void ZoomInButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::PLUS, SCALE);
+        visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::PLUS, SCALE);
     }
 
-    void ZoomOutButton::on_click([[maybe_unused]] virtual_clock::VirtualClock &vclock) noexcept
+    void ZoomOutButton::on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         double new_value = fmax(0.0, settings::get_setting<double>("scale") - SMALL_STEP);
         settings::set_setting("scale", new_value);
     }
 
-    void ZoomOutButton::on_render(SDL_Renderer *renderer) noexcept
+    void ZoomOutButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        visualization::draw_char(renderer, projected_.x + 12, projected_.y + 6, GlyphId::MINUS, SCALE);
+        visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::MINUS, SCALE);
+    }
+
+    void ZoomButton::on_render(SDL_Renderer *renderer, [[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(1) << settings::get_setting<double>("scale") << "x";
+        visualization::draw_string(renderer, projected_.x - 3, projected_.y + 12, ss.str(), 3);
     }
 
 }

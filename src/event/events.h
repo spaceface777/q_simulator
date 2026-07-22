@@ -172,7 +172,7 @@ namespace events
      * @param vclock The current clock.
      * @param events The remaining events.
      */
-    void fire_events(virtual_clock::VirtualClock &vclock, std::list<std::unique_ptr<events::Event>> &events);
+    void fire_events(virtual_clock::ISimulationClock &vclock, std::list<std::unique_ptr<events::Event>> &events);
 
     /**
      * Parses the events in the events.toml file.

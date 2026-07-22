@@ -11,7 +11,7 @@
 namespace events
 {
 
-    void fire_events(virtual_clock::VirtualClock &vclock, std::list<std::unique_ptr<Event>> &events)
+    void fire_events(virtual_clock::ISimulationClock &vclock, std::list<std::unique_ptr<Event>> &events)
     {
         int64_t seconds = std::chrono::duration_cast<std::chrono::seconds>(vclock.get_virtual_time()).count();
 

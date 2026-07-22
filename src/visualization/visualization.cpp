@@ -24,7 +24,7 @@ namespace visualization
     /**
      * Default scaling is kind of large, so reduce by a factor.
      */
-    static inline constexpr double DEFAULT_SCALING_OFFSET = 0.75;
+    static inline constexpr double DEFAULT_SCALING_OFFSET = 0.7;
 
     /**
      * The current scale.
@@ -140,31 +140,24 @@ namespace visualization
         }
     }
 
-    // Overload to draw integers
-    static void draw_number(SDL_Renderer *renderer, int x, int y, int number, int scale)
+    void draw_string(SDL_Renderer *renderer, int x, int y, std::string str, int scale)
     {
-        std::string s = std::to_string(number);
-        for (size_t i = 0; i < s.length(); ++i)
+        for (size_t i = 0; i < str.length(); ++i)
         {
-            draw_char(renderer, x + i * 4 * scale, y, s[i], scale);
+            draw_char(renderer, x + i * 4 * scale, y, str[i], scale);
         }
     }
 
-    static void draw_number(SDL_Renderer *renderer, int x, int y, double number, int scale, bool append_x = false)
+    static void draw_number(SDL_Renderer *renderer, int x, int y, int number, int scale)
+    {
+        draw_string(renderer, x, y, std::to_string(number), scale);
+    }
+
+    static void draw_number(SDL_Renderer *renderer, int x, int y, double number, int scale)
     {
         std::stringstream ss;
         ss << std::fixed << std::setprecision(1) << number;
-        std::string s = ss.str();
-
-        if (append_x)
-        {
-            s += "x";
-        }
-
-        for (size_t i = 0; i < s.length(); ++i)
-        {
-            draw_char(renderer, x + i * 4 * scale, y, s[i], scale);
-        }
+        draw_string(renderer, x, y, ss.str(), scale);
     }
 
     static void get_module_coords(int module_id, int &x, int &y)
@@ -793,7 +786,7 @@ namespace visualization
         window_ = SDL_CreateWindow("Quercus Airport Visualization",
                                    SDL_WINDOWPOS_UNDEFINED,
                                    SDL_WINDOWPOS_UNDEFINED,
-                                   1000,
+                                   800,
                                    800,
                                    SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
         if (!window_)
@@ -817,13 +810,16 @@ namespace visualization
         buttons_.push_back(std::make_unique<buttons::SlowSlowerButton>(buttons::SlowSlowerButton()));
         buttons_.push_back(std::make_unique<buttons::FasterButton>(buttons::FasterButton()));
         buttons_.push_back(std::make_unique<buttons::FastFasterButton>(buttons::FastFasterButton()));
+        buttons_.push_back(std::make_unique<buttons::SpeedButton>(buttons::SpeedButton()));
+        buttons_.push_back(std::make_unique<buttons::TimeButton>(buttons::TimeButton()));
         buttons_.push_back(std::make_unique<buttons::ZoomInButton>(buttons::ZoomInButton()));
         buttons_.push_back(std::make_unique<buttons::ZoomOutButton>(buttons::ZoomOutButton()));
+        buttons_.push_back(std::make_unique<buttons::ZoomButton>(buttons::ZoomButton()));
     }
 
     static std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
 
-    void update(virtual_clock::VirtualClock &vclock)
+    void update(virtual_clock::ISimulationClock &vclock)
     {
         if (!running_)
         {
@@ -899,14 +895,9 @@ namespace visualization
         }
 
         render_tubs();
-
-        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-        draw_number(renderer_, 0, 0, settings::get_setting<double>("simulation_speed"), 3, true);
-        draw_number(renderer_, 75, 0, current_time.count() / 1000.0, 3, false);
-
         for (auto &button : buttons_)
         {
-            button->render(renderer_);
+            button->render(renderer_, vclock);
         }
         belt_offset_ += (dt.count() / 16.0) * 0.3;
 

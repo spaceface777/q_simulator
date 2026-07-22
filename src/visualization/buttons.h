@@ -77,14 +77,14 @@ namespace visualization::buttons
         {
         }
 
-        void handle(const SDL_Event &event, virtual_clock::VirtualClock &vclock) noexcept;
-        void render(SDL_Renderer *renderer) noexcept;
+        void handle(const SDL_Event &event, virtual_clock::ISimulationClock &vclock) noexcept;
+        void render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept;
 
         virtual ~Button() = default;
 
     protected:
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept = 0;
-        virtual void on_render(SDL_Renderer *renderer) noexcept = 0;
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept = 0;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept = 0;
     };
 
     class PauseButton : public Button
@@ -94,7 +94,7 @@ namespace visualization::buttons
 
     public:
         PauseButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 140, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 100, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -102,8 +102,8 @@ namespace visualization::buttons
         }
 
     protected:
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
-        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
     };
 
     class SlowSlowerButton : public Button
@@ -119,8 +119,8 @@ namespace visualization::buttons
         }
 
     protected:
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
-        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
     };
 
     class SlowerButton : public Button
@@ -128,7 +128,7 @@ namespace visualization::buttons
 
     public:
         SlowerButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 80, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 60, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -136,8 +136,8 @@ namespace visualization::buttons
         }
 
     protected:
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
-        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
     };
 
     class FastFasterButton : public Button
@@ -145,7 +145,7 @@ namespace visualization::buttons
 
     public:
         FastFasterButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 260, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 180, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -153,8 +153,8 @@ namespace visualization::buttons
         }
 
     protected:
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
-        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
     };
 
     class FasterButton : public Button
@@ -162,7 +162,7 @@ namespace visualization::buttons
 
     public:
         FasterButton()
-            : Button(ScreenAnchor::BOTTOM_LEFT, 200, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_LEFT, 140, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -170,8 +170,42 @@ namespace visualization::buttons
         }
 
     protected:
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
-        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
+    };
+
+    class SpeedButton : public Button
+    {
+
+    public:
+        SpeedButton()
+            : Button(ScreenAnchor::BOTTOM_LEFT, 230, 20, 40, 40,
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{0, 0, 0, 0})
+        {
+        }
+
+    protected:
+        virtual void on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept override {};
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
+    };
+
+    class TimeButton : public Button
+    {
+
+    public:
+        TimeButton()
+            : Button(ScreenAnchor::BOTTOM_LEFT, 300, 20, 40, 40,
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{0, 0, 0, 0})
+        {
+        }
+
+    protected:
+        virtual void on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept override {};
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
     };
 
     class ZoomInButton : public Button
@@ -179,6 +213,23 @@ namespace visualization::buttons
 
     public:
         ZoomInButton()
+            : Button(ScreenAnchor::BOTTOM_RIGHT, 120, 20, 40, 40,
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{230, 230, 230, 120},
+                     SDL_Color{150, 150, 150, 255})
+        {
+        }
+
+    protected:
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
+    };
+
+    class ZoomOutButton : public Button
+    {
+
+    public:
+        ZoomOutButton()
             : Button(ScreenAnchor::BOTTOM_RIGHT, 80, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
@@ -187,25 +238,25 @@ namespace visualization::buttons
         }
 
     protected:
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
-        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+        virtual void on_click(virtual_clock::ISimulationClock &vclock) noexcept override;
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
     };
 
-    class ZoomOutButton : public Button
+    class ZoomButton : public Button
     {
 
     public:
-        ZoomOutButton()
+        ZoomButton()
             : Button(ScreenAnchor::BOTTOM_RIGHT, 20, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
-                     SDL_Color{230, 230, 230, 120},
-                     SDL_Color{150, 150, 150, 255})
+                     SDL_Color{0, 0, 0, 0},
+                     SDL_Color{0, 0, 0, 0})
         {
         }
 
     protected:
-        virtual void on_click(virtual_clock::VirtualClock &vclock) noexcept override;
-        virtual void on_render(SDL_Renderer *renderer) noexcept override;
+        virtual void on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept override {};
+        virtual void on_render(SDL_Renderer *renderer, virtual_clock::ISimulationClock &vclock) noexcept override;
     };
 }
 
