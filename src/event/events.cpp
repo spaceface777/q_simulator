@@ -139,6 +139,7 @@ namespace events
 
                     double time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
+                    util::require(id >= 1, "Tub ids must be above or equal to 1"); 
                     bool safe = event_tbl["safe"].value_or(false);
                     bool needs_security = event_tbl["needs_security"].value_or(false);
                     toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
@@ -219,6 +220,7 @@ namespace events
 
                     double time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
+                    util::require(id >= 1, "Plane ids must be above or equal to 1"); 
                     int module = event_tbl["module"].value_or(-1);
                     int leaves_in = event_tbl["leaves_in"].value_or(-1);
                     toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
