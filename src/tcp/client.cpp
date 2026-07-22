@@ -67,11 +67,11 @@ namespace client
 
             while (!stopped_)
             {
-                // if (settings::get_setting<double>("simulation_speed") == 0.0)
-                // {
-                //     std::this_thread::sleep_for(TIMEOUT);
-                //     continue;
-                // }
+                if (settings::get_setting<double>("simulation_speed") == 0.0)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    continue;
+                }
 
                 std::unique_ptr<message::Message> message;
                 {

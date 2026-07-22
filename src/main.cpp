@@ -124,9 +124,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
             tub::check();
             client::check();
         }
-        catch (...)
+        catch (std::exception &ex)
         {
-            std::cerr << "Shutting down due to failed check" << std::endl;
+            std::cerr << "Shutting down due to failed check: " << ex.what() << std::endl;
 
             handle_close(-1);
             return EXIT_FAILURE;

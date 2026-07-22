@@ -1,11 +1,12 @@
 #include <string>
 #include <string_view>
 #include <stdexcept>
+#include <iostream>
+#include <optional>
 
 #include "message.h"
 #include "../util.h"
 #include "../defs.h"
-#include <optional>
 
 namespace message
 {
@@ -130,7 +131,14 @@ namespace message
 
             if (left == "id" && stage == 1)
             {
-                id = std::stoi(right);
+                try
+                {
+                    id = std::stoi(right);
+                }
+                catch (std::invalid_argument &ex)
+                {
+                    return {};
+                }
                 continue;
             }
 
@@ -192,7 +200,14 @@ namespace message
 
             if (left == "id" && stage == 1)
             {
-                id = std::stoi(right);
+                try
+                {
+                    id = std::stoi(right);
+                }
+                catch (std::invalid_argument &ex)
+                {
+                    return {};
+                }
                 continue;
             }
 
@@ -258,7 +273,14 @@ namespace message
 
             if (left == "module" && stage == 1)
             {
-                module = std::stoi(right);
+                try
+                {
+                    module = std::stoi(right);
+                }
+                catch (std::invalid_argument &ex)
+                {
+                    return {};
+                }
                 continue;
             }
             else if (left == "device" && stage == 1)
@@ -268,7 +290,14 @@ namespace message
             }
             else if (left == "value" && stage == 1)
             {
-                value = std::stoi(right);
+                try
+                {
+                    value = std::stoi(right);
+                }
+                catch (std::invalid_argument &ex)
+                {
+                    return {};
+                }
                 continue;
             }
 
@@ -360,12 +389,26 @@ namespace message
 
             if (left == "module" && stage == 1)
             {
-                module = std::stoi(right);
+                try
+                {
+                    module = std::stoi(right);
+                }
+                catch (std::invalid_argument &ex)
+                {
+                    return {};
+                }
                 continue;
             }
             else if (left == "length" && stage == 1)
             {
-                length = std::stoi(right);
+                try
+                {
+                    length = std::stoi(right);
+                }
+                catch (std::invalid_argument &ex)
+                {
+                    return {};
+                }
                 continue;
             }
             else if (left == "content" && stage == 1)
