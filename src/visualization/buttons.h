@@ -213,7 +213,7 @@ namespace visualization::buttons
 
     public:
         ZoomInButton()
-            : Button(ScreenAnchor::BOTTOM_RIGHT, 120, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_RIGHT, 80, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -230,7 +230,7 @@ namespace visualization::buttons
 
     public:
         ZoomOutButton()
-            : Button(ScreenAnchor::BOTTOM_RIGHT, 80, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_RIGHT, 120, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})
@@ -264,7 +264,7 @@ namespace visualization::buttons
 
     public:
         DbgButton()
-            : Button(ScreenAnchor::BOTTOM_RIGHT, 160, 20, 40, 40,
+            : Button(ScreenAnchor::BOTTOM_RIGHT, 180, 20, 40, 40,
                      SDL_Color{0, 0, 0, 0},
                      SDL_Color{230, 230, 230, 120},
                      SDL_Color{150, 150, 150, 255})

@@ -79,7 +79,7 @@ namespace visualization
              {GlyphId::DOT, 0b000000000000010},
              {GlyphId::MINUS, 0b000000111000000},
              {GlyphId::PLUS, 0b000010111010000},
-             {GlyphId::X, 0b101101010101101},
+             {GlyphId::X, 0b000101010101000},
              {GlyphId::LEFT, 0b001010100010001},
              {GlyphId::RIGHT, 0b100010001010100},
              {GlyphId::PAUSE, 0b101101101101101}}};
@@ -256,6 +256,13 @@ namespace visualization
                     SDL_RenderDrawPoint(renderer_, x + w, y + h);
                 }
             }
+        }
+
+        if (settings::get_setting<bool>("debug"))
+        {
+            draw_number(renderer_, x + 5, y + 10, r, 2);
+            draw_number(renderer_, x + 5, y + 25, g, 2);
+            draw_number(renderer_, x + 5, y + 40, b, 2);
         }
 
         SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 150);
@@ -736,7 +743,7 @@ namespace visualization
             SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
             draw_number(renderer_, x - 4, y - 6, tub->id(), 2);
             if (settings::get_setting<bool>("debug"))
-                draw_number(renderer_, x - 4, y, tub->module_location_progress(), 1);
+                draw_number(renderer_, x - 4, y + 5, tub->module_location_progress(), 1);
         }
     }
 
