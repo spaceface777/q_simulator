@@ -173,36 +173,15 @@ namespace visualization
 
     static void get_module_coords(int module_id, int &x, int &y)
     {
-        static constexpr int coords[][2] = {
-            {-1, -1}, // padding
-            {0, 4},
-            {1, 4}, // 2
-            {2, 4},
-            {3, 4}, // 4
-            {0, 3},
-            {3, 3}, // 6
-            {0, 2},
-            {1, 2}, // 8
-            {2, 2},
-            {3, 2}, // 10
-            {0, 1},
-            {1, 1}, // 12
-            {2, 1},
-            {3, 1}, // 14
-            {4, 1},
-            {2, 0}, // 16
-            {3, 0},
-            {4, 0}, // 18
-        };
-        static constexpr int coord_count = sizeof(coords) / sizeof(coords[0]);
-        int margin = scale_within_module(20);
+        const int margin = scale_within_module(20);
 
         int col = 0;
         int row = 0;
-        if (module_id >= 1 && module_id <= settings::get_modules_active() && module_id < coord_count)
+        if (module_id >= 1 && module_id <= settings::get_modules_active())
         {
-            col = coords[module_id][0];
-            row = coords[module_id][1];
+            const settings::ModuleSettings settings = settings::get_module_settings(module_id);
+            col = settings.x;
+            row = settings.y;
         }
         x = margin + col * (scale_within_module(180) + margin);
         y = margin + row * (scale_within_module(180) + margin);

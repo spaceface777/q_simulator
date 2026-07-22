@@ -55,13 +55,21 @@ namespace settings
 
             toml::table table = *node->as_table();
 
-            module_settings[id].active = static_cast<bool>(table["active"].value_or(false));
-            module_settings[id].left = static_cast<uint8_t>(table["left"].value_or(0));
-            module_settings[id].right = static_cast<uint8_t>(table["right"].value_or(0));
-            module_settings[id].bottom = static_cast<uint8_t>(table["bottom"].value_or(0));
-            module_settings[id].angle = static_cast<uint16_t>(table["angle"].value_or(0));
+            // todo error if value is invalid
+            module_settings[id].active = static_cast<bool>(table["active"].value_exact<bool>().value());
+            module_settings[id].left = static_cast<uint8_t>(table["left"].value_exact<int64_t>().value());
+            module_settings[id].right = static_cast<uint8_t>(table["right"].value_exact<int64_t>().value());
+            module_settings[id].bottom = static_cast<uint8_t>(table["bottom"].value_exact<int64_t>().value());
+            module_settings[id].angle = static_cast<uint16_t>(table["angle"].value_exact<int64_t>().value());
 
-            util::require(module_settings[id].angle < 360, "Invalid angle '" + std::to_string(module_settings[id].angle) + "' for module " + std::to_string(id));
+            toml::v3::array *pos = table["pos"].as_array();
+            util::require(pos != nullptr && pos->is_array(), "Attribute 'pos' not found for module " + std::to_string(id));
+            util::require(pos->size() == 2, "Invalid value for attribute 'pos' of module " + std::to_string(id));
+
+            module_settings[id].x = static_cast<uint8_t>(pos->get(0)->value_exact<int64_t>().value());
+            module_settings[id].y = static_cast<uint8_t>(pos->get(1)->value_exact<int64_t>().value());
+
+            util::require(module_settings[id].angle < 360, "Invalid angle " + std::to_string(module_settings[id].angle) + " for module " + std::to_string(id));
         }
 
         settings::set_setting("debug", false);
