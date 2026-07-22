@@ -5,12 +5,16 @@
 1. [Project Overview](#1-project-overview)
 1. [Software Architecture Overview](#2-software-architecture-overview)
 1. [File Structure](#3-file-structure)
+1. [Events](#4-events)
+1. [Tubs](#5-tubs)
+1. [Modules](#6-modules)
+1. [Visualization](#7-visualization)
 
 ## 1. Project Overview
 
 The simulator intends to simulate running multiple instances of the same router code on the real-world model, allowing for easier debugging and faster iteration. 
 
-A GUI is provided which shows the current state of all modules and actuators. Additionally, the GUI contains tools such as deterministic control over events such as tub or plane arrivals and data through the `events.toml` file, a (real-time) modifiable simulation speed (including pausing), changing connections between modules through the `settings.toml` file, and easy access to actuator values.
+A GUI is provided which shows the current state of all modules and actuators. Additionally, the GUI contains tools such as deterministic control over events such as tub or plane arrivals and data through the `events.toml` file, a (real-time) modifiable simulation speed (including pausing), changing connections between modules through the `settings.toml` file, a modifiable layout, and easy access to actuator values.
 
 
 ## 2. Software Architecture Overview
@@ -32,9 +36,9 @@ A GUI is provided which shows the current state of all modules and actuators. Ad
 │  └───────────────┘ └─────────┬─────┘ └─────────────┘ └────────────┬───┘  │
 │                              │                                    │      │
 └──────────────────────────────┼────────────────────────────────────┼──────┘
-                               │                                  │
-                 (communicate) │              (starts as process) │
-                               │                                  │
+                               │                                    │
+                 (communicate) │                (starts as process) │
+                               │                                    │
            ┌───────────────────┼────────────────────────────────────▼─────┐
            │ Module            │                                          │
            │                   │                                          │
