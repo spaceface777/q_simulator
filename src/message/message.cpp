@@ -466,25 +466,25 @@ namespace message
     //     return std::make_unique<TubArrival>(*this);
     // }
 
-    bool TubDeparture::is_valid() const noexcept
-    {
-        return true;
-    }
+    // bool TubDeparture::is_valid() const noexcept
+    // {
+    //     return true;
+    // }
 
-    std::string TubDeparture::to_toml() const noexcept
-    {
-        std::string buf = create_buffer();
-        append_header(buf, "tub.departure");
-        append_value(buf, "id", id_);
-        append_value(buf, "module", module_);
-        trim_trailing_nl(buf);
-        return buf;
-    }
+    // std::string TubDeparture::to_toml() const noexcept
+    // {
+    //     std::string buf = create_buffer();
+    //     append_header(buf, "tub.departure");
+    //     append_value(buf, "id", id_);
+    //     append_value(buf, "module", module_);
+    //     trim_trailing_nl(buf);
+    //     return buf;
+    // }
 
-    std::unique_ptr<Message> TubDeparture::clone() const
-    {
-        return std::make_unique<TubDeparture>(*this);
-    }
+    // std::unique_ptr<Message> TubDeparture::clone() const
+    // {
+    //     return std::make_unique<TubDeparture>(*this);
+    // }
 
     bool PlaneArrival::is_valid() const noexcept
     {
