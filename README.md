@@ -1,6 +1,4 @@
-## todo
-- add custom parsing handling
-- add all sensors
+<!-- 
 # TODO
 **general**
 - add synchronization for processes
@@ -12,31 +10,31 @@
 
 **event generator**
 - total amount of tubs, density of tubs/planes
+-->
 
 # Quercus Simulation
-The repository for the Quercus Airport Router Simulation.
+The repository for the Quercus Airport Simulation. Please read the entire README before starting.
 
 ## Requirements
-- Ubuntu 24 or higher, Debian 13 or higher
+- Ubuntu 24 or higher / Debian 13 or higher
 - Internet connection
 
 ## Installation
 1. Run `sudo apt install build-essential libsdl2-dev git`.
-2. Clone the router repo locally. Set up Zephyr and West. If done correctly, you should be able to build a native `zephyr.exe` file using the run/build script present.
-3. Clone this repo locally. 
-4. Rename `events_example.toml` to `events.toml` and rename `settings_example.toml` to `settings.toml`.
-5. Change the `router_path` value in the settings to the absolute path of the `zephyr.exe` executable.
-6. Run `cmake build/ -DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
+1. Clone the router repo locally. Set up West and Zephyr, as described **[here](https://gitlab.tue.nl/2irr70-capstone-quercus-airport/quercus_platform_pico2#environment-setup-ci-compatible-baseline)**. If done correctly, you should be able to build a native `zephyr.exe` file using the run/build script present. This file is usually found at `build/zephyr/zephyr.exe`.
+1. Clone this repo locally. 
+1. Rename `events_example.toml` to `events.toml` and rename `settings_example.toml` to `settings.toml`.
+1. Change the `router_path` value in the settings to the absolute path of the `zephyr.exe` executable. The absolute path should look similar to this: `/home/user/airport-router/build/zephyr/zephyr.exe`.
+1. Run `cmake build/ -DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
 
 ## Usage
-Run the project with the `Run` button when using the C/C++ VSCode extension, or use: 
+Run the project with the `Run` button when using the C/C++ VSCode extension, or use the following command in the project folder: 
 
 ```sh
 make -C build -j && ./build/main
 ```
 
-If any errors appear about addresses already being in use, make sure to kill any potential runaway Zephyr processes.
-You can usually find these in a task manager or system monitor.
+This will start all modules and run the current events in the `events.toml` file until infinity. Closing the GUI stops the simulation and all modules. Changes to the `events.toml` or `settings.toml` files will only apply after restarting the simulation by closing the GUI and re-running the project as described above.
 
 ## Support
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
