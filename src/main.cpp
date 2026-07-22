@@ -40,9 +40,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 {
     ::signal(SIGTERM, handle_close);
 
-    settings::parse_settings();
+    settings::parse_settings("settings.toml");
     std::list<std::unique_ptr<events::Event>> events;
-    events::parse_events(events);
+    events::parse_events("events.toml", events);
     server::run();
 
     uint8_t module_index = 1;

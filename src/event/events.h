@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <cstring>
+#include <filesystem>
 #include <string_view>
 #include <array>
 #include "../synchronization/virtual_clock.h"
@@ -12,6 +13,8 @@
 
 namespace events
 {
+
+    namespace fs = std::filesystem;
 
     /**
      * Generic event class.
@@ -178,7 +181,7 @@ namespace events
      * Parses the events in the events.toml file.
      * @param events Vector to populate with parsed events.
      */
-    void parse_events(std::list<std::unique_ptr<events::Event>> &events);
+    void parse_events(fs::path file, std::list<std::unique_ptr<events::Event>> &events);
 
 };
 

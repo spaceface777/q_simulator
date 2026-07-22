@@ -25,16 +25,22 @@ The repository for the Quercus Airport Simulation. Please read the entire README
 1. Clone this repo locally. 
 1. Rename `events_example.toml` to `events.toml` and rename `settings_example.toml` to `settings.toml`.
 1. Change the `router_path` value in the settings to the absolute path of the `zephyr.exe` executable. The absolute path should look similar to this: `/home/user/airport-router/build/zephyr/zephyr.exe`.
-1. Run `cmake build/ -DCMAKE_POLICY_VERSION_MINIMUM=3.5`.
+1. Run `cmake -B build -S . -G Ninja`.
 
 ## Usage
 Run the project with the `Run` button when using the C/C++ VSCode extension, or use the following command in the project folder: 
 
 ```sh
-make -C build -j && ./build/main
+cmake --build build -j && ./build/main
 ```
 
 This will start all modules and run the current events in the `events.toml` file until infinity. Closing the GUI stops the simulation and all modules. Changes to the `events.toml` or `settings.toml` files will only apply after restarting the simulation by closing the GUI and re-running the project as described above.
+
+To run the tests, change the target to `tests` when using the C/C++ VSCode extension, or use the following command in the project folder:
+
+```sh
+cmake --build build -j && ./build/tests
+```
 
 ## Support
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.

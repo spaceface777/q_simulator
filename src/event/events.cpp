@@ -106,13 +106,13 @@ namespace events
         return rfid_fixed_array;
     }
 
-    void parse_events(std::list<std::unique_ptr<Event>> &result)
+    void parse_events(fs::path file, std::list<std::unique_ptr<Event>> &events)
     {
 
         toml::table table;
         try
         {
-            table = toml::parse_file("events.toml");
+            table = toml::parse_file(file.string());
         }
         catch (const toml::parse_error &err)
         {
@@ -205,7 +205,7 @@ namespace events
                                (int8_t)destination.id, (int8_t)(destination.type == LocationType::MODULE ? 0 : 1)};
                     rfid[1] = {safe, needs_security, 0, 0};
 
-                    result.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, rfid));
+                    events.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, rfid));
                 }
             }
             else if (group == "plane")
@@ -232,7 +232,7 @@ namespace events
                     rfid[0] = {(int8_t)module, 0, 0, 0};
                     rfid[1] = {(int8_t)(leaves_in & 0xFF), (int8_t)((leaves_in >> 8) & 0xFF), (int8_t)((leaves_in >> 16) & 0xFF), (int8_t)((leaves_in >> 24) & 0xFF)};
 
-                    result.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, rfid));
+                    events.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, rfid));
                 }
             }
         }

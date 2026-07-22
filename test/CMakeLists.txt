@@ -5,9 +5,18 @@ enable_testing()
 
 add_executable(tests 
     test_message.cpp 
+    test_settings.cpp 
+    test_vclock.cpp 
+    test_events.cpp
     
+    ../src/tcp/server.cpp 
+    ../src/tcp/client.cpp 
+    ../src/util.cpp 
+    ../src/module/module.cpp
     ../src/message/message.cpp
-    ../src/util.cpp)
+    ../src/tub/tub.cpp
+    ../src/settings.cpp
+    ../src/event/events.cpp)
 
 target_link_libraries(tests gtest gtest_main)
 target_compile_definitions(tests PRIVATE TESTS)

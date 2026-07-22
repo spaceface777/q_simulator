@@ -9,6 +9,7 @@
 
 namespace settings
 {
+    namespace fs = std::filesystem;
 
     struct ModuleSettings
     {
@@ -21,8 +22,9 @@ namespace settings
 
     /**
      * Parses the settings file.
+     * @param file The settings file.
      */
-    void parse_settings();
+    void parse_settings(fs::path file);
 
     /**
      * Gets the value of a specific setting.
@@ -38,7 +40,7 @@ namespace settings
      * Sets the value of a setting.
      * @param setting The name of the setting,.
      * @param value The value to set the setting to.
-     * @throws If the setting is not found. 
+     * @throws If the setting is not found.
      */
     template <typename T>
     void set_setting(std::string_view setting, T value);
