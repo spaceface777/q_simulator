@@ -42,6 +42,16 @@ namespace tub
             rfid_uid_ = {static_cast<int8_t>(id), 0, 0, 0, 0, 0, 0};
         }
 
+        /**
+         * Stops the worker and waits for it to finish, so a Tub can never be
+         * destroyed while its worker thread is still running.
+         */
+        ~Tub()
+        {
+            stop();
+            join();
+        }
+
         uint8_t id() const noexcept
         {
             return id_;
@@ -95,6 +105,12 @@ namespace tub
 
         void stop();
 
+        /**
+         * Waits for this tub's worker thread to finish. Call stop() first,
+         * otherwise this blocks until the worker stops on its own.
+         */
+        void join();
+
         Tub(Tub &&) noexcept = default;
         Tub &operator=(Tub &&) noexcept = default;
 
@@ -106,6 +122,14 @@ namespace tub
      * Stops all tubs.
      */
     void stop();
+
+    /**
+     * Waits for all tub worker threads to finish. Call stop() first.
+     * Must be called before main() returns: static destruction begins the
+     * moment main returns, and a still-running worker would use freed
+     * globals (e.g. the settings table).
+     */
+    void join();
 
     /**
      * Adds a tub.

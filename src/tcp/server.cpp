@@ -306,6 +306,14 @@ namespace server
         }
     }
 
+    void join()
+    {
+        if (server_future_.valid())
+        {
+            server_future_.wait();
+        }
+    }
+
     std::size_t size()
     {
         return fds.size();

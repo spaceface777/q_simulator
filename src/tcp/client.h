@@ -32,6 +32,11 @@ namespace client
 
         ~Client()
         {
+            stop();
+            if (client_future_.valid())
+            {
+                client_future_.wait();
+            }
             ::close(fd_);
         }
 
