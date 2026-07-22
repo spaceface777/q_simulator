@@ -106,6 +106,39 @@ angle = 90
     EXPECT_EQ(1, settings::get_modules_active());
 }
 
+TEST_F(SettingsTest, ParseSettingsResetsPreviousModuleState)
+{
+    std::string first_toml =
+        "router_path = \"" + temp_router_path.string() + "\"\n" +
+        R"(
+simulation_speed = 1.5
+scale = 2.0
+
+[module.1]
+active = true
+left = 0
+right = 0
+bottom = 0
+pos = [1, 1]
+angle = 0
+)";
+
+    write_toml(first_toml);
+    EXPECT_NO_THROW(settings::parse_settings(temp_settings_path));
+    EXPECT_EQ(1, settings::get_modules_active());
+
+    std::string second_toml =
+        "router_path = \"" + temp_router_path.string() + "\"\n" +
+        R"(
+simulation_speed = 1.0
+scale = 1.0
+)";
+
+    write_toml(second_toml);
+    EXPECT_NO_THROW(settings::parse_settings(temp_settings_path));
+    EXPECT_EQ(0, settings::get_modules_active());
+}
+
 TEST_F(SettingsTest, ParseSettingsMissingFile)
 {
     EXPECT_THROW(settings::parse_settings(temp_settings_path), toml::parse_error);
@@ -143,6 +176,27 @@ scale = 1.0
 [module.1]
 active = true
 angle = 400
+)";
+
+    write_toml(invalid_toml);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+}
+
+TEST_F(SettingsTest, ParseSettingsInvalidModuleBottom)
+{
+    std::string invalid_toml =
+        "router_path = \"" + temp_router_path.string() + "\"\n" +
+        R"(
+simulation_speed = 1.0
+scale = 1.0
+
+[module.1]
+active = true
+left = 0
+right = 0
+bottom = 25
+pos = [0, 0]
+angle = 0
 )";
 
     write_toml(invalid_toml);

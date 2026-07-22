@@ -117,7 +117,7 @@ namespace server
 
     void send(unsigned int id, const message::Message &message)
     {
-        if (stopped || id > MAX_MODULES)
+        if (stopped || id >= MAX_MODULES)
         {
             return;
         }

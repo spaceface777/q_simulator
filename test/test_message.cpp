@@ -67,6 +67,7 @@ TEST(InitTest, FromTomlInvalidInput)
     EXPECT_FALSE(message::Init::from_toml("[init]\nid = abc").has_value());
     EXPECT_FALSE(message::Init::from_toml("[init]\nid 10").has_value());
     EXPECT_FALSE(message::Init::from_toml("[init]\nfoo = 1").has_value());
+    EXPECT_FALSE(message::Init::from_toml("[init]\nid = 300").has_value());
 }
 
 TEST(InitFinishTest, ToTomlAndFromTomlRoundTrip)
@@ -123,6 +124,13 @@ TEST(UpdateTest, FromTomlInvalidInput)
     // Invalid integer conversion for value
     std::string bad_val = "[update]\nmodule = 1\ndevice = \"test\"\nvalue = bad";
     EXPECT_FALSE(message::Update::from_toml(bad_val).has_value());
+
+    // Out-of-range module ids and malformed strings should be rejected
+    std::string bad_module_range = "[update]\nmodule = 300\ndevice = \"test\"\nvalue = 1";
+    EXPECT_FALSE(message::Update::from_toml(bad_module_range).has_value());
+
+    std::string bad_device = "[update]\nmodule = 1\ndevice = test\nvalue = 1";
+    EXPECT_FALSE(message::Update::from_toml(bad_device).has_value());
 }
 
 TEST(UpdateRfidTest, ValidityAndSerialization)
@@ -172,6 +180,12 @@ TEST(PacketTest, FromTomlInvalid)
 {
     std::string bad_length = "[packet]\nmodule = 1\nlength = string\ncontent = \"test\"";
     EXPECT_FALSE(message::Packet::from_toml(bad_length).has_value());
+
+    std::string bad_negative_length = "[packet]\nmodule = 1\nlength = -1\ncontent = \"test\"";
+    EXPECT_FALSE(message::Packet::from_toml(bad_negative_length).has_value());
+
+    std::string bad_content = "[packet]\nmodule = 1\nlength = 4\ncontent = test";
+    EXPECT_FALSE(message::Packet::from_toml(bad_content).has_value());
 }
 
 TEST(TubScheduleTest, ToToml)

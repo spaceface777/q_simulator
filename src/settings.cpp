@@ -13,6 +13,16 @@ namespace settings
     static ModuleSettings module_settings[MAX_MODULES];
     static toml::table table;
 
+    static void reset_state()
+    {
+        for (auto &module_setting : module_settings)
+        {
+            module_setting = ModuleSettings{};
+        }
+
+        table = toml::table{};
+    }
+
     template <typename T, typename Predicate>
     static void parse_setting(std::string_view setting, T default_value, Predicate pred)
     {
@@ -90,6 +100,8 @@ namespace settings
 
     void parse_settings(fs::path file)
     {
+        reset_state();
+
         try
         {
             table = toml::parse_file(file.string());
@@ -136,7 +148,7 @@ namespace settings
             module_settings[id].right = static_cast<uint8_t>(opt_right.value());
 
             auto opt_bottom = table["bottom"].value_exact<int64_t>();
-            util::require(opt_bottom.has_value() && opt_right.value() >= 0 && opt_right.value() < MAX_MODULES,
+            util::require(opt_bottom.has_value() && opt_bottom.value() >= 0 && opt_bottom.value() < MAX_MODULES,
                           "Missing or invalid 'bottom' attribute in module " + std::to_string(id));
             module_settings[id].bottom = static_cast<uint8_t>(opt_bottom.value());
 
