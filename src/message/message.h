@@ -32,23 +32,6 @@ namespace message
         virtual ~Message() = default;
     };
 
-    /**
-     * Thrown when a message that is attempting to be parsed is deformed.
-     */
-    class DeformedPacketException : public std::exception
-    {
-    private:
-        std::string message;
-
-    public:
-        DeformedPacketException(const char *msg) : message(msg) {}
-
-        const char *what() const noexcept
-        {
-            return message.c_str();
-        }
-    };
-
     class Init : public Message
     {
     private:

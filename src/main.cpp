@@ -38,7 +38,7 @@ static void handle_close(int code)
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 {
-    settings::parse_settings();
+    settings::parse_settings("settings.toml");
     std::list<std::unique_ptr<events::Event>> events;
     events::parse_events(events);
     server::run();

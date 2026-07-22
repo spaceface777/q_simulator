@@ -22,11 +22,11 @@ namespace settings
         settings::set_setting(setting, value);
     }
 
-    void parse_settings()
+    void parse_settings(std::string_view file)
     {
         try
         {
-            table = toml::parse_file("settings.toml");
+            table = toml::parse_file(file);
         }
         catch (const toml::parse_error &err)
         {
