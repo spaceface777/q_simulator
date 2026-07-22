@@ -38,6 +38,8 @@ static void handle_close(int code)
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 {
+    ::signal(SIGTERM, handle_close);
+
     settings::parse_settings();
     std::list<std::unique_ptr<events::Event>> events;
     events::parse_events(events);
@@ -60,7 +62,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
                 visualization::stop();
                 client::stop();
 
-                throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after 2 seconds");
+                throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after " + std::to_string(MODULE_CONNECT_TIMEOUT_SECONDS) + " seconds");
             }
 
             server::check();
@@ -76,7 +78,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 
     while (true)
     {
-        bool all = std::all_of(module::get_modules().begin(), module::get_modules().end(), [](std::shared_ptr<module::Module> module)
+        const auto modules = module::get_modules();
+        bool all = std::all_of(modules.begin(), modules.end(), [](const std::shared_ptr<module::Module> &module)
                                { return module->is_initialization_finished(); });
 
         if (all)
@@ -133,8 +136,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         }
     }
 
-    ::signal(SIGTERM, handle_close);
-    ::signal(SIGKILL, handle_close);
+    tub::stop();
+    tub::join();
+    server::stop();
+    server::join();
+    client::stop();
 
     return EXIT_SUCCESS;
 }

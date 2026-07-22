@@ -228,11 +228,27 @@ namespace tub
         stopped_ = true;
     }
 
+    void Tub::join()
+    {
+        if (tub_future_.valid())
+        {
+            tub_future_.wait();
+        }
+    }
+
     void stop()
     {
         for (auto &tub : get_tubs())
         {
             tub->stop();
+        }
+    }
+
+    void join()
+    {
+        for (auto &tub : get_tubs())
+        {
+            tub->join();
         }
     }
 
