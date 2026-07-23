@@ -42,7 +42,7 @@ simulation/
 - Ubuntu 24 or higher / Debian 13 or higher
 
 ## Installation
-1. Run `sudo apt install build-essential libsdl2-dev git`.
+1. Run `sudo apt-get install git build-essential libsdl2-dev ninja-build`.
 1. Clone the router repo locally. Set up West and Zephyr, as described **[here](https://gitlab.tue.nl/2irr70-capstone-quercus-airport/quercus_platform_pico2#environment-setup-ci-compatible-baseline)**. If done correctly, you should be able to build a native `zephyr.exe` file using the run/build script present. This file is usually found at `build/zephyr/zephyr.exe`.
 1. Clone this repo locally. 
 1. Rename `events_example.toml` to `events.toml` and rename `settings_example.toml` to `settings.toml`.
