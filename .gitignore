@@ -15,3 +15,5 @@ bin/
 build/
 settings.toml
 events.toml
+channel0_0
+*.exe
