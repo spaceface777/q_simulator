@@ -19,7 +19,7 @@ namespace tub
     private:
         uint8_t id_;
         uint8_t module_;
-        ModuleLocation location_ = ModuleLocation::SMALL_BELT;
+        ModuleLocation location_ = ModuleLocation::MIDDLE;
 
         uint8_t target_module_;
         ModuleLocation target_module_location_;
@@ -40,6 +40,16 @@ namespace tub
             : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location), rfid_(rfid)
         {
             rfid_uid_ = {static_cast<int8_t>(id), 0, 0, 0, 0, 0, 0};
+        }
+
+        /**
+         * Stops the worker and waits for it to finish, so a Tub can never be
+         * destroyed while its worker thread is still running.
+         */
+        ~Tub()
+        {
+            stop();
+            join();
         }
 
         uint8_t id() const noexcept
@@ -95,6 +105,12 @@ namespace tub
 
         void stop();
 
+        /**
+         * Waits for this tub's worker thread to finish. Call stop() first,
+         * otherwise this blocks until the worker stops on its own.
+         */
+        void join();
+
         Tub(Tub &&) noexcept = default;
         Tub &operator=(Tub &&) noexcept = default;
 
@@ -106,6 +122,14 @@ namespace tub
      * Stops all tubs.
      */
     void stop();
+
+    /**
+     * Waits for all tub worker threads to finish. Call stop() first.
+     * Must be called before main() returns: static destruction begins the
+     * moment main returns, and a still-running worker would use freed
+     * globals (e.g. the settings table).
+     */
+    void join();
 
     /**
      * Adds a tub.

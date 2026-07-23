@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10.0)
-project(app VERSION 1.0.0 LANGUAGES CXX)
+project(simulation VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Debug)
@@ -12,7 +12,7 @@ include(FetchContent)
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        release-1.11.0
+    GIT_TAG        v1.17.0
 )
 FetchContent_MakeAvailable(googletest)
 
@@ -27,7 +27,7 @@ find_package(SDL2 REQUIRED)
 
 # === Builds ===
 
-add_executable(main 
+add_executable(simulation 
     src/main.cpp 
     src/tcp/server.cpp 
     src/tcp/client.cpp 
@@ -40,13 +40,21 @@ add_executable(main
     src/settings.cpp
     src/event/events.cpp)
 
-target_link_libraries(main pthread 
+target_compile_definitions(simulation PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+    APP_OS="${CMAKE_SYSTEM_NAME}"
+    APP_ARCH="${CMAKE_SYSTEM_PROCESSOR}"
+)
+
+target_link_libraries(simulation pthread 
     tomlplusplus::tomlplusplus
     SDL2::SDL2
 )
 
 configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/events_example.toml ${CMAKE_BINARY_DIR}/events_example.toml COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/settings.toml ${CMAKE_BINARY_DIR}/settings.toml COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/settings_example.toml ${CMAKE_BINARY_DIR}/settings_example.toml COPYONLY)
 
 # === Testing ===
 

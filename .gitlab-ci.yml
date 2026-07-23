@@ -8,6 +8,6 @@ build:
   script:
     - mv settings_example.toml settings.toml
     - mv events_example.toml events.toml
-    - cmake .
-    - cmake --build .
-    - ./tests
+    - cmake build/
+    - make -C build -j
+    - ./build/tests

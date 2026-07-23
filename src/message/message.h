@@ -32,23 +32,6 @@ namespace message
         virtual ~Message() = default;
     };
 
-    /**
-     * Thrown when a message that is attempting to be parsed is deformed.
-     */
-    class DeformedPacketException : public std::exception
-    {
-    private:
-        std::string message;
-
-    public:
-        DeformedPacketException(const char *msg) : message(msg) {}
-
-        const char *what() const noexcept
-        {
-            return message.c_str();
-        }
-    };
-
     class Init : public Message
     {
     private:
@@ -182,19 +165,40 @@ namespace message
         std::unique_ptr<Message> clone() const override;
     };
 
+    class UpdateGraph : public Message
+    {
+    private:
+        uint8_t module_;
+        std::size_t size_;
+        std::string data_;
+
+    public:
+        UpdateGraph(uint8_t module, std::size_t size, std::string data)
+        {
+            module_ = module;
+            size_ = size;
+            data_ = data;
+        }
+
+        bool is_valid() const noexcept override;
+        std::string to_toml() const noexcept override;
+        std::unique_ptr<Message> clone() const override;
+    };
+
+
     class Packet : public Message
     {
     private:
         uint8_t module_;
         std::size_t length_;
-        std::string content_;
+        std::string data_;
 
     public:
-        Packet(uint8_t module, std::size_t length, std::string content)
+        Packet(uint8_t module, std::size_t length, std::string data)
         {
             module_ = module;
             length_ = length;
-            content_ = content;
+            data_ = data;
         }
 
         /**
@@ -259,23 +263,23 @@ namespace message
     //     std::unique_ptr<Message> clone() const override;
     // };
 
-    class TubDeparture : public Message
-    {
-    private:
-        uint8_t id_;
-        uint8_t module_;
+    // class TubDeparture : public Message
+    // {
+    // private:
+    //     uint8_t id_;
+    //     uint8_t module_;
 
-    public:
-        TubDeparture(uint8_t id, uint8_t module)
-        {
-            id_ = id;
-            module_ = module;
-        }
+    // public:
+    //     TubDeparture(uint8_t id, uint8_t module)
+    //     {
+    //         id_ = id;
+    //         module_ = module;
+    //     }
 
-        bool is_valid() const noexcept override;
-        std::string to_toml() const noexcept override;
-        std::unique_ptr<Message> clone() const override;
-    };
+    //     bool is_valid() const noexcept override;
+    //     std::string to_toml() const noexcept override;
+    //     std::unique_ptr<Message> clone() const override;
+    // };
 
     class PlaneArrival : public Message
     {

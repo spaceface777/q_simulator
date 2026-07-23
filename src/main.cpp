@@ -9,6 +9,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <algorithm>
+#include <chrono>
+#include <string_view>
+#include <iostream>
+#include <string>
+#include <string_view>
+#include <sys/utsname.h>
 
 #include "event/events.h"
 #include "tcp/server.h"
@@ -24,43 +30,77 @@
 /**
  * The amount of seconds before a module connection times out.
  */
-static constexpr int MODULE_CONNECT_TIMEOUT_SECONDS = 3;
+static constexpr std::chrono::seconds MODULE_CONNECT_TIMEOUT = std::chrono::seconds(3);
 
+constexpr std::string_view get_target_os()
+{
+#if defined(__APPLE__) && defined(__MACH__)
+    return "macOS";
+#elif defined(__linux__)
+    return "Linux";
+#elif defined(__FreeBSD__)
+    return "FreeBSD";
+#else
+    return "Unknown OS";
+#endif
+}
+
+constexpr std::string_view get_target_arch()
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    return "x86_64";
+#elif defined(__i386__) || defined(_M_IX86)
+    return "x86";
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    return "ARM64";
+#elif defined(__arm__) || defined(_M_ARM)
+    return "ARM";
+#else
+    return "Unknown Arch";
+#endif
+}
+
+/**
+ * Handles closing interrupts.
+ * @param code The interrupt.
+ */
 static void handle_close(int code)
 {
     tub::stop();
+    tub::join();
     server::stop();
-    visualization::stop();
+    server::join();
     client::stop();
+    visualization::stop();
 
     _exit(code);
 }
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
+/**
+ * Initializes all module instances and starts the router processes.
+ */
+static void init_modules()
 {
-    settings::parse_settings();
-    std::list<std::unique_ptr<events::Event>> events;
-    events::parse_events(events);
-    server::run();
-
-    uint8_t module_index = 1;
-    while (module_index <= settings::get_modules_active())
+    for (std::size_t id = 1; id < MAX_MODULES; id++)
     {
-        std::unique_ptr<module::Module> module = std::make_unique<module::Module>(module_index);
+        if (!settings::get_module_settings(id).active)
+            continue;
+
+        std::unique_ptr<module::Module> module = std::make_unique<module::Module>(id);
         module->run(settings::get_setting<std::string>("router_path"));
         module::add_module(std::move(module));
 
         int attempts = 0;
-        while (server::size() < module_index)
+        while (server::size() < id)
         {
-            if (attempts > MODULE_CONNECT_TIMEOUT_SECONDS * 10)
+            if (attempts > std::chrono::duration_cast<std::chrono::seconds>(MODULE_CONNECT_TIMEOUT).count() * 10)
             {
                 tub::stop();
                 server::stop();
                 visualization::stop();
                 client::stop();
 
-                throw std::runtime_error("Failed to establish connection with module " + std::to_string(module_index) + " after 2 seconds");
+                throw std::runtime_error("Failed to establish connection with module " + std::to_string(id) + " after " + std::to_string(MODULE_CONNECT_TIMEOUT.count()) + " seconds");
             }
 
             server::check();
@@ -70,13 +110,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             attempts++;
         }
-
-        module_index++;
     }
 
+    // wait until init.finish is sent
     while (true)
     {
-        bool all = std::all_of(module::get_modules().begin(), module::get_modules().end(), [](std::shared_ptr<module::Module> module)
+        const auto modules = module::get_modules();
+        bool all = std::all_of(modules.begin(), modules.end(), [](const std::shared_ptr<module::Module> &module)
                                { return module->is_initialization_finished(); });
 
         if (all)
@@ -86,10 +126,46 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+}
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // TODO remove this
+static void init_layout()
+{
+    std::stringstream ss;
+    bool first = true;
 
-    // initialize schedule
+    std::size_t size = 0;
+    for (std::size_t id = 1; id < MAX_MODULES; id++)
+    {
+        const auto settings = settings::get_module_settings(id);
+        if (!settings.active)
+            continue;
+
+        if (!first)
+            ss << "|";
+
+        first = false;
+
+        ss << static_cast<int>(id) << ":"
+           << static_cast<int>(settings.left) << ","
+           << static_cast<int>(settings.middle) << ","
+           << static_cast<int>(settings.right);
+        size++;
+    }
+    std::string data = ss.str();
+
+    for (const auto &module : module::get_modules())
+    {
+        if (!module)
+        {
+            continue;
+        }
+
+        module->send(message::UpdateGraph(module->id(), size, data));
+    }
+}
+
+static void init_schedule(const std::list<std::unique_ptr<events::Event>> &events)
+{
     for (auto &event : events)
     {
         if (auto *tub_event = dynamic_cast<events::TubEvent *>(event.get()))
@@ -107,6 +183,34 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
             }
         }
     }
+}
+
+int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
+{
+    for (int i = 1; i < argc; i++)
+    {
+        const std::string_view arg(argv[i]);
+        if (arg == "-v" || arg == "--version")
+        {
+            std::cout << "Quercus Airport Simulation version " << APP_VERSION 
+            << " (" << get_target_os() << " " << get_target_arch() << ")" << std::endl;
+            return EXIT_SUCCESS;
+        }
+    }
+
+    ::signal(SIGTERM, handle_close);
+
+    settings::parse_settings("settings.toml");
+    std::list<std::unique_ptr<events::Event>> events;
+    events::parse_events("events.toml", events);
+    server::run();
+
+    init_modules();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // TODO remove this
+
+    init_layout();
+    init_schedule(events);
 
     virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();
     vclock.set_simulation_speed(settings::get_setting<double>("simulation_speed"));
@@ -124,15 +228,21 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
             tub::check();
             client::check();
         }
-        catch (...)
+        catch (std::exception &ex)
         {
+            std::cerr << "Shutting down due to failed check: " << ex.what() << std::endl;
+
             handle_close(-1);
             return EXIT_FAILURE;
         }
     }
 
-    ::signal(SIGTERM, handle_close);
-    ::signal(SIGKILL, handle_close);
+    tub::stop();
+    tub::join();
+    server::stop();
+    server::join();
+    client::stop();
+    visualization::stop();
 
     return EXIT_SUCCESS;
 }

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <cstring>
+#include <filesystem>
 #include <string_view>
 #include <array>
 #include "../synchronization/virtual_clock.h"
@@ -12,6 +13,8 @@
 
 namespace events
 {
+
+    namespace fs = std::filesystem;
 
     /**
      * Generic event class.
@@ -93,7 +96,7 @@ namespace events
         virtual void fire() const override;
     };
 
-    enum LocationType
+    enum class LocationType
     {
         MODULE,
         PLANE
@@ -172,13 +175,13 @@ namespace events
      * @param vclock The current clock.
      * @param events The remaining events.
      */
-    void fire_events(virtual_clock::VirtualClock &vclock, std::list<std::unique_ptr<events::Event>> &events);
+    void fire_events(virtual_clock::ISimulationClock &vclock, std::list<std::unique_ptr<events::Event>> &events);
 
     /**
      * Parses the events in the events.toml file.
      * @param events Vector to populate with parsed events.
      */
-    void parse_events(std::list<std::unique_ptr<events::Event>> &events);
+    void parse_events(fs::path file, std::list<std::unique_ptr<events::Event>> &events);
 
 };
 

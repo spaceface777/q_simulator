@@ -1,3 +1,4 @@
+# ===== Events =====
 # Defines the events that are to be used in this simulation run.
 # Each event is either a tub entering, or a plane arriving.
 # Events may be interleaved.
@@ -33,7 +34,7 @@
 #       Changing only the third row uses, for example, `rfid = [[0, 0, 0, 0], [0, 0, 0, 0], [1, 2, 3, 4]]`.
 
 [tub.1]
-time = 0
+time = 0.0
 id = 1
 origin = ["module", 1]
 destination = ["module", 12]
@@ -42,7 +43,7 @@ needs_security = false
 rfid = []
 
 [tub.2]
-time = 15
+time = 15.0
 id = 2
 origin = ["module", 1]
 destination = ["module", 10]
@@ -51,14 +52,14 @@ needs_security = false
 rfid = []
 
 [plane.1]
-time = 20
+time = 20.0
 id = 1
 module = 3
 leaves_in = 60
 rfid = []
 
 [tub.3]
-time = 30
+time = 30.0
 id = 4
 origin = ["plane", 3]
 destination = ["plane", 4]
@@ -67,7 +68,7 @@ needs_security = false
 rfid = []
 
 [plane.2]
-time = 40
+time = 40.0
 id = 1
 module = 3
 leaves_in = 60

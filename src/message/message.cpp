@@ -1,11 +1,13 @@
 #include <string>
 #include <string_view>
 #include <stdexcept>
+#include <iostream>
+#include <optional>
+#include <limits>
 
 #include "message.h"
 #include "../util.h"
 #include "../defs.h"
-#include <optional>
 
 namespace message
 {
@@ -61,6 +63,85 @@ namespace message
         {
             buf.erase(buf.size() - 1, 1);
         }
+    }
+
+    static std::optional<uint8_t> parse_byte(std::string_view text)
+    {
+        try
+        {
+            std::size_t consumed = 0;
+            const long long value = std::stoll(std::string(text), &consumed);
+            if (consumed != text.size() || value < 0 || value > std::numeric_limits<uint8_t>::max())
+            {
+                return {};
+            }
+
+            return static_cast<uint8_t>(value);
+        }
+        catch (const std::invalid_argument &)
+        {
+            return {};
+        }
+        catch (const std::out_of_range &)
+        {
+            return {};
+        }
+    }
+
+    static std::optional<int> parse_int(std::string_view text)
+    {
+        try
+        {
+            std::size_t consumed = 0;
+            const long long value = std::stoll(std::string(text), &consumed);
+            if (consumed != text.size() || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max())
+            {
+                return {};
+            }
+
+            return static_cast<int>(value);
+        }
+        catch (const std::invalid_argument &)
+        {
+            return {};
+        }
+        catch (const std::out_of_range &)
+        {
+            return {};
+        }
+    }
+
+    static std::optional<std::size_t> parse_size(std::string_view text)
+    {
+        try
+        {
+            std::size_t consumed = 0;
+            const long long value = std::stoll(std::string(text), &consumed);
+            if (consumed != text.size() || value < 0)
+            {
+                return {};
+            }
+
+            return static_cast<std::size_t>(value);
+        }
+        catch (const std::invalid_argument &)
+        {
+            return {};
+        }
+        catch (const std::out_of_range &)
+        {
+            return {};
+        }
+    }
+
+    static std::optional<std::string> parse_quoted_string(std::string_view text)
+    {
+        if (text.size() < 2 || text.front() != '"' || text.back() != '"')
+        {
+            return {};
+        }
+
+        return std::string(text.substr(1, text.size() - 2));
     }
 
     bool Message::is_valid() const noexcept
@@ -130,7 +211,13 @@ namespace message
 
             if (left == "id" && stage == 1)
             {
-                id = std::stoi(right);
+                const auto parsed_id = parse_byte(right);
+                if (!parsed_id.has_value())
+                {
+                    return {};
+                }
+
+                id = parsed_id.value();
                 continue;
             }
 
@@ -192,7 +279,13 @@ namespace message
 
             if (left == "id" && stage == 1)
             {
-                id = std::stoi(right);
+                const auto parsed_id = parse_byte(right);
+                if (!parsed_id.has_value())
+                {
+                    return {};
+                }
+
+                id = parsed_id.value();
                 continue;
             }
 
@@ -258,17 +351,35 @@ namespace message
 
             if (left == "module" && stage == 1)
             {
-                module = std::stoi(right);
+                const auto parsed_module = parse_byte(right);
+                if (!parsed_module.has_value())
+                {
+                    return {};
+                }
+
+                module = parsed_module.value();
                 continue;
             }
             else if (left == "device" && stage == 1)
             {
-                device = right.substr(1, right.length() - 2);
+                const auto parsed_device = parse_quoted_string(right);
+                if (!parsed_device.has_value())
+                {
+                    return {};
+                }
+
+                device = parsed_device.value();
                 continue;
             }
             else if (left == "value" && stage == 1)
             {
-                value = std::stoi(right);
+                const auto parsed_value = parse_int(right);
+                if (!parsed_value.has_value())
+                {
+                    return {};
+                }
+
+                value = parsed_value.value();
                 continue;
             }
 
@@ -288,7 +399,9 @@ namespace message
         std::string buf = create_buffer();
         append_header(buf, "update.rfid");
         append_value(buf, "module", module_);
+        append_value(buf, "uid_length", uid_.length());
         append_value(buf, "uid", uid_);
+        append_value(buf, "data_length", data_.length());
         append_value(buf, "data", data_);
         trim_trailing_nl(buf);
         return buf;
@@ -299,9 +412,31 @@ namespace message
         return std::make_unique<UpdateRfid>(*this);
     }
 
+    bool UpdateGraph::is_valid() const noexcept
+    {
+        return size_ > 0 && !data_.empty();
+    }
+
+    std::string UpdateGraph::to_toml() const noexcept
+    {
+        std::string buf = create_buffer();
+        append_header(buf, "update.graph");
+        append_value(buf, "module", module_);
+        append_value(buf, "size", size_);
+        append_value(buf, "data_length", data_.length());
+        append_value(buf, "data", data_);
+        trim_trailing_nl(buf);
+        return buf;
+    }
+
+    std::unique_ptr<Message> UpdateGraph::clone() const
+    {
+        return std::make_unique<UpdateGraph>(*this);
+    }
+
     bool Packet::is_valid() const noexcept
     {
-        if (content_.length() != length_)
+        if (data_.length() != length_)
         {
             return false;
         }
@@ -315,7 +450,7 @@ namespace message
         append_header(buf, "packet");
         append_value(buf, "module", module_);
         append_value(buf, "length", length_);
-        append_value(buf, "content", content_);
+        append_value(buf, "data", data_);
         trim_trailing_nl(buf);
         return buf;
     }
@@ -331,8 +466,8 @@ namespace message
 
         int stage = 0;
         int module = -1;
-        std::size_t length;
-        std::string content;
+        std::size_t length = 0;
+        std::string data;
         for (const std::string_view line : lines)
         {
             const std::string_view trimmed = util::trim(line);
@@ -360,24 +495,42 @@ namespace message
 
             if (left == "module" && stage == 1)
             {
-                module = std::stoi(right);
+                const auto parsed_module = parse_byte(right);
+                if (!parsed_module.has_value())
+                {
+                    return {};
+                }
+
+                module = parsed_module.value();
                 continue;
             }
             else if (left == "length" && stage == 1)
             {
-                length = std::stoi(right);
+                const auto parsed_length = parse_size(right);
+                if (!parsed_length.has_value())
+                {
+                    return {};
+                }
+
+                length = parsed_length.value();
                 continue;
             }
-            else if (left == "content" && stage == 1)
+            else if (left == "data" && stage == 1)
             {
-                content = right.substr(1, right.length() - 2);
+                const auto parsed_data = parse_quoted_string(right);
+                if (!parsed_data.has_value())
+                {
+                    return {};
+                }
+
+                data = parsed_data.value();
                 continue;
             }
 
             return {};
         }
 
-        return Packet(module, length, content);
+        return Packet(module, length, data);
     }
 
     bool TubSchedule::is_valid() const noexcept
@@ -423,25 +576,25 @@ namespace message
     //     return std::make_unique<TubArrival>(*this);
     // }
 
-    bool TubDeparture::is_valid() const noexcept
-    {
-        return true;
-    }
+    // bool TubDeparture::is_valid() const noexcept
+    // {
+    //     return true;
+    // }
 
-    std::string TubDeparture::to_toml() const noexcept
-    {
-        std::string buf = create_buffer();
-        append_header(buf, "tub.departure");
-        append_value(buf, "id", id_);
-        append_value(buf, "module", module_);
-        trim_trailing_nl(buf);
-        return buf;
-    }
+    // std::string TubDeparture::to_toml() const noexcept
+    // {
+    //     std::string buf = create_buffer();
+    //     append_header(buf, "tub.departure");
+    //     append_value(buf, "id", id_);
+    //     append_value(buf, "module", module_);
+    //     trim_trailing_nl(buf);
+    //     return buf;
+    // }
 
-    std::unique_ptr<Message> TubDeparture::clone() const
-    {
-        return std::make_unique<TubDeparture>(*this);
-    }
+    // std::unique_ptr<Message> TubDeparture::clone() const
+    // {
+    //     return std::make_unique<TubDeparture>(*this);
+    // }
 
     bool PlaneArrival::is_valid() const noexcept
     {

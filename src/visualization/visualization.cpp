@@ -5,7 +5,6 @@
 #include <iostream>
 #include <string>
 #include <map>
-#include <SDL.h>
 #include <atomic>
 #include <memory>
 #include <vector>
@@ -23,9 +22,19 @@ namespace visualization
 {
 
     /**
+     * Target FPS.
+     */
+    static constexpr double FPS_TARGET = 60;
+
+    /**
      * Default scaling is kind of large, so reduce by a factor.
      */
-    static inline constexpr double DEFAULT_SCALING_OFFSET = 0.75;
+    static constexpr double SCALING_FACTOR = 0.7;
+
+    /**
+     * Belt movement reduction.
+     */
+    static constexpr double BELT_FACTOR = 0.4;
 
     /**
      * The current scale.
@@ -39,7 +48,7 @@ namespace visualization
      */
     int scale_within_module(int x)
     {
-        return (int)(x * DEFAULT_SCALING_OFFSET * scale);
+        return (int)(x * SCALING_FACTOR * scale);
     }
 
     static std::atomic<bool> running_;
@@ -49,35 +58,83 @@ namespace visualization
 
     static double belt_offset_ = 0.0;
 
-    const uint16_t PIXEL_FONT[13] = {
-        0x7B6F, // 0: 111, 101, 101, 101, 111
-        0x2492, // 1: 010, 010, 010, 010, 010
-        0x73E7, // 2: 111, 001, 111, 100, 111
-        0x73CF, // 3: 111, 001, 111, 001, 111
-        0x5BC9, // 4: 101, 101, 111, 001, 001
-        0x79CF, // 5: 111, 100, 111, 001, 111
-        0x79EF, // 6: 111, 100, 111, 101, 111
-        0x7292, // 7: 111, 001, 010, 010, 010
-        0x7BEF, // 8: 111, 101, 111, 101, 111
-        0x7BCF, // 9: 111, 101, 111, 001, 111
-        0x5AAD, // x: 101, 101, 010, 101, 101
-        0x2E93, // t: 010, 111, 010, 010, 011
-        0x410,  // :: 000, 010, 000, 010, 000
+    struct Glyph
+    {
+        GlyphId id;
+        uint16_t bitmap;
     };
 
-    static void draw_digit(SDL_Renderer *renderer, int x, int y, int digit, int scale)
+    class PixelFont
     {
-        if (digit < 0 || digit > 12)
+    public:
+        static constexpr uint8_t WIDTH = 3;
+        static constexpr uint8_t HEIGHT = 5;
+
+        static constexpr std::array<Glyph, static_cast<size_t>(GlyphId::COUNT)> DATA = {
+            {{GlyphId::ZERO, 0x7B6F},  // 111, 101, 101, 101, 111
+             {GlyphId::ONE, 0x2492},   // 010, 010, 010, 010, 010
+             {GlyphId::TWO, 0x73E7},   // 111, 001, 111, 100, 111
+             {GlyphId::THREE, 0x73CF}, // 111, 001, 111, 001, 111
+             {GlyphId::FOUR, 0x5BC9},  // 101, 101, 111, 001, 001
+             {GlyphId::FIVE, 0x79CF},  // 111, 100, 111, 001, 111
+             {GlyphId::SIX, 0x79EF},   // 111, 100, 111, 101, 111
+             {GlyphId::SEVEN, 0x7292}, // 111, 001, 010, 010, 010
+             {GlyphId::EIGHT, 0x7BEF}, // 111, 101, 111, 101, 111
+             {GlyphId::NINE, 0x7BCF},  // 111, 101, 111, 001, 111
+             {GlyphId::D, 0b110101101101110},
+             {GlyphId::B, 0b110101110101110},
+             {GlyphId::G, 0b111100101101111},
+             {GlyphId::DOT, 0b000000000000010},
+             {GlyphId::MINUS, 0b000000111000000},
+             {GlyphId::PLUS, 0b000010111010000},
+             {GlyphId::X, 0b000101010101000},
+             {GlyphId::LEFT, 0b001010100010001},
+             {GlyphId::RIGHT, 0b100010001010100},
+             {GlyphId::PAUSE, 0b101101101101101}}};
+
+        static constexpr uint16_t get_bitmap(GlyphId id)
         {
-            return;
+            size_t index = static_cast<size_t>(id);
+            if (index < DATA.size())
+                return DATA[index].bitmap;
+            throw std::invalid_argument("Invalid glyph id");
         }
 
-        uint16_t bits = PIXEL_FONT[digit];
-        for (int row = 0; row < 5; ++row)
+        static constexpr uint16_t get_bitmap_from_char(char c)
         {
-            for (int col = 0; col < 3; ++col)
+            if (c >= '0' && c <= '9')
+                return get_bitmap(static_cast<GlyphId>(c - '0'));
+            else if (c == 'd')
+                return get_bitmap(GlyphId::D);
+            else if (c == 'b')
+                return get_bitmap(GlyphId::B);
+            else if (c == 'g')
+                return get_bitmap(GlyphId::G);
+            else if (c == 'x')
+                return get_bitmap(GlyphId::X);
+            else if (c == '.')
+                return get_bitmap(GlyphId::DOT);
+            else if (c == '-')
+                return get_bitmap(GlyphId::MINUS);
+            else if (c == '+')
+                return get_bitmap(GlyphId::PLUS);
+            else if (c == '<')
+                return get_bitmap(GlyphId::LEFT);
+            else if (c == '>')
+                return get_bitmap(GlyphId::RIGHT);
+
+            throw std::invalid_argument("Invalid char");
+        }
+    };
+
+    void draw_char(SDL_Renderer *renderer, int x, int y, char digit, int scale)
+    {
+        uint16_t bits = PixelFont::get_bitmap_from_char(digit);
+        for (int row = 0; row < PixelFont::HEIGHT; ++row)
+        {
+            for (int col = 0; col < PixelFont::WIDTH; ++col)
             {
-                if (bits & (1 << (14 - (row * 3 + col))))
+                if (bits & (1 << (14 - (row * PixelFont::WIDTH + col))))
                 {
                     SDL_Rect r = {x + col * scale, y + row * scale, scale, scale};
                     SDL_RenderFillRect(renderer, &r);
@@ -86,112 +143,53 @@ namespace visualization
         }
     }
 
-    static void draw_minus(SDL_Renderer *renderer, int x, int y, int scale)
+    void draw_char(SDL_Renderer *renderer, int x, int y, GlyphId glyph, int scale)
     {
-        SDL_Rect r = {x, y + 2 * scale, 3 * scale, scale};
-        SDL_RenderFillRect(renderer, &r);
+        uint16_t bits = PixelFont::get_bitmap(glyph);
+        for (int row = 0; row < PixelFont::HEIGHT; ++row)
+        {
+            for (int col = 0; col < PixelFont::WIDTH; ++col)
+            {
+                if (bits & (1 << (14 - (row * PixelFont::WIDTH + col))))
+                {
+                    SDL_Rect r = {x + col * scale, y + row * scale, scale, scale};
+                    SDL_RenderFillRect(renderer, &r);
+                }
+            }
+        }
     }
 
-    static void draw_dot(SDL_Renderer *renderer, int x, int y, int scale)
+    void draw_string(SDL_Renderer *renderer, int x, int y, std::string str, int scale)
     {
-        SDL_Rect r = {x + scale, y + 4 * scale, scale, scale};
-        SDL_RenderFillRect(renderer, &r);
+        for (size_t i = 0; i < str.length(); ++i)
+        {
+            draw_char(renderer, x + i * 4 * scale, y, str[i], scale);
+        }
     }
 
-    // Overload to draw integers
     static void draw_number(SDL_Renderer *renderer, int x, int y, int number, int scale)
     {
-        std::string s = std::to_string(number);
-        for (size_t i = 0; i < s.length(); ++i)
-        {
-            if (s[i] == '-')
-            {
-                draw_minus(renderer, x + i * 4 * scale, y, scale);
-            }
-            else
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, s[i] - '0', scale);
-            }
-        }
+        draw_string(renderer, x, y, std::to_string(number), scale);
     }
 
-    static void draw_number(SDL_Renderer *renderer, int x, int y, double number, int scale, bool append_x = false, bool add_t = false)
+    static void draw_number(SDL_Renderer *renderer, int x, int y, double number, int scale)
     {
         std::stringstream ss;
-
-        if (add_t)
-        {
-            ss << "t:";
-        }
-
         ss << std::fixed << std::setprecision(1) << number;
-        std::string s = ss.str();
-
-        if (append_x)
-        {
-            s += "x";
-        }
-
-        for (size_t i = 0; i < s.length(); ++i)
-        {
-            if (s[i] == '-')
-            {
-                draw_minus(renderer, x + i * 4 * scale, y, scale);
-            }
-            else if (s[i] == '.')
-            {
-                draw_dot(renderer, x + i * 4 * scale, y, scale);
-            }
-            else if (s[i] == 'x')
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, 10, scale); // 10 is index of 'x'
-            }
-            else if (s[i] == 't')
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, 11, scale); // 11 is index of 'x'
-            }
-            else if (s[i] == ':')
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, 12, scale); // 12 is index of 'x'
-            }
-            else
-            {
-                draw_digit(renderer, x + i * 4 * scale, y, s[i] - '0', scale);
-            }
-        }
+        draw_string(renderer, x, y, ss.str(), scale);
     }
 
     static void get_module_coords(int module_id, int &x, int &y)
     {
-        int coords[MAX_MODULES][2] = {
-            {-1, -1}, // padding
-            {0, 4},
-            {1, 4}, // 2
-            {2, 4},
-            {3, 4}, // 4
-            {0, 3},
-            {3, 3}, // 6
-            {0, 2},
-            {1, 2}, // 8
-            {2, 2},
-            {3, 2}, // 10
-            {0, 1},
-            {1, 1}, // 12
-            {2, 1},
-            {3, 1}, // 14
-            {4, 1},
-            {2, 0}, // 16
-            {3, 0},
-            {4, 0}, // 18
-        };
-        int margin = scale_within_module(20);
+        const int margin = scale_within_module(20);
 
         int col = 0;
         int row = 0;
-        if (module_id >= 1 && module_id <= settings::get_modules_active())
+        if (module_id >= 1 && module_id < MAX_MODULES)
         {
-            col = coords[module_id][0];
-            row = coords[module_id][1];
+            const settings::ModuleSettings settings = settings::get_module_settings(module_id);
+            col = settings.x;
+            row = settings.y;
         }
         x = margin + col * (scale_within_module(180) + margin);
         y = margin + row * (scale_within_module(180) + margin);
@@ -246,6 +244,13 @@ namespace visualization
                     SDL_RenderDrawPoint(renderer_, x + w, y + h);
                 }
             }
+        }
+
+        if (settings::get_setting<bool>("debug"))
+        {
+            draw_number(renderer_, x + 5, y + 10, r, 2);
+            draw_number(renderer_, x + 5, y + 25, g, 2);
+            draw_number(renderer_, x + 5, y + 40, b, 2);
         }
 
         SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 150);
@@ -631,7 +636,7 @@ namespace visualization
             get_module_coords(tub->module(), module_x, module_y);
 
             double rel_x = 0, rel_y = 0;
-            if (tub->module_location() == ModuleLocation::LEFT_BELT)
+            if (tub->module_location() == ModuleLocation::LEFT)
             {
                 switch (module_settings.angle)
                 {
@@ -656,7 +661,7 @@ namespace visualization
                     throw std::invalid_argument("Invalid module angle " + std::to_string(module_settings.angle));
                 }
             }
-            else if (tub->module_location() == ModuleLocation::RIGHT_BELT)
+            else if (tub->module_location() == ModuleLocation::RIGHT)
             {
                 switch (module_settings.angle)
                 {
@@ -726,7 +731,7 @@ namespace visualization
             SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
             draw_number(renderer_, x - 4, y - 6, tub->id(), 2);
             if (settings::get_setting<bool>("debug"))
-                draw_number(renderer_, x - 4, y, tub->module_location_progress(), 1);
+                draw_number(renderer_, x - 4, y + 5, tub->module_location_progress(), 1);
         }
     }
 
@@ -769,7 +774,7 @@ namespace visualization
         SDL_Quit();
     }
 
-    static buttons::PauseButton button_pause;
+    static std::vector<std::unique_ptr<buttons::Button>> buttons_;
 
     void init()
     {
@@ -787,7 +792,7 @@ namespace visualization
         window_ = SDL_CreateWindow("Quercus Airport Visualization",
                                    SDL_WINDOWPOS_UNDEFINED,
                                    SDL_WINDOWPOS_UNDEFINED,
-                                   1000,
+                                   800,
                                    800,
                                    SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
         if (!window_)
@@ -805,11 +810,23 @@ namespace visualization
             stop();
             return;
         }
+
+        buttons_.push_back(std::make_unique<buttons::PauseButton>(buttons::PauseButton()));
+        buttons_.push_back(std::make_unique<buttons::SlowerButton>(buttons::SlowerButton()));
+        buttons_.push_back(std::make_unique<buttons::SlowSlowerButton>(buttons::SlowSlowerButton()));
+        buttons_.push_back(std::make_unique<buttons::FasterButton>(buttons::FasterButton()));
+        buttons_.push_back(std::make_unique<buttons::FastFasterButton>(buttons::FastFasterButton()));
+        buttons_.push_back(std::make_unique<buttons::SpeedButton>(buttons::SpeedButton()));
+        buttons_.push_back(std::make_unique<buttons::TimeButton>(buttons::TimeButton()));
+        buttons_.push_back(std::make_unique<buttons::ZoomInButton>(buttons::ZoomInButton()));
+        buttons_.push_back(std::make_unique<buttons::ZoomOutButton>(buttons::ZoomOutButton()));
+        buttons_.push_back(std::make_unique<buttons::ZoomButton>(buttons::ZoomButton()));
+        buttons_.push_back(std::make_unique<buttons::DbgButton>(buttons::DbgButton()));
     }
 
     static std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
 
-    void update(virtual_clock::VirtualClock &vclock)
+    void update(virtual_clock::ISimulationClock &vclock)
     {
         if (!running_)
         {
@@ -859,7 +876,10 @@ namespace visualization
                 }
             }
 
-            button_pause.handle(event, vclock);
+            for (auto &button : buttons_)
+            {
+                button->handle(event, vclock);
+            }
         }
 
         if (last_time.count() == 0)
@@ -874,25 +894,25 @@ namespace visualization
         SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
         SDL_RenderClear(renderer_);
 
-        for (int i = 1; i <= settings::get_modules_active(); ++i)
+        for (int i = 1; i < MAX_MODULES; ++i)
         {
+            if (!settings::get_module_settings(i).active)
+                continue;
+
             int x, y;
             get_module_coords(i, x, y);
             render_module(i, x, y);
         }
 
         render_tubs();
-
-        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-        draw_number(renderer_, 0, 0, settings::get_setting<double>("simulation_speed"), 3, true);
-        draw_number(renderer_, 75, 0, current_time.count() / 1000.0, 3, false, true);
-
-        button_pause.render(renderer_);
-
-        belt_offset_ += (dt.count() / 16.0) * 0.3;
+        for (auto &button : buttons_)
+        {
+            button->render(renderer_, vclock);
+        }
+        belt_offset_ += (dt.count() / 16.0) * BELT_FACTOR;
 
         SDL_RenderPresent(renderer_);
-        SDL_Delay(TIMEOUT.count());
+        SDL_Delay(FPS_TARGET / 1000);
     }
 
     bool is_running()

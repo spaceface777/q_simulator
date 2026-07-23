@@ -3,12 +3,25 @@
 #include "settings.h"
 #include "util.h"
 #include <functional>
+#include <map>
+#include <set>
+#include <string>
 
 namespace settings
 {
 
     static ModuleSettings module_settings[MAX_MODULES];
     static toml::table table;
+
+    static void reset_state()
+    {
+        for (auto &module_setting : module_settings)
+        {
+            module_setting = ModuleSettings{};
+        }
+
+        table = toml::table{};
+    }
 
     template <typename T, typename Predicate>
     static void parse_setting(std::string_view setting, T default_value, Predicate pred)
@@ -22,11 +35,67 @@ namespace settings
         settings::set_setting(setting, value);
     }
 
-    void parse_settings()
+    static void validate_module_connections()
     {
+        std::set<std::pair<uint8_t, ModuleLocation>> claimed_ports;
+
+        for (uint8_t id = 1; id < MAX_MODULES; id++)
+        {
+            const auto &src = module_settings[id];
+
+            auto check_connection = [&](uint8_t target_id, std::string_view port_name)
+            {
+                if (target_id == 0)
+                    return;
+
+                util::require(target_id < MAX_MODULES,
+                              "Module " + std::to_string(id) + " connects to invalid or inactive module " + std::to_string(target_id));
+
+                const auto &dest = module_settings[target_id];
+
+                ModuleLocation targeted_port;
+                if (dest.left == id)
+                {
+                    targeted_port = ModuleLocation::LEFT;
+                }
+                else if (dest.right == id)
+                {
+                    targeted_port = ModuleLocation::RIGHT;
+                }
+                else if (dest.middle == id)
+                {
+                    targeted_port = ModuleLocation::MIDDLE;
+                }
+                else
+                {
+                    util::require(false,
+                                  "Module " + std::to_string(id) + " connects to module " + std::to_string(target_id) +
+                                      " via " + std::string(port_name) + ", but module " + std::to_string(target_id) +
+                                      " does not connect back to module " + std::to_string(id));
+                    return;
+                }
+
+                auto location_key = std::make_pair(target_id, targeted_port);
+                util::require(claimed_ports.find(location_key) == claimed_ports.end(),
+                              "Multiple modules attempt to connect to module " + std::to_string(target_id) +
+                                  "'s port");
+
+                claimed_ports.insert(location_key);
+            };
+
+            check_connection(src.left, "left");
+            check_connection(src.right, "right");
+            check_connection(src.middle, "middle");
+        }
+    }
+
+    void parse_settings(fs::path file)
+    {
+        reset_state();
+
         try
         {
-            table = toml::parse_file("settings.toml");
+            table = toml::parse_file(file.string());
         }
         catch (const toml::parse_error &err)
         {
@@ -44,33 +113,66 @@ namespace settings
         for (uint8_t id = 1; id < MAX_MODULES; id++)
         {
             toml::node *module_node = table.get("module");
-            util::require(module_node && module_node->is_table(), "Invalid setting 'module' in settings.toml");
+            if (!module_node || !module_node->is_table())
+            {
+                break;
+            }
 
             toml::table module_table = *module_node->as_table();
             toml::node *node = module_table.get(std::to_string(id));
             if (!node || !node->is_table())
             {
-                break;
+                continue;
             }
 
             toml::table table = *node->as_table();
 
-            module_settings[id].active = static_cast<bool>(table["active"].value_or(false));
-            module_settings[id].left = static_cast<uint8_t>(table["left"].value_or(0));
-            module_settings[id].right = static_cast<uint8_t>(table["right"].value_or(0));
-            module_settings[id].bottom = static_cast<uint8_t>(table["bottom"].value_or(0));
-            module_settings[id].angle = static_cast<uint16_t>(table["angle"].value_or(0));
+            {
+                auto opt_active = table["active"].value_exact<bool>();
+                util::require(opt_active.has_value(), "Missing or invalid 'active' attribute in module " + std::to_string(id));
+                module_settings[id].active = opt_active.value();
+            }
+            {
+                auto opt_angle = table["angle"].value_exact<int64_t>();
+                util::require(opt_angle.has_value() && opt_angle.value() >= 0 && opt_angle.value() < 360,
+                              "Missing or invalid 'angle' attribute in module " + std::to_string(id));
+                module_settings[id].angle = static_cast<uint16_t>(opt_angle.value());
+            }
+            {
+                toml::v3::array *pos = table["pos"].as_array();
+                util::require(pos != nullptr && pos->is_array(), "Attribute 'pos' not found for module " + std::to_string(id));
+                util::require(pos->size() == 2, "Invalid value for attribute 'pos' of module " + std::to_string(id));
 
-            util::require(module_settings[id].angle < 360, "Invalid angle '" + std::to_string(module_settings[id].angle) + "' for module " + std::to_string(id));
+                module_settings[id].x = static_cast<uint8_t>(pos->get(0)->value_exact<int64_t>().value());
+                module_settings[id].y = static_cast<uint8_t>(pos->get(1)->value_exact<int64_t>().value());
+
+                util::require(module_settings[id].x <= 10, "Invalid value for attribute 'pos' of module " + std::to_string(id));
+                util::require(module_settings[id].y <= 10, "Invalid value for attribute 'pos' of module " + std::to_string(id));
+            }
+            {
+                toml::v3::array *neighbors = table["neighbors"].as_array();
+                util::require(neighbors != nullptr && neighbors->is_array(), "Attribute 'neighbors' not found for module " + std::to_string(id));
+                util::require(neighbors->size() == 3, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
+
+                module_settings[id].left = static_cast<uint8_t>(neighbors->get(0)->value_exact<int64_t>().value());
+                module_settings[id].middle = static_cast<uint8_t>(neighbors->get(1)->value_exact<int64_t>().value());
+                module_settings[id].right = static_cast<uint8_t>(neighbors->get(2)->value_exact<int64_t>().value());
+
+                util::require(module_settings[id].left < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
+                util::require(module_settings[id].middle < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
+                util::require(module_settings[id].right < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
+            }
         }
 
-        settings::set_setting("debug", false);
+        validate_module_connections();
+
+        set_setting("debug", false);
     }
 
     template <typename T>
     T get_setting(std::string_view setting)
     {
-        util::require(table.contains(setting), "Invalid setting " + std::string(setting));
+        util::require(table.contains(setting), "Invalid setting '" + std::string(setting) + "'");
         return table[setting].value<T>().value();
     }
 
@@ -80,10 +182,10 @@ namespace settings
         table.insert_or_assign(std::string(setting), value);
     }
 
-    uint8_t get_modules_active()
+    std::size_t get_modules_active()
     {
-        uint8_t count = 0;
-        for (uint8_t id = 1; id < MAX_MODULES; id++)
+        std::size_t count = 0;
+        for (std::size_t id = 1; id < MAX_MODULES; id++)
         {
             if (module_settings[id].active)
             {

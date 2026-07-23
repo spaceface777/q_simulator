@@ -9,20 +9,24 @@
 
 namespace settings
 {
+    namespace fs = std::filesystem;
 
     struct ModuleSettings
     {
         bool active;
         uint8_t left;
+        uint8_t middle;
         uint8_t right;
-        uint8_t bottom;
         uint16_t angle;
+        uint8_t x;
+        uint8_t y;
     };
 
     /**
      * Parses the settings file.
+     * @param file The settings file.
      */
-    void parse_settings();
+    void parse_settings(fs::path file);
 
     /**
      * Gets the value of a specific setting.
@@ -38,7 +42,7 @@ namespace settings
      * Sets the value of a setting.
      * @param setting The name of the setting,.
      * @param value The value to set the setting to.
-     * @throws If the setting is not found. 
+     * @throws If the setting is not found.
      */
     template <typename T>
     void set_setting(std::string_view setting, T value);
@@ -46,7 +50,7 @@ namespace settings
     /**
      * @return The amount of active modules.
      */
-    uint8_t get_modules_active();
+    std::size_t get_modules_active();
 
     /**
      * Gets the settings of a specific module.

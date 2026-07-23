@@ -11,13 +11,13 @@
 namespace events
 {
 
-    void fire_events(virtual_clock::VirtualClock &vclock, std::list<std::unique_ptr<Event>> &events)
+    void fire_events(virtual_clock::ISimulationClock &vclock, std::list<std::unique_ptr<Event>> &events)
     {
-        int64_t seconds = std::chrono::duration_cast<std::chrono::seconds>(vclock.get_virtual_time()).count();
+        int64_t ms = vclock.get_virtual_time().count();
 
-        events.remove_if([seconds](const auto &event)
+        events.remove_if([ms](const auto &event)
                          {
-                             if (seconds >= event->time())
+                             if ((ms / 1000.0) >= event->time())
                              {
                                  event->fire();
                                  return true;
@@ -53,7 +53,7 @@ namespace events
         // util::require(module.has_value(), "No module with id " + std::to_string(origin_.id));
         // (*module)->send(message);
 
-        auto tub_ptr = std::make_unique<tub::Tub>(id_, origin_.id, destination_.id, ModuleLocation::SMALL_BELT, rfid_);
+        auto tub_ptr = std::make_unique<tub::Tub>(id_, origin_.id, destination_.id, ModuleLocation::MIDDLE, rfid_);
         tub_ptr->run();
         tub::add_tub(std::move(tub_ptr));
 
@@ -106,13 +106,13 @@ namespace events
         return rfid_fixed_array;
     }
 
-    void parse_events(std::list<std::unique_ptr<Event>> &result)
+    void parse_events(fs::path file, std::list<std::unique_ptr<Event>> &events)
     {
 
         toml::table table;
         try
         {
-            table = toml::parse_file("events.toml");
+            table = toml::parse_file(file.string());
         }
         catch (const toml::parse_error &err)
         {
@@ -139,6 +139,7 @@ namespace events
 
                     double time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
+                    util::require(id >= 1, "Tub ids must be above or equal to 1"); 
                     bool safe = event_tbl["safe"].value_or(false);
                     bool needs_security = event_tbl["needs_security"].value_or(false);
                     toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
@@ -205,7 +206,7 @@ namespace events
                                (int8_t)destination.id, (int8_t)(destination.type == LocationType::MODULE ? 0 : 1)};
                     rfid[1] = {safe, needs_security, 0, 0};
 
-                    result.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, rfid));
+                    events.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, rfid));
                 }
             }
             else if (group == "plane")
@@ -217,8 +218,9 @@ namespace events
 
                     auto &event_tbl = *event_value.as_table();
 
-                    int time = event_tbl["time"].value_or(-1.0);
+                    double time = event_tbl["time"].value_or(-1.0);
                     int id = event_tbl["id"].value_or(-1);
+                    util::require(id >= 1, "Plane ids must be above or equal to 1"); 
                     int module = event_tbl["module"].value_or(-1);
                     int leaves_in = event_tbl["leaves_in"].value_or(-1);
                     toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
@@ -232,7 +234,7 @@ namespace events
                     rfid[0] = {(int8_t)module, 0, 0, 0};
                     rfid[1] = {(int8_t)(leaves_in & 0xFF), (int8_t)((leaves_in >> 8) & 0xFF), (int8_t)((leaves_in >> 16) & 0xFF), (int8_t)((leaves_in >> 24) & 0xFF)};
 
-                    result.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, rfid));
+                    events.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, rfid));
                 }
             }
         }

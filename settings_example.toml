@@ -1,3 +1,8 @@
+# ===== Settings =====
+# Contains per-run settings.
+# For example layouts, check the layouts folder in the Simulation repo.
+
+# === General ===
 # The path to the router Zephyr executable.
 router_path = "/home/user/airport-router/build/zephyr/zephyr.exe"
 
@@ -6,33 +11,114 @@ router_path = "/home/user/airport-router/build/zephyr/zephyr.exe"
 simulation_speed = 1.0
 
 # The scale of the simulation overview.
-# Must be between 0.25 and 5.
+# Must be between 0.0 and 5.0.
 scale = 1.0
 
+# === Modules ===
 [module.1]
-active = true
-left = 0
-right = 2
-bottom = 3
-angle = 0
+active = true # Whether this module should be started.
+neighbors = [0, 2, 5] # Module id of neighbors in order of left, middle, right.
+pos = [0, 4] # The (x, y) position of this module in the visualization, with the top left being (0, 0).
+angle = 270 # The angle of this module in the visualization. Clockwise rotation: 0 degrees = T shape, 90 degrees = ─┤.
 
 [module.2]
 active = true
-left = 1
-right = 0
-bottom = 4
+neighbors = [1, 0, 3]
+pos = [1, 4]
 angle = 0
 
 [module.3]
 active = true
-left = 4
-right = 0
-bottom = 1
-angle = 180
+neighbors = [2, 0, 4]
+pos = [2, 4]
+angle = 0
 
 [module.4]
 active = true
-left = 0
-right = 3
-bottom = 2
+neighbors = [0, 6, 3]
+pos = [3, 4]
 angle = 180
+
+[module.5]
+active = true
+neighbors = [7, 0, 1]
+pos = [0, 3]
+angle = 90
+
+[module.6]
+active = true
+neighbors = [4, 0, 10]
+pos = [3, 3]
+angle = 270
+
+[module.7]
+active = true
+neighbors = [5, 8, 11]
+pos = [0, 2]
+angle = 270
+
+[module.8]
+active = true
+neighbors = [9, 12, 7]
+pos = [1, 2]
+angle = 180
+
+[module.9]
+active = true
+neighbors = [10, 13, 8]
+pos = [2, 2]
+angle = 180
+
+[module.10]
+active = true
+neighbors = [14, 9, 6]
+pos = [3, 2]
+angle = 90
+
+[module.11]
+active = true
+neighbors = [0, 0, 7]
+pos = [0, 1]
+angle = 90
+
+[module.12]
+active = true
+neighbors = [8, 13, 0]
+pos = [1, 1]
+angle = 270
+
+[module.13]
+active = true
+neighbors = [16, 12, 9]
+pos = [2, 1]
+angle = 90
+
+[module.14]
+active = true
+neighbors = [10, 15, 17]
+pos = [3, 1]
+angle = 270
+
+[module.15]
+active = true
+neighbors = [0, 18, 14]
+pos = [4, 1]
+angle = 180
+
+[module.16]
+active = true
+neighbors = [13, 17, 0]
+pos = [2, 0]
+angle = 270
+
+[module.17]
+active = true
+neighbors = [16, 14, 18]
+pos = [3, 0]
+angle = 0
+
+[module.18]
+active = true
+neighbors = [0, 17, 15]
+pos = [4, 0]
+angle = 90

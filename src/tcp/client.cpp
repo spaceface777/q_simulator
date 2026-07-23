@@ -10,6 +10,7 @@
 #include <map>
 
 #include "../message/message.h"
+#include "../settings.h"
 #include "../util.h"
 #include "../defs.h"
 #include "socket.h"
@@ -57,7 +58,7 @@ namespace client
 
             if (!setup_connection(socket.fd(), port_, id_))
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(TIMEOUT);
                 continue;
             }
 
@@ -66,6 +67,12 @@ namespace client
 
             while (!stopped_)
             {
+                if (settings::get_setting<double>("simulation_speed") == 0.0)
+                {
+                    std::this_thread::sleep_for(TIMEOUT);
+                    continue;
+                }
+
                 std::unique_ptr<message::Message> message;
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
@@ -78,7 +85,7 @@ namespace client
 
                 if (!message)
                 {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    std::this_thread::sleep_for(TIMEOUT);
                     continue;
                 }
 
