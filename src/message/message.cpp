@@ -466,7 +466,7 @@ namespace message
 
         int stage = 0;
         int module = -1;
-        std::size_t length;
+        std::size_t length = 0;
         std::string data;
         for (const std::string_view line : lines)
         {

@@ -25,8 +25,8 @@ namespace visualization::buttons
     protected:
         ScreenAnchor anchor_;
 
-        SDL_Rect rect_;
-        SDL_Rect projected_;
+        SDL_Rect rect_ = {0, 0, 0, 0};
+        SDL_Rect projected_ = {0, 0, 0, 0};
         SDL_Color base_color_;
         SDL_Color hover_color_;
         SDL_Color active_color_;
@@ -64,6 +64,8 @@ namespace visualization::buttons
                 render_x = w - rect_.x - rect_.w;
                 render_y = h - rect_.y - rect_.h;
                 break;
+            default:
+                return;
             }
 
             projected_ = {render_x, render_y, rect_.w, rect_.h};

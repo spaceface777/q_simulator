@@ -10,6 +10,11 @@
 #include <unistd.h>
 #include <algorithm>
 #include <chrono>
+#include <string_view>
+#include <iostream>
+#include <string>
+#include <string_view>
+#include <sys/utsname.h>
 
 #include "event/events.h"
 #include "tcp/server.h"
@@ -26,6 +31,34 @@
  * The amount of seconds before a module connection times out.
  */
 static constexpr std::chrono::seconds MODULE_CONNECT_TIMEOUT = std::chrono::seconds(3);
+
+constexpr std::string_view get_target_os()
+{
+#if defined(__APPLE__) && defined(__MACH__)
+    return "macOS";
+#elif defined(__linux__)
+    return "Linux";
+#elif defined(__FreeBSD__)
+    return "FreeBSD";
+#else
+    return "Unknown OS";
+#endif
+}
+
+constexpr std::string_view get_target_arch()
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    return "x86_64";
+#elif defined(__i386__) || defined(_M_IX86)
+    return "x86";
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    return "ARM64";
+#elif defined(__arm__) || defined(_M_ARM)
+    return "ARM";
+#else
+    return "Unknown Arch";
+#endif
+}
 
 /**
  * Handles closing interrupts.
@@ -154,6 +187,17 @@ static void init_schedule(const std::list<std::unique_ptr<events::Event>> &event
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 {
+    for (int i = 1; i < argc; i++)
+    {
+        const std::string_view arg(argv[i]);
+        if (arg == "-v" || arg == "--version")
+        {
+            std::cout << "Quercus Airport Simulation version " << APP_VERSION 
+            << " (" << get_target_os() << " " << get_target_arch() << ")" << std::endl;
+            return EXIT_SUCCESS;
+        }
+    }
+
     ::signal(SIGTERM, handle_close);
 
     settings::parse_settings("settings.toml");

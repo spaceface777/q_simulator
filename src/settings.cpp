@@ -53,29 +53,27 @@ namespace settings
 
                 const auto &dest = module_settings[target_id];
 
-                bool connects_back = false;
                 ModuleLocation targeted_port;
-
                 if (dest.left == id)
                 {
-                    connects_back = true;
                     targeted_port = ModuleLocation::LEFT;
                 }
                 else if (dest.right == id)
                 {
-                    connects_back = true;
                     targeted_port = ModuleLocation::RIGHT;
                 }
                 else if (dest.middle == id)
                 {
-                    connects_back = true;
                     targeted_port = ModuleLocation::MIDDLE;
                 }
-
-                util::require(connects_back,
-                              "Module " + std::to_string(id) + " connects to module " + std::to_string(target_id) +
-                                  " via " + std::string(port_name) + ", but module " + std::to_string(target_id) +
-                                  " does not connect back to module " + std::to_string(id));
+                else
+                {
+                    util::require(false,
+                                  "Module " + std::to_string(id) + " connects to module " + std::to_string(target_id) +
+                                      " via " + std::string(port_name) + ", but module " + std::to_string(target_id) +
+                                      " does not connect back to module " + std::to_string(id));
+                    return;
+                }
 
                 auto location_key = std::make_pair(target_id, targeted_port);
                 util::require(claimed_ports.find(location_key) == claimed_ports.end(),

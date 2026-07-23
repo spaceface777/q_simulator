@@ -1,6 +1,6 @@
 ## Version
 
-<!-- State the Simulation version you're using. -->
+<!-- Paste the results of `./build/main -v` here -->
 <!-- If you're not running the latest version, try updating. This may fix the problem. -->
 
 ## Bug Description
