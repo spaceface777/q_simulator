@@ -207,8 +207,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 
     init_modules();
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // TODO remove this
-
     init_layout();
     init_schedule(events);
 

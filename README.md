@@ -1,12 +1,11 @@
 <!-- 
 # TODO
 **general**
-- add synchronization for processes
 - analyze implementing scheduler process that communicates to the router processes
 - for hybrid mode send through pi, add separate interface for communication
-- int -> double for event time
 - make id in events.toml 7 byte rfid
 - remove server/client and fix tcp
+- support going to planes
 
 **event generator**
 - total amount of tubs, density of tubs/planes
@@ -26,6 +25,7 @@ simulation/
 ├── layouts/                 # Example layouts for use in settings.toml
 ├── src/                     # The source code
 ├── test/                    # All tests
+├── .gitignore               # Ignored Git files
 ├── .gitlab-ci.yml           # GitLab CI runner details
 ├── events_example.toml      # Example event schedule input
 ├── README.md                # Project overview

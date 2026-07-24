@@ -91,6 +91,8 @@ namespace settings
 
     void parse_settings(fs::path file)
     {
+        util::require(fs::exists(file), "No settings.toml found in same folder as simulation executable");
+
         reset_state();
 
         try
