@@ -45,7 +45,7 @@ simulation/
 1. Run `sudo apt-get install git build-essential libsdl2-dev ninja-build`.
 1. Clone the router repo locally. Set up West and Zephyr, as described **[here](https://gitlab.tue.nl/2irr70-capstone-quercus-airport/quercus_platform_pico2#environment-setup-ci-compatible-baseline)**. If done correctly, you should be able to build a native `zephyr.exe` file using the run/build script present. This file is usually found at `build/zephyr/zephyr.exe`.
 1. Clone this repo locally. 
-1. Rename `events_example.toml` to `events.toml` and rename `settings_example.toml` to `settings.toml`.
+1. Copy `events_example.toml` and rename it to `events.toml`. Do the same for `settings_example.toml` to `settings.toml` and `layout_example.toml` to `layout.toml`.
 1. Change the `router_path` value in the settings to the absolute path of the `zephyr.exe` executable. The absolute path should look similar to this: `/home/user/airport-router/build/zephyr/zephyr.exe`.
 1. Run `cmake -B build -S . -G Ninja`.
 

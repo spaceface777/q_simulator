@@ -26,7 +26,7 @@ namespace settings
      * Parses the settings file.
      * @param file The settings file.
      */
-    void parse_settings(fs::path file);
+    void parse_settings(fs::path settings, fs::path layout);
 
     /**
      * Gets the value of a specific setting.

@@ -184,7 +184,7 @@ rfid = [[5, 6, 7, 8]]
 TEST_F(EventsFileTest, ParseMissingFileThrows)
 {
     std::list<std::unique_ptr<events::Event>> parsed_events;
-    EXPECT_THROW(events::parse_events(temp_file_path, parsed_events), toml::parse_error);
+    EXPECT_THROW(events::parse_events(temp_file_path, parsed_events), std::invalid_argument);
 }
 
 TEST_F(EventsFileTest, ParseInvalidTubMissingFieldsThrows)

@@ -11,7 +11,8 @@ namespace settings
 {
 
     static ModuleSettings module_settings[MAX_MODULES];
-    static toml::table table;
+    static toml::table settings_table;
+    static toml::table layout_table;
 
     static void reset_state()
     {
@@ -20,13 +21,14 @@ namespace settings
             module_setting = ModuleSettings{};
         }
 
-        table = toml::table{};
+        settings_table = toml::table{};
+        layout_table = toml::table{};
     }
 
     template <typename T, typename Predicate>
     static void parse_setting(std::string_view setting, T default_value, Predicate pred)
     {
-        toml::node *node = table.get(setting);
+        toml::node *node = settings_table.get(setting);
         util::require(node, "Missing setting '" + std::string(setting) + "' in settings.toml");
 
         T value = static_cast<T>(node->value_or(default_value));
@@ -89,15 +91,17 @@ namespace settings
         }
     }
 
-    void parse_settings(fs::path file)
+    void parse_settings(fs::path settings, fs::path layout)
     {
-        util::require(fs::exists(file), "No settings.toml found in same folder as simulation executable");
+        util::require(fs::exists(settings), "No settings.toml found in same folder as simulation executable");
+        util::require(fs::exists(layout), "No layout.toml found in same folder as simulation executable");
 
         reset_state();
 
         try
         {
-            table = toml::parse_file(file.string());
+            settings_table = toml::parse_file(settings.string());
+            layout_table = toml::parse_file(layout.string());
         }
         catch (const toml::parse_error &err)
         {
@@ -114,7 +118,7 @@ namespace settings
 
         for (uint8_t id = 1; id < MAX_MODULES; id++)
         {
-            toml::node *module_node = table.get("module");
+            toml::node *module_node = layout_table.get("module");
             if (!module_node || !module_node->is_table())
             {
                 break;
@@ -174,14 +178,14 @@ namespace settings
     template <typename T>
     T get_setting(std::string_view setting)
     {
-        util::require(table.contains(setting), "Invalid setting '" + std::string(setting) + "'");
-        return table[setting].value<T>().value();
+        util::require(settings_table.contains(setting), "Invalid setting '" + std::string(setting) + "'");
+        return settings_table[setting].value<T>().value();
     }
 
     template <typename T>
     void set_setting(std::string_view setting, T value)
     {
-        table.insert_or_assign(std::string(setting), value);
+        settings_table.insert_or_assign(std::string(setting), value);
     }
 
     std::size_t get_modules_active()

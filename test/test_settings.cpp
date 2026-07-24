@@ -11,6 +11,7 @@ class SettingsTest : public ::testing::Test
 {
 protected:
     fs::path temp_settings_path;
+    fs::path temp_layout_path;
     fs::path temp_router_path;
 
     void SetUp() override
@@ -20,6 +21,7 @@ protected:
         std::uniform_int_distribution<int> dist(100000, 999999);
 
         temp_settings_path = fs::temp_directory_path() / ("test_settings_" + std::to_string(dist(rng)) + ".toml");
+        temp_layout_path = fs::temp_directory_path() / ("test_layout_" + std::to_string(dist(rng)) + ".toml");
         temp_router_path = fs::temp_directory_path() / ("zephyr_" + std::to_string(dist(rng)) + ".exe");
 
         std::ofstream outfile(temp_router_path);
@@ -30,13 +32,21 @@ protected:
     {
         if (fs::exists(temp_settings_path))
             fs::remove(temp_settings_path);
+        if (fs::exists(temp_layout_path))
+            fs::remove(temp_layout_path);
         if (fs::exists(temp_router_path))
             fs::remove(temp_router_path);
     }
 
-    void write_toml(const std::string &content)
+    void write_settings(const std::string &content)
     {
         std::ofstream outfile(temp_settings_path);
+        outfile << content;
+    }
+
+    void write_layout(const std::string &content)
+    {
+        std::ofstream outfile(temp_layout_path);
         outfile << content;
     }
 };
@@ -63,12 +73,12 @@ TEST_F(SettingsTest, GetModuleSettingsBounds)
 
 TEST_F(SettingsTest, ParseValidSettings)
 {
-    std::string valid_toml =
-        "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(
+    write_settings("router_path = \"" + temp_router_path.string() + "\"\n" +
+                   R"(
 simulation_speed = 1.5
 scale = 2.0
-
+)");
+    write_layout(R"(
 [module.1]
 active = true
 neighbors = [2, 0, 0]
@@ -80,11 +90,9 @@ active = false
 neighbors = [0, 0, 1]
 pos = [1, 1]
 angle = 90
-)";
+        )");
 
-    write_toml(valid_toml);
-
-    EXPECT_NO_THROW(settings::parse_settings(temp_settings_path));
+    EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
 
     EXPECT_DOUBLE_EQ(1.5, settings::get_setting<double>("simulation_speed"));
     EXPECT_DOUBLE_EQ(2.0, settings::get_setting<double>("scale"));
@@ -113,38 +121,37 @@ angle = 90
 
 TEST_F(SettingsTest, ParseSettingsResetsPreviousModuleState)
 {
-    std::string first_toml =
-        "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(
+    write_settings("router_path = \"" + temp_router_path.string() + "\"\n" +
+                   R"(
 simulation_speed = 1.5
 scale = 2.0
+)");
 
+    write_layout(R"(
 [module.1]
 active = true
 neighbors = [0, 0, 0]
 pos = [1, 1]
 angle = 0
-)";
+        )");
 
-    write_toml(first_toml);
-    EXPECT_NO_THROW(settings::parse_settings(temp_settings_path));
+    EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
     EXPECT_EQ(1, settings::get_modules_active());
 
-    std::string second_toml =
-        "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(
+    write_settings("router_path = \"" + temp_router_path.string() + "\"\n" +
+                   R"(
 simulation_speed = 1.0
 scale = 1.0
-)";
+)");
+    write_layout("");
 
-    write_toml(second_toml);
-    EXPECT_NO_THROW(settings::parse_settings(temp_settings_path));
+    EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
     EXPECT_EQ(0, settings::get_modules_active());
 }
 
 TEST_F(SettingsTest, ParseSettingsMissingFile)
 {
-    EXPECT_THROW(settings::parse_settings(temp_settings_path), toml::parse_error);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsMissingRouterPath)
@@ -153,8 +160,8 @@ TEST_F(SettingsTest, ParseSettingsMissingRouterPath)
 scale = 1.0
 )";
 
-    write_toml(invalid_toml);
-    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+    write_settings(invalid_toml);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidScale)
@@ -165,43 +172,32 @@ TEST_F(SettingsTest, ParseSettingsInvalidScale)
 scale = 10.0
 )";
 
-    write_toml(invalid_toml);
-    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+    write_settings(invalid_toml);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidModuleAngle)
 {
-    std::string invalid_toml =
-        "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(simulation_speed = 1.0
-scale = 1.0
-
+    write_layout(R"(
 [module.1]
 active = true
 angle = 400
-)";
+)");
 
-    write_toml(invalid_toml);
-    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidModuleBottom)
 {
-    std::string invalid_toml =
-        "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(
-simulation_speed = 1.0
-scale = 1.0
-
+    write_settings(R"(
 [module.1]
 active = true
 neighbors = [0, 25, 0]
 pos = [0, 0]
 angle = 0
-)";
+)");
 
-    write_toml(invalid_toml);
-    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsOneWayConnectionThrows)
@@ -224,8 +220,8 @@ pos = [1, 4]
 angle = 0
 )";
 
-    write_toml(invalid_toml);
-    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+    write_settings(invalid_toml);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsDuplicatePortConnectionThrows)
@@ -260,6 +256,6 @@ pos = [2, 4]
 angle = 0
 )";
 
-    write_toml(invalid_toml);
-    EXPECT_THROW(settings::parse_settings(temp_settings_path), std::invalid_argument);
+    write_settings(invalid_toml);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }

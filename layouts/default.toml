@@ -1,18 +1,5 @@
-# ===== Settings =====
-# Contains per-run settings.
-# For example layouts, check the layouts folder in the Simulation repo.
-
-# === General ===
-# The path to the router Zephyr executable.
-router_path = "/home/user/airport-router/build/zephyr/zephyr.exe"
-
-# The speed at which the simulation will be run.
-# Must be above 0.
-simulation_speed = 1.0
-
-# The scale of the simulation overview.
-# Must be between 0.0 and 5.0.
-scale = 1.0
+# === Layout ===
+# The layout of the modules used for the simulation.
 
 # === Modules ===
 [module.1]
