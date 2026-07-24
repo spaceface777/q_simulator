@@ -1,11 +1,11 @@
 #include "defs.h"
-#include "lib/toml.h"
 #include "settings.h"
 #include "util.h"
 #include <functional>
 #include <map>
 #include <set>
 #include <string>
+#include <toml++/toml.hpp>
 
 namespace settings
 {

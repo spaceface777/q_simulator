@@ -2,7 +2,7 @@
 #include "../message/message.h"
 #include "../module/module.h"
 #include "../tub/tub.h"
-#include "../lib/toml.h"
+#include <toml++/toml.hpp>
 #include "../defs.h"
 
 #include <memory>

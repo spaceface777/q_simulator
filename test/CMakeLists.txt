@@ -18,7 +18,8 @@ add_executable(tests
     ../src/settings.cpp
     ../src/event/events.cpp)
 
-target_link_libraries(tests gtest gtest_main)
-target_compile_definitions(tests PRIVATE TESTS)
+target_link_libraries(tests PRIVATE 
+    gtest gtest_main
+    tomlplusplus::tomlplusplus)
 
 add_test(NAME tests COMMAND tests)

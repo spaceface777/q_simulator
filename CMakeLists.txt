@@ -46,13 +46,16 @@ target_compile_definitions(simulation PRIVATE
     APP_ARCH="${CMAKE_SYSTEM_PROCESSOR}"
 )
 
-target_link_libraries(simulation pthread 
+target_link_libraries(simulation PRIVATE
+    pthread 
     tomlplusplus::tomlplusplus
     SDL2::SDL2
 )
 
 configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/events_example.toml ${CMAKE_BINARY_DIR}/events_example.toml COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/layout.toml ${CMAKE_BINARY_DIR}/layout.toml COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/layout_example.toml ${CMAKE_BINARY_DIR}/layout_example.toml COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/settings.toml ${CMAKE_BINARY_DIR}/settings.toml COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/settings_example.toml ${CMAKE_BINARY_DIR}/settings_example.toml COPYONLY)
 
