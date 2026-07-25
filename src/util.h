@@ -4,6 +4,8 @@
 #include <vector>
 #include <string_view>
 #include <chrono>
+#include <exception>
+#include <stdexcept>
 
 namespace util
 {
@@ -12,14 +14,25 @@ namespace util
      * Throws exception with message message if !predicate.
      * @throws If !predicate.
      */
-    void require(bool predicate, std::string_view message);
-
+    constexpr void require(bool predicate, std::string_view message)
+    {
+        if (!predicate)
+        {
+            throw std::invalid_argument(message.data());
+        }
+    }
 
     /**
      * Throws out of range exception with message message if !predicate.
      * @throws If !predicate.
      */
-    void require_range(bool predicate, std::string_view message);
+    constexpr void require_range(bool predicate, std::string_view message)
+    {
+        if (!predicate)
+        {
+            throw std::out_of_range(message.data());
+        }
+    }
 
     /**
      * Splits a string at the specified delimiter.
