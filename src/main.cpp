@@ -94,7 +94,7 @@ static void init_modules()
 {
     for (std::size_t id = 1; id < MAX_MODULES; id++)
     {
-        if (!settings::get_module_settings(id).active)
+        if (!settings::get_module_settings(module::ModuleId(id)).active)
             continue;
 
         std::unique_ptr<module::Module> module = std::make_unique<module::Module>(id);
@@ -148,7 +148,7 @@ static void init_layout()
     std::size_t size = 0;
     for (std::size_t id = 1; id < MAX_MODULES; id++)
     {
-        const auto settings = settings::get_module_settings(id);
+        const auto settings = settings::get_module_settings(module::ModuleId(id));
         if (!settings.active)
             continue;
 
@@ -158,9 +158,9 @@ static void init_layout()
         first = false;
 
         ss << static_cast<int>(id) << ":"
-           << static_cast<int>(settings.left) << ","
-           << static_cast<int>(settings.middle) << ","
-           << static_cast<int>(settings.right);
+           << static_cast<int>(settings.left.raw()) << ","
+           << static_cast<int>(settings.middle.raw()) << ","
+           << static_cast<int>(settings.right.raw());
         size++;
     }
     std::string data = ss.str();

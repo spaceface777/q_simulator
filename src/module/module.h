@@ -10,6 +10,7 @@
 
 #include "../message/message.h"
 #include "../tub/tub.h"
+#include "types.h"
 
 namespace module
 {
@@ -18,14 +19,14 @@ namespace module
     {
     private:
         pid_t pid_;
-        uint8_t id_;
+        ModuleId id_;
         bool running_ = false;       // whether the router process spawned by this module is running
         bool init_finished_ = false; // whether the router process is ready to receive packets
 
-        int8_t big_speed_ = 0;
-        int8_t small_speed_ = 0;
-        uint16_t servo_degrees_ = 0;
-        int led_color_ = 0;
+        BeltSpeed big_speed_;
+        BeltSpeed small_speed_;
+        ServoAngle servo_degrees_;
+        LedColor led_color_;
         bool left_laser_active_ = false;
         bool right_laser_active_ = false;
         bool rfid_active_ = false;
@@ -33,7 +34,7 @@ namespace module
     public:
         Module(uint8_t id)
         {
-            id_ = id;
+            id_ = ModuleId(id);
         }
 
         /**
@@ -47,7 +48,7 @@ namespace module
         /**
          * @return The id of this module.
          */
-        uint8_t id() const noexcept
+        ModuleId id() const noexcept
         {
             return id_;
         }
@@ -63,7 +64,7 @@ namespace module
         /**
          * @return The speed of the big belt.
          */
-        int8_t big_belt_speed() const noexcept
+        BeltSpeed big_belt_speed() const noexcept
         {
             return big_speed_;
         }
@@ -71,7 +72,7 @@ namespace module
         /**
          * @return The speed of the small belt.
          */
-        int8_t small_belt_speed() const noexcept
+        BeltSpeed small_belt_speed() const noexcept
         {
             return small_speed_;
         }
@@ -79,7 +80,7 @@ namespace module
         /**
          * @return The angle of the servo.
          */
-        uint16_t servo_angle() const noexcept
+        ServoAngle servo_angle() const noexcept
         {
             return servo_degrees_;
         }
@@ -87,7 +88,7 @@ namespace module
         /**
          * @return The color of the led.
          */
-        int led_color() const noexcept
+        LedColor led_color() const noexcept
         {
             return led_color_;
         }
@@ -193,7 +194,7 @@ namespace module
      * @param id The id.
      * @returns The module instance from the id.
      */
-    std::optional<std::shared_ptr<module::Module>> get_module(uint8_t id);
+    std::optional<std::shared_ptr<module::Module>> get_module(module::ModuleId id);
 
     /**
      * @returns All modules.

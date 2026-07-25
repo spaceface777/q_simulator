@@ -74,8 +74,8 @@ TEST_F(SettingsTest, GetNonExistentSettingThrows)
 
 TEST_F(SettingsTest, GetModuleSettingsBounds)
 {
-    EXPECT_THROW(settings::get_module_settings(0), std::invalid_argument);
-    EXPECT_THROW(settings::get_module_settings(MAX_MODULES), std::invalid_argument);
+    EXPECT_THROW(settings::get_module_settings(module::ModuleId(0)), std::invalid_argument);
+    EXPECT_THROW(settings::get_module_settings(module::ModuleId(MAX_MODULES)), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseValidSettings)
@@ -106,21 +106,21 @@ angle = 90
     EXPECT_DOUBLE_EQ(2.0, settings::get_setting<double>("scale"));
     EXPECT_FALSE(settings::get_setting<bool>("debug"));
 
-    settings::ModuleSettings mod1 = settings::get_module_settings(1);
+    settings::ModuleSettings mod1 = settings::get_module_settings(module::ModuleId(1));
     EXPECT_TRUE(mod1.active);
-    EXPECT_EQ(2, mod1.left);
-    EXPECT_EQ(0, mod1.middle);
-    EXPECT_EQ(0, mod1.right);
-    EXPECT_EQ(180, mod1.angle);
+    EXPECT_EQ(2, mod1.left.raw());
+    EXPECT_EQ(0, mod1.middle.raw());
+    EXPECT_EQ(0, mod1.right.raw());
+    EXPECT_EQ(settings::ModuleAngle::UPSIDE_DOWN, mod1.angle);
     EXPECT_EQ(2, mod1.x);
     EXPECT_EQ(2, mod1.y);
 
-    settings::ModuleSettings mod2 = settings::get_module_settings(2);
+    settings::ModuleSettings mod2 = settings::get_module_settings(module::ModuleId(2));
     EXPECT_FALSE(mod2.active);
-    EXPECT_EQ(0, mod2.left);
-    EXPECT_EQ(0, mod2.middle);
-    EXPECT_EQ(1, mod2.right);
-    EXPECT_EQ(90, mod2.angle);
+    EXPECT_EQ(0, mod2.left.raw());
+    EXPECT_EQ(0, mod2.middle.raw());
+    EXPECT_EQ(1, mod2.right.raw());
+    EXPECT_EQ(settings::ModuleAngle::ROTATED_90, mod2.angle);
     EXPECT_EQ(1, mod2.x);
     EXPECT_EQ(1, mod2.y);
 

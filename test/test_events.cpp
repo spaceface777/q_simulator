@@ -5,9 +5,10 @@
 #include <chrono>
 #include <memory>
 #include <list>
+#include <toml++/toml.hpp>
 
 #include "../src/event/events.h"
-#include <toml++/toml.hpp>
+#include "../src/module/types.h"
 #include "../src/synchronization/virtual_clock.h"
 
 namespace fs = std::filesystem;
@@ -93,20 +94,20 @@ TEST(PlaneEventTest, Getters)
     std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> dummy_rfid{};
     dummy_rfid[0] = {1, 2, 3, 4};
 
-    events::PlaneEvent plane(10.5, 42, 3, 120, dummy_rfid);
+    events::PlaneEvent plane(10.5, 42, module::ModuleId(3), 120, dummy_rfid);
 
     EXPECT_DOUBLE_EQ(10.5, plane.time());
-    EXPECT_EQ(42u, plane.id());
-    EXPECT_EQ(3, plane.module());
-    EXPECT_EQ(120u, plane.leaves_in());
+    EXPECT_EQ(42, plane.id());
+    EXPECT_EQ(3, plane.module().raw());
+    EXPECT_EQ(120, plane.leaves_in());
     EXPECT_EQ(1, plane.rfid()[0][0]);
     EXPECT_EQ(4, plane.rfid()[0][3]);
 }
 
 TEST(TubEventTest, Getters)
 {
-    events::TubData origin{events::LocationType::MODULE, 1};
-    events::TubData dest{events::LocationType::PLANE, 2};
+    events::TubData origin{events::LocationType::MODULE, module::ModuleId(1)};
+    events::TubData dest{events::LocationType::PLANE, module::ModuleId(2)};
     std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> dummy_rfid{};
 
     events::TubEvent tub(5.0, 7, origin, dest, true, false, dummy_rfid);
@@ -114,9 +115,9 @@ TEST(TubEventTest, Getters)
     EXPECT_DOUBLE_EQ(5.0, tub.time());
     EXPECT_EQ(7u, tub.id());
     EXPECT_EQ(events::LocationType::MODULE, tub.origin().type);
-    EXPECT_EQ(1, tub.origin().id);
+    EXPECT_EQ(1, tub.origin().id.raw());
     EXPECT_EQ(events::LocationType::PLANE, tub.destination().type);
-    EXPECT_EQ(2, tub.destination().id);
+    EXPECT_EQ(2, tub.destination().id.raw());
     EXPECT_TRUE(tub.safe());
     EXPECT_FALSE(tub.needs_security());
 }

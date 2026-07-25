@@ -6,6 +6,8 @@
 #include <optional>
 #include <memory>
 
+#include "../module/types.h"
+
 namespace message
 {
     /**
@@ -35,10 +37,10 @@ namespace message
     class Init : public Message
     {
     private:
-        uint8_t id_;
+        module::ModuleId id_;
 
     public:
-        Init(uint8_t id)
+        Init(module::ModuleId id)
         {
             id_ = id;
         }
@@ -46,7 +48,7 @@ namespace message
         /**
          * @return The id of the module.
          */
-        uint8_t id() const noexcept
+        module::ModuleId id() const noexcept
         {
             return id_;
         }
@@ -66,10 +68,10 @@ namespace message
     class InitFinish : public Message
     {
     private:
-        uint8_t id_;
+        module::ModuleId id_;
 
     public:
-        InitFinish(uint8_t id)
+        InitFinish(module::ModuleId id)
         {
             id_ = id;
         }
@@ -77,7 +79,7 @@ namespace message
         /**
          * @return The id of the module.
          */
-        uint8_t id() const noexcept
+        module::ModuleId id() const noexcept
         {
             return id_;
         }
@@ -97,12 +99,12 @@ namespace message
     class Update : public Message
     {
     private:
-        uint8_t module_;
+        module::ModuleId module_;
         std::string device_;
         int value_;
 
     public:
-        Update(uint8_t module, std::string device, int value)
+        Update(module::ModuleId module, std::string device, int value)
         {
             module_ = module;
             device_ = device;
@@ -112,7 +114,7 @@ namespace message
         /**
          * @return The id of the module.
          */
-        uint8_t module() const noexcept
+        module::ModuleId module() const noexcept
         {
             return module_;
         }
@@ -148,12 +150,12 @@ namespace message
     class UpdateRfid : public Message
     {
     private:
-        uint8_t module_;
+        module::ModuleId module_;
         std::string uid_;
         std::string data_;
 
     public:
-        UpdateRfid(uint8_t module, std::string uid, std::string data)
+        UpdateRfid(module::ModuleId module, std::string uid, std::string data)
         {
             module_ = module;
             uid_ = uid;
@@ -168,12 +170,12 @@ namespace message
     class UpdateGraph : public Message
     {
     private:
-        uint8_t module_;
+        module::ModuleId module_;
         std::size_t size_;
         std::string data_;
 
     public:
-        UpdateGraph(uint8_t module, std::size_t size, std::string data)
+        UpdateGraph(module::ModuleId module, std::size_t size, std::string data)
         {
             module_ = module;
             size_ = size;
@@ -185,16 +187,15 @@ namespace message
         std::unique_ptr<Message> clone() const override;
     };
 
-
     class Packet : public Message
     {
     private:
-        uint8_t module_;
+        module::ModuleId module_;
         std::size_t length_;
         std::string data_;
 
     public:
-        Packet(uint8_t module, std::size_t length, std::string data)
+        Packet(module::ModuleId module, std::size_t length, std::string data)
         {
             module_ = module;
             length_ = length;
@@ -204,7 +205,7 @@ namespace message
         /**
          * @return The id of the target.
          */
-        uint8_t module() const noexcept
+        module::ModuleId module() const noexcept
         {
             return module_;
         }
@@ -225,13 +226,13 @@ namespace message
     {
     private:
         uint8_t id_;
-        uint8_t module_;
-        uint8_t destination_;
+        module::ModuleId module_;
+        module::ModuleId destination_;
         bool safe_;
         bool needs_security_;
 
     public:
-        TubSchedule(uint8_t id, uint8_t module, uint8_t destination, bool safe, bool needs_security)
+        TubSchedule(uint8_t id, module::ModuleId module, module::ModuleId destination, bool safe, bool needs_security)
         {
             id_ = id;
             module_ = module;
@@ -285,11 +286,11 @@ namespace message
     {
     private:
         uint8_t id_;
-        uint8_t module_;
+        module::ModuleId module_;
         unsigned int leaves_in_;
 
     public:
-        PlaneArrival(uint8_t id, uint8_t module, unsigned int leaves_in)
+        PlaneArrival(uint8_t id, module::ModuleId module, unsigned int leaves_in)
         {
             id_ = id;
             module_ = module;
@@ -304,10 +305,10 @@ namespace message
     {
     private:
         uint8_t id_;
-        uint8_t module_;
+        module::ModuleId module_;
 
     public:
-        PlaneDeparture(uint8_t id, uint8_t module)
+        PlaneDeparture(uint8_t id, module::ModuleId module)
         {
             id_ = id;
             module_ = module;

@@ -33,19 +33,19 @@ namespace module
 
 			const std::string id_path = "/tmp/qaid";
 			std::ofstream id_of(id_path);
-			util::require(id_of.is_open(), "Failed to create ofstream for " + std::to_string(id_));
+			util::require(id_of.is_open(), "Failed to create ofstream for " + std::to_string(id_.raw()));
 
-			id_of << std::to_string(id_);
+			id_of << std::to_string(id_.raw());
 			id_of.flush();
 			id_of.close();
 
-			util::require(std::filesystem::exists(id_path), "Failed to create file for " + std::to_string(id_));
+			util::require(std::filesystem::exists(id_path), "Failed to create file for " + std::to_string(id_.raw()));
 
 			// exec
 
-			const std::string module_name = "Module " + std::to_string(id_);
+			const std::string module_name = "Module " + std::to_string(id_.raw());
 			running_ = true;
-			std::cerr << "Starting module " << std::to_string(id_) << std::endl;
+			std::cerr << "Starting module " << std::to_string(id_.raw()) << std::endl;
 
 			const int success = ::execl(path.c_str(), module_name.c_str(), (char *)0);
 
@@ -66,19 +66,19 @@ namespace module
 	{
 		if (message.device() == "big belt")
 		{
-			big_speed_ = message.value();
+			big_speed_ = BeltSpeed(message.value());
 		}
 		else if (message.device() == "small belt")
 		{
-			small_speed_ = message.value();
+			small_speed_ = BeltSpeed(message.value());
 		}
 		else if (message.device() == "servo")
 		{
-			servo_degrees_ = message.value();
+			servo_degrees_ = ServoAngle(message.value());
 		}
 		else if (message.device() == "led")
 		{
-			led_color_ = message.value();
+			led_color_ = LedColor(message.value());
 		}
 	}
 
@@ -88,18 +88,18 @@ namespace module
 	void add_module(std::unique_ptr<module::Module> ptr)
 	{
 		std::lock_guard<std::mutex> lock(map_mutex);
-		util::require(!map.count(ptr->id()), "Attempted to double register modules");
+		util::require(!map.count(ptr->id().raw()), "Attempted to double register modules");
 
-		uint8_t id = ptr->id();
+		uint8_t id = ptr->id().raw();
 		map[id] = std::move(ptr);
 	}
 
-	std::optional<std::shared_ptr<module::Module>> get_module(uint8_t id)
+	std::optional<std::shared_ptr<module::Module>> get_module(ModuleId id)
 	{
 		std::lock_guard<std::mutex> lock(map_mutex);
-		if (map.count(id))
+		if (map.count(id.raw()))
 		{
-			return map.at(id);
+			return map.at(id.raw());
 		}
 		return {};
 	}

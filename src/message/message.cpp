@@ -168,7 +168,7 @@ namespace message
     {
         std::string buf = create_buffer();
         append_header(buf, "init");
-        append_value(buf, "id", id_);
+        append_value(buf, "id", id_.raw());
         trim_trailing_nl(buf);
         return buf;
     }
@@ -224,7 +224,7 @@ namespace message
             return {};
         }
 
-        return Init(id);
+        return Init(module::ModuleId(id));
     }
 
     bool InitFinish::is_valid() const noexcept
@@ -236,7 +236,7 @@ namespace message
     {
         std::string buf = create_buffer();
         append_header(buf, "init.finish");
-        append_value(buf, "id", id_);
+        append_value(buf, "id", id_.raw());
         trim_trailing_nl(buf);
         return buf;
     }
@@ -292,7 +292,7 @@ namespace message
             return {};
         }
 
-        return InitFinish(id);
+        return InitFinish(module::ModuleId(id));
     }
 
     bool Update::is_valid() const noexcept
@@ -304,7 +304,7 @@ namespace message
     {
         std::string buf = create_buffer();
         append_header(buf, "update");
-        append_value(buf, "module", module_);
+        append_value(buf, "module", module_.raw());
         append_value(buf, "device", device_);
         append_value(buf, "value", value_);
         trim_trailing_nl(buf);
@@ -386,7 +386,7 @@ namespace message
             return {};
         }
 
-        return Update(module, device, value);
+        return Update(module::ModuleId(module), device, value);
     }
 
     bool UpdateRfid::is_valid() const noexcept
@@ -398,7 +398,7 @@ namespace message
     {
         std::string buf = create_buffer();
         append_header(buf, "update.rfid");
-        append_value(buf, "module", module_);
+        append_value(buf, "module", module_.raw());
         append_value(buf, "uid_length", uid_.length());
         append_value(buf, "uid", uid_);
         append_value(buf, "data_length", data_.length());
@@ -421,7 +421,7 @@ namespace message
     {
         std::string buf = create_buffer();
         append_header(buf, "update.graph");
-        append_value(buf, "module", module_);
+        append_value(buf, "module", module_.raw());
         append_value(buf, "size", size_);
         append_value(buf, "data_length", data_.length());
         append_value(buf, "data", data_);
@@ -448,7 +448,7 @@ namespace message
     {
         std::string buf = create_buffer();
         append_header(buf, "packet");
-        append_value(buf, "module", module_);
+        append_value(buf, "module", module_.raw());
         append_value(buf, "length", length_);
         append_value(buf, "data", data_);
         trim_trailing_nl(buf);
@@ -530,7 +530,7 @@ namespace message
             return {};
         }
 
-        return Packet(module, length, data);
+        return Packet(module::ModuleId(module), length, data);
     }
 
     bool TubSchedule::is_valid() const noexcept
@@ -543,8 +543,8 @@ namespace message
         std::string buf = create_buffer();
         append_header(buf, "tub.schedule");
         append_value(buf, "id", id_);
-        append_value(buf, "module", module_);
-        append_value(buf, "destination", destination_);
+        append_value(buf, "module", module_.raw());
+        append_value(buf, "destination", destination_.raw());
         append_value(buf, "safe", safe_);
         append_value(buf, "needs_security", needs_security_);
         trim_trailing_nl(buf);
@@ -606,7 +606,7 @@ namespace message
         std::string buf = create_buffer();
         append_header(buf, "plane.arrival");
         append_value(buf, "id", id_);
-        append_value(buf, "module", module_);
+        append_value(buf, "module", module_.raw());
         append_value(buf, "leaves_in", leaves_in_);
         trim_trailing_nl(buf);
         return buf;
@@ -622,7 +622,7 @@ namespace message
         std::string buf = create_buffer();
         append_header(buf, "plane.departure");
         append_value(buf, "id", id_);
-        append_value(buf, "module", module_);
+        append_value(buf, "module", module_.raw());
         trim_trailing_nl(buf);
         return buf;
     }

@@ -115,9 +115,9 @@ namespace server
         fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
     }
 
-    void send(unsigned int id, const message::Message &message)
+    void send(module::ModuleId id, const message::Message &message)
     {
-        if (stopped || id >= MAX_MODULES)
+        if (stopped)
         {
             return;
         }
@@ -140,20 +140,20 @@ namespace server
         if (intro)
         {
             const message::Init message = intro.value();
-            const unsigned int id = message.id();
+            const module::ModuleId id = message.id();
 
             const std::optional<std::shared_ptr<client::Client>> existing_client = client::get_client(id);
             if (existing_client)
             {
-                std::cout << "Attempted to double up client creation at " << std::to_string(8888 + id) << std::endl;
+                std::cout << "Attempted to double up client creation at " << std::to_string(8888 + id.raw()) << std::endl;
                 return;
             }
 
-            const std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id);
+            const std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id.raw());
             ptr->run();
             client::add_client(ptr);
 
-            std::cout << "Started client at " << std::to_string(8888 + id) << std::endl;
+            std::cout << "Started client at " << std::to_string(8888 + id.raw()) << std::endl;
 
             return;
         }

@@ -8,6 +8,8 @@
 #include <mutex>
 #include <future>
 
+#include "../module/types.h"
+
 // only used for testing
 namespace client
 {
@@ -15,7 +17,7 @@ namespace client
     {
     private:
         int fd_ = -1;
-        unsigned int id_ = 0;
+        module::ModuleId id_;
         unsigned int port_ = 0;
         std::queue<std::unique_ptr<message::Message>> queue_;
         std::mutex mutex_;
@@ -26,7 +28,7 @@ namespace client
     public:
         Client() = default;
 
-        Client(unsigned int id, unsigned int port) : id_(id), port_(port)
+        Client(module::ModuleId id, unsigned int port) : id_(id), port_(port)
         {
         }
 
@@ -40,7 +42,7 @@ namespace client
             ::close(fd_);
         }
 
-        unsigned int id() const noexcept
+        module::ModuleId module() const noexcept
         {
             return id_;
         }
@@ -83,7 +85,7 @@ namespace client
      * @param id The id.
      * @returns The client instance from the id.
      */
-    std::optional<std::shared_ptr<client::Client>> get_client(uint8_t id);
+    std::optional<std::shared_ptr<client::Client>> get_client(module::ModuleId id);
 
     void stop();
 

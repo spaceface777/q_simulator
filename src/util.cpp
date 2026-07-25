@@ -4,6 +4,7 @@
 #include <vector>
 #include <string_view>
 #include <exception>
+#include <stdexcept>
 
 #include "util.h"
 
@@ -11,6 +12,13 @@ void util::require(bool predicate, std::string_view message)
 {
     if (!predicate) {
         throw std::invalid_argument(std::string(message));
+    }
+}
+
+void util::require_range(bool predicate, std::string_view message)
+{
+    if (!predicate) {
+        throw std::out_of_range(std::string(message));
     }
 }
 

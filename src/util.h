@@ -14,6 +14,13 @@ namespace util
      */
     void require(bool predicate, std::string_view message);
 
+
+    /**
+     * Throws out of range exception with message message if !predicate.
+     * @throws If !predicate.
+     */
+    void require_range(bool predicate, std::string_view message);
+
     /**
      * Splits a string at the specified delimiter.
      * @param sv The string to split.

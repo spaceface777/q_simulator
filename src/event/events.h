@@ -10,6 +10,7 @@
 #include <array>
 #include "../synchronization/virtual_clock.h"
 #include "../defs.h"
+#include "../module/types.h"
 
 namespace events
 {
@@ -57,12 +58,12 @@ namespace events
      */
     class PlaneEvent : public Event
     {
-        uint8_t module_;
+        module::ModuleId module_;
         unsigned int leaves_in_;
         std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        PlaneEvent(double time, uint8_t id, uint8_t module, unsigned int leaves_in,
+        PlaneEvent(double time, uint8_t id, module::ModuleId module, unsigned int leaves_in,
                    std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
         {
             time_ = time;
@@ -75,7 +76,7 @@ namespace events
         /**
          * Returns the module that this plane is at.
          */
-        uint8_t module() const noexcept
+        module::ModuleId module() const noexcept
         {
             return module_;
         }
@@ -105,7 +106,7 @@ namespace events
     struct TubData
     {
         LocationType type;
-        int id;
+        module::ModuleId id;
     };
 
     /**

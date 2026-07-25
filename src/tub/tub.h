@@ -10,6 +10,7 @@
 #include <array>
 
 #include "../defs.h"
+#include "../module/types.h"
 
 namespace tub
 {
@@ -18,10 +19,10 @@ namespace tub
     {
     private:
         uint8_t id_;
-        uint8_t module_;
+        module::ModuleId module_;
         ModuleLocation location_ = ModuleLocation::MIDDLE;
 
-        uint8_t target_module_;
+        module::ModuleId target_module_;
         ModuleLocation target_module_location_;
 
         bool in_laser_ = false;
@@ -35,7 +36,7 @@ namespace tub
         std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        Tub(uint8_t id, uint8_t module, uint8_t target_module,
+        Tub(uint8_t id, module::ModuleId module, module::ModuleId target_module,
             ModuleLocation target_module_location, std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
             : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location), rfid_(rfid)
         {
@@ -57,7 +58,7 @@ namespace tub
             return id_;
         }
 
-        uint8_t module() const noexcept
+        module::ModuleId module() const noexcept
         {
             return module_;
         }
@@ -70,7 +71,7 @@ namespace tub
             return location_;
         }
 
-        uint8_t target_module() const noexcept
+        module::ModuleId target_module() const noexcept
         {
             return target_module_;
         }

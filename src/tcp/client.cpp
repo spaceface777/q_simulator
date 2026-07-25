@@ -30,14 +30,14 @@ namespace client
         map.clear();
     }
 
-    static bool setup_connection(int fd, unsigned int port, unsigned int id)
+    static bool setup_connection(int fd, unsigned int port, module::ModuleId id)
     {
         struct sockaddr_in addr_in;
         addr_in.sin_family = AF_INET;
         addr_in.sin_port = ::htons(port);
         addr_in.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
 
-        std::cout << "Connecting to module " << std::to_string(id) << " at port " << std::to_string(port) << " and fd " << std::to_string(fd) << std::endl;
+        std::cout << "Connecting to module " << std::to_string(id.raw()) << " at port " << std::to_string(port) << " and fd " << std::to_string(fd) << std::endl;
         if (::connect(fd, (const struct sockaddr *)&addr_in, sizeof(addr_in)) < 0)
         {
             return false;
@@ -63,7 +63,7 @@ namespace client
             }
 
             fd_ = socket.fd();
-            std::cout << "Connected to module " << std::to_string(id_) << std::endl;
+            std::cout << "Connected to module " << std::to_string(id_.raw()) << std::endl;
 
             while (!stopped_)
             {
@@ -129,18 +129,18 @@ namespace client
 
     void add_client(std::shared_ptr<Client> ptr)
     {
-        if (map.count(ptr->id()))
+        if (map.count(ptr->module().raw()))
         {
             throw std::invalid_argument("Attempted to double register clients");
         }
-        map[ptr->id()] = std::move(ptr);
+        map[ptr->module().raw()] = std::move(ptr);
     }
 
-    std::optional<std::shared_ptr<Client>> get_client(uint8_t id)
+    std::optional<std::shared_ptr<Client>> get_client(module::ModuleId id)
     {
-        if (map.count(id))
+        if (map.count(id.raw()))
         {
-            return map.at(id);
+            return map.at(id.raw());
         }
         return {};
     }

@@ -57,15 +57,15 @@ namespace tub
             if (!module_opt)
             {
                 stop();
-                throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_));
+                throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_.raw()));
             }
             const std::shared_ptr<module::Module> module = module_opt.value();
             const settings::ModuleSettings settings = settings::get_module_settings(module_);
 
             if (location_progress_ > 1)
             {
-                const uint8_t old_module = module_;
-                uint8_t new_module = -1;
+                const module::ModuleId old_module = module_;
+                module::ModuleId new_module;
                 switch (location_)
                 {
                 case ModuleLocation::MIDDLE:
@@ -95,7 +95,7 @@ namespace tub
                 else
                 {
                     stop();
-                    throw std::invalid_argument("Module " + std::to_string(old_module) + " and " + std::to_string(new_module) + " are not connected in settings.toml");
+                    throw std::invalid_argument("Module " + std::to_string(old_module.raw()) + " and " + std::to_string(new_module.raw()) + " are not connected in settings.toml");
                 }
 
                 location_progress_ = 1;
@@ -106,7 +106,7 @@ namespace tub
                 switch (location_)
                 {
                 case ModuleLocation::MIDDLE:
-                    if (module->servo_angle() > 90)
+                    if (module->servo_angle().raw() > 90)
                     {
                         location_ = ModuleLocation::RIGHT;
                     }
@@ -116,7 +116,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT:
-                    if (module->servo_angle() < 10 || module->servo_angle() > 170)
+                    if (module->servo_angle().raw() < 10 || module->servo_angle().raw() > 170)
                     {
                         location_ = ModuleLocation::RIGHT;
                     }
@@ -126,7 +126,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT:
-                    if (module->servo_angle() > 170 || module->servo_angle() < 10)
+                    if (module->servo_angle().raw() > 170 || module->servo_angle().raw() < 10)
                     {
                         location_ = ModuleLocation::LEFT;
                     }
@@ -145,7 +145,7 @@ namespace tub
                 switch (location_)
                 {
                 case ModuleLocation::MIDDLE:
-                    location_progress_ += simulation_speed * module->small_belt_speed() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
+                    location_progress_ += simulation_speed * module->small_belt_speed().raw() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
 
                     if (in_rfid_ && (location_progress_ < RFID_LOCATION - RFID_RANGE || location_progress_ > RFID_LOCATION + RFID_RANGE))
                     {
@@ -163,7 +163,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT:
-                    location_progress_ += simulation_speed * module->big_belt_speed() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
+                    location_progress_ += simulation_speed * module->big_belt_speed().raw() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {
@@ -180,7 +180,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT:
-                    location_progress_ += simulation_speed * -module->big_belt_speed() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
+                    location_progress_ += simulation_speed * -module->big_belt_speed().raw() * MOVEMENT_FACTOR * (TIMEOUT.count() / 16.0);
 
                     if (in_laser_ && (location_progress_ < LASER_LOCATION - LASER_RANGE || location_progress_ > LASER_LOCATION + LASER_RANGE))
                     {

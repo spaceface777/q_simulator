@@ -1,6 +1,7 @@
 #include "defs.h"
 #include "settings.h"
 #include "util.h"
+
 #include <functional>
 #include <map>
 #include <set>
@@ -50,9 +51,6 @@ namespace settings
                 if (target_id == 0)
                     return;
 
-                util::require(target_id < MAX_MODULES,
-                              "Module " + std::to_string(id) + " connects to invalid or inactive module " + std::to_string(target_id));
-
                 const auto &dest = module_settings[target_id];
 
                 ModuleLocation targeted_port;
@@ -85,9 +83,9 @@ namespace settings
                 claimed_ports.insert(location_key);
             };
 
-            check_connection(src.left, "left");
-            check_connection(src.right, "right");
-            check_connection(src.middle, "middle");
+            check_connection(src.left.raw(), "left");
+            check_connection(src.right.raw(), "right");
+            check_connection(src.middle.raw(), "middle");
         }
     }
 
@@ -140,9 +138,9 @@ namespace settings
             }
             {
                 auto opt_angle = table["angle"].value_exact<int64_t>();
-                util::require(opt_angle.has_value() && opt_angle.value() >= 0 && opt_angle.value() < 360,
-                              "Missing or invalid 'angle' attribute in module " + std::to_string(id));
-                module_settings[id].angle = static_cast<uint16_t>(opt_angle.value());
+                util::require_range(opt_angle.has_value() && opt_angle.value() >= 0 && opt_angle.value() <= 270,
+                                    "Missing or invalid 'angle' attribute in module " + std::to_string(id));
+                module_settings[id].angle = ModuleAngle(static_cast<uint16_t>(opt_angle.value()));
             }
             {
                 toml::v3::array *pos = table["pos"].as_array();
@@ -160,13 +158,9 @@ namespace settings
                 util::require(neighbors != nullptr && neighbors->is_array(), "Attribute 'neighbors' not found for module " + std::to_string(id));
                 util::require(neighbors->size() == 3, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
 
-                module_settings[id].left = static_cast<uint8_t>(neighbors->get(0)->value_exact<int64_t>().value());
-                module_settings[id].middle = static_cast<uint8_t>(neighbors->get(1)->value_exact<int64_t>().value());
-                module_settings[id].right = static_cast<uint8_t>(neighbors->get(2)->value_exact<int64_t>().value());
-
-                util::require(module_settings[id].left < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
-                util::require(module_settings[id].middle < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
-                util::require(module_settings[id].right < MAX_MODULES, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
+                module_settings[id].left = module::ModuleId(static_cast<uint8_t>(neighbors->get(0)->value_exact<int64_t>().value()));
+                module_settings[id].middle = module::ModuleId(static_cast<uint8_t>(neighbors->get(1)->value_exact<int64_t>().value()));
+                module_settings[id].right = module::ModuleId(static_cast<uint8_t>(neighbors->get(2)->value_exact<int64_t>().value()));
             }
         }
 
@@ -202,10 +196,9 @@ namespace settings
         return count;
     }
 
-    ModuleSettings get_module_settings(uint8_t id)
+    ModuleSettings get_module_settings(module::ModuleId id)
     {
-        util::require(id >= 1 && id < MAX_MODULES, "Invalid module id " + std::to_string(id));
-        return module_settings[id];
+        return module_settings[id.raw()];
     }
 
 }

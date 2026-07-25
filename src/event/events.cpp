@@ -146,7 +146,7 @@ namespace events
                     toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
 
                     // Parse origin
-                    events::TubData origin{LocationType::MODULE, -1};
+                    events::TubData origin{LocationType::MODULE, module::ModuleId()};
                     if (event_tbl.contains("origin") && event_tbl["origin"].is_array())
                     {
                         auto &origin_arr = *event_tbl["origin"].as_array();
@@ -167,12 +167,12 @@ namespace events
                             {
                                 throw std::invalid_argument("Invalid origin location type: " + location_type);
                             }
-                            origin.id = location_id;
+                            origin.id = module::ModuleId(location_id);
                         }
                     }
 
                     // Parse destination
-                    TubData destination{LocationType::MODULE, -1};
+                    TubData destination{LocationType::MODULE, module::ModuleId()};
                     if (event_tbl.contains("destination") && event_tbl["destination"].is_array())
                     {
                         auto &dest_arr = *event_tbl["destination"].as_array();
@@ -193,7 +193,7 @@ namespace events
                             {
                                 throw std::invalid_argument("Invalid destination location type: " + location_type);
                             }
-                            destination.id = location_id;
+                            destination.id = module::ModuleId(location_id);
                         }
                     }
 
@@ -203,8 +203,8 @@ namespace events
                     }
 
                     auto rfid = parse_rfid(rfid_arr);
-                    rfid[0] = {(int8_t)origin.id, (int8_t)(origin.type == LocationType::MODULE ? 0 : 1),
-                               (int8_t)destination.id, (int8_t)(destination.type == LocationType::MODULE ? 0 : 1)};
+                    rfid[0] = {(int8_t)origin.id.raw(), (int8_t)(origin.type == LocationType::MODULE ? 0 : 1),
+                               (int8_t)destination.id.raw(), (int8_t)(destination.type == LocationType::MODULE ? 0 : 1)};
                     rfid[1] = {safe, needs_security, 0, 0};
 
                     events.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, rfid));
@@ -235,7 +235,7 @@ namespace events
                     rfid[0] = {(int8_t)module, 0, 0, 0};
                     rfid[1] = {(int8_t)(leaves_in & 0xFF), (int8_t)((leaves_in >> 8) & 0xFF), (int8_t)((leaves_in >> 16) & 0xFF), (int8_t)((leaves_in >> 24) & 0xFF)};
 
-                    events.push_back(std::make_unique<PlaneEvent>(time, id, module, leaves_in, rfid));
+                    events.push_back(std::make_unique<PlaneEvent>(time, id, module::ModuleId(module), leaves_in, rfid));
                 }
             }
         }

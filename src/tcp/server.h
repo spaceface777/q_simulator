@@ -2,6 +2,7 @@
 #define SERVER_H
 
 #include "../message/message.h"
+#include "../module/types.h"
 
 namespace server
 {
@@ -12,7 +13,7 @@ namespace server
      * @param id The module id.
      * @param message The message to send.
      */
-    void send(unsigned int id, const message::Message &message);
+    void send(module::ModuleId id, const message::Message &message);
 
     /**
      * Runs the server.

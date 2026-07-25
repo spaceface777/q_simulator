@@ -5,18 +5,27 @@
 #include <filesystem>
 
 #include "defs.h"
+#include "module/types.h"
 
 namespace settings
 {
     namespace fs = std::filesystem;
 
+    enum class ModuleAngle : uint16_t
+    {
+        NORMAL = 0, // T shape
+        ROTATED_90 = 90, // ┤ shape
+        UPSIDE_DOWN = 180, // ┴ shape
+        ROTATED_270 = 270, // ├ shape
+    };
+
     struct ModuleSettings
     {
         bool active;
-        uint8_t left;
-        uint8_t middle;
-        uint8_t right;
-        uint16_t angle;
+        module::ModuleId left;
+        module::ModuleId middle;
+        module::ModuleId right;
+        ModuleAngle angle;
         uint8_t x;
         uint8_t y;
     };
@@ -57,7 +66,7 @@ namespace settings
      * @returns The values of the module.
      * @throws if the module is not found.
      */
-    ModuleSettings get_module_settings(uint8_t id);
+    ModuleSettings get_module_settings(module::ModuleId id);
 
 }
 

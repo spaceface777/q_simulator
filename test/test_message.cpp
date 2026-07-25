@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "../src/message/message.h"
 #include "../src/util.h"
+#include "../src/module/types.h"
 
 TEST(MessageTest, BaseMessageDefaultBehavior)
 {
@@ -15,7 +16,7 @@ TEST(MessageTest, BaseMessageDefaultBehavior)
 
 TEST(PacketTest, ToToml)
 {
-    message::Update update(1, "2", 3);
+    message::Update update(module::ModuleId(1), "2", 3);
     const std::string toml = update.to_toml();
     const std::vector<std::string_view> parts = util::split(toml, "\n");
 
@@ -28,7 +29,7 @@ TEST(PacketTest, ToToml)
 
 TEST(PacketTest, ToTomlPacket)
 {
-    message::Packet packet(1, 4, "heyy");
+    message::Packet packet(module::ModuleId(1), 4, "heyy");
     const std::string toml = packet.to_toml();
     const std::vector<std::string_view> parts = util::split(toml, "\n");
 
@@ -46,15 +47,15 @@ TEST(PacketTest, FromTo)
     const message::Init intro = message::Init::from_toml(toml).value();
 
     ASSERT_TRUE(intro.is_valid());
-    ASSERT_EQ(4, intro.id());
+    ASSERT_EQ(4, intro.id().raw());
     ASSERT_STREQ("[init]\nid = 4", intro.to_toml().c_str());
 }
 
 TEST(InitTest, ValidationAndCloning)
 {
-    message::Init init(42);
+    message::Init init(module::ModuleId(1));
     EXPECT_TRUE(init.is_valid());
-    EXPECT_EQ(42, init.id());
+    EXPECT_EQ(1, init.id().raw());
 
     auto cloned = init.clone();
     ASSERT_NE(cloned, nullptr);
@@ -72,16 +73,16 @@ TEST(InitTest, FromTomlInvalidInput)
 
 TEST(InitFinishTest, ToTomlAndFromTomlRoundTrip)
 {
-    message::InitFinish original(12);
+    message::InitFinish original(module::ModuleId(12));
     EXPECT_TRUE(original.is_valid());
-    EXPECT_EQ(12, original.id());
+    EXPECT_EQ(12, original.id().raw());
 
     std::string toml = original.to_toml();
     EXPECT_STREQ("[init.finish]\nid = 12", toml.c_str());
 
     auto parsed = message::InitFinish::from_toml(toml);
     ASSERT_TRUE(parsed.has_value());
-    EXPECT_EQ(12, parsed->id());
+    EXPECT_EQ(12, parsed->id().raw());
 }
 
 TEST(InitFinishTest, FromTomlInvalidInput)
@@ -92,10 +93,10 @@ TEST(InitFinishTest, FromTomlInvalidInput)
 
 TEST(UpdateTest, ValidityCheck)
 {
-    message::Update valid_update(1, "sensor_temp", 25);
+    message::Update valid_update(module::ModuleId(1), "sensor_temp", 25);
     EXPECT_TRUE(valid_update.is_valid());
 
-    message::Update invalid_update(1, "", 25);
+    message::Update invalid_update(module::ModuleId(1), "", 25);
     EXPECT_FALSE(invalid_update.is_valid());
 }
 
@@ -110,7 +111,7 @@ value = 1
 
     auto parsed = message::Update::from_toml(toml);
     ASSERT_TRUE(parsed.has_value());
-    EXPECT_EQ(3, parsed->module());
+    EXPECT_EQ(3, parsed->module().raw());
     EXPECT_STREQ("LED", parsed->device().c_str());
     EXPECT_EQ(1, parsed->value());
 }
@@ -135,13 +136,13 @@ TEST(UpdateTest, FromTomlInvalidInput)
 
 TEST(UpdateRfidTest, ValidityAndSerialization)
 {
-    message::UpdateRfid valid(1, "UID_1234", "DATA_ABCD");
+    message::UpdateRfid valid(module::ModuleId(1), "UID_1234", "DATA_ABCD");
     EXPECT_TRUE(valid.is_valid());
 
-    message::UpdateRfid empty_uid(1, "", "DATA_ABCD");
+    message::UpdateRfid empty_uid(module::ModuleId(1), "", "DATA_ABCD");
     EXPECT_FALSE(empty_uid.is_valid());
 
-    message::UpdateRfid empty_data(1, "UID_1234", "");
+    message::UpdateRfid empty_data(module::ModuleId(1), "UID_1234", "");
     EXPECT_FALSE(empty_data.is_valid());
 
     std::string toml = valid.to_toml();
@@ -153,11 +154,11 @@ TEST(UpdateRfidTest, ValidityAndSerialization)
 TEST(PacketTest, Validity)
 {
     // Content length matches length property
-    message::Packet valid_packet(1, 5, "hello");
+    message::Packet valid_packet(module::ModuleId(1), 5, "hello");
     EXPECT_TRUE(valid_packet.is_valid());
 
     // Content length mismatch
-    message::Packet invalid_packet(1, 10, "hello");
+    message::Packet invalid_packet(module::ModuleId(1), 10, "hello");
     EXPECT_FALSE(invalid_packet.is_valid());
 }
 
@@ -172,7 +173,7 @@ data = "test"
 
     auto parsed = message::Packet::from_toml(toml);
     ASSERT_TRUE(parsed.has_value());
-    EXPECT_EQ(2, parsed->module());
+    EXPECT_EQ(2, parsed->module().raw());
     EXPECT_TRUE(parsed->is_valid());
 }
 
@@ -190,7 +191,7 @@ TEST(PacketTest, FromTomlInvalid)
 
 TEST(TubScheduleTest, ToToml)
 {
-    message::TubSchedule schedule(1, 2, 3, true, false);
+    message::TubSchedule schedule(1, module::ModuleId(2), module::ModuleId(3), true, false);
     EXPECT_TRUE(schedule.is_valid());
 
     std::string toml = schedule.to_toml();
@@ -202,7 +203,7 @@ TEST(TubScheduleTest, ToToml)
 
 TEST(PlaneArrivalTest, ToToml)
 {
-    message::PlaneArrival plane(5, 1, 120);
+    message::PlaneArrival plane(5, module::ModuleId(1), 120);
     EXPECT_TRUE(plane.is_valid());
 
     std::string toml = plane.to_toml();
@@ -212,7 +213,7 @@ TEST(PlaneArrivalTest, ToToml)
 
 TEST(PlaneDepartureTest, ToToml)
 {
-    message::PlaneDeparture plane(5, 1);
+    message::PlaneDeparture plane(5, module::ModuleId(1));
     EXPECT_TRUE(plane.is_valid());
 
     std::string toml = plane.to_toml();
