@@ -65,7 +65,7 @@ namespace tub
             if (location_progress_ > 1)
             {
                 const module::ModuleId old_module = module_;
-                module::ModuleId new_module;
+                std::optional<module::ModuleId> new_module;
                 switch (location_)
                 {
                 case ModuleLocation::MIDDLE:
@@ -79,7 +79,10 @@ namespace tub
                     break;
                 }
 
-                const settings::ModuleSettings new_settings = settings::get_module_settings(new_module);
+                if (!new_module)
+                    return;
+
+                const settings::ModuleSettings new_settings = settings::get_module_settings(*new_module);
                 if (new_settings.middle == old_module)
                 {
                     location_ = ModuleLocation::MIDDLE;
@@ -95,11 +98,11 @@ namespace tub
                 else
                 {
                     stop();
-                    throw std::invalid_argument("Module " + std::to_string(old_module.raw()) + " and " + std::to_string(new_module.raw()) + " are not connected in settings.toml");
+                    throw std::invalid_argument("Module " + std::to_string(old_module.raw()) + " and " + std::to_string(new_module->raw()) + " are not connected in settings.toml");
                 }
 
                 location_progress_ = 1;
-                module_ = new_module;
+                module_ = *new_module;
             }
             else if (location_progress_ < 0)
             {

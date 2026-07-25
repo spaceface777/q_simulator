@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <filesystem>
+#include <optional>
 
 #include "defs.h"
 #include "module/types.h"
@@ -13,8 +14,8 @@ namespace settings
 
     enum class ModuleAngle : uint16_t
     {
-        NORMAL = 0, // T shape
-        ROTATED_90 = 90, // ┤ shape
+        NORMAL = 0,        // T shape
+        ROTATED_90 = 90,   // ┤ shape
         UPSIDE_DOWN = 180, // ┴ shape
         ROTATED_270 = 270, // ├ shape
     };
@@ -22,9 +23,9 @@ namespace settings
     struct ModuleSettings
     {
         bool active;
-        module::ModuleId left;
-        module::ModuleId middle;
-        module::ModuleId right;
+        std::optional<module::ModuleId> left;
+        std::optional<module::ModuleId> middle;
+        std::optional<module::ModuleId> right;
         ModuleAngle angle;
         uint8_t x;
         uint8_t y;

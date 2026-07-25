@@ -83,10 +83,20 @@ namespace settings
                 claimed_ports.insert(location_key);
             };
 
-            check_connection(src.left.raw(), "left");
-            check_connection(src.right.raw(), "right");
-            check_connection(src.middle.raw(), "middle");
+            if (src.left)
+                check_connection(src.left->raw(), "left");
+            if (src.right)
+                check_connection(src.right->raw(), "right");
+            if (src.middle)
+                check_connection(src.middle->raw(), "middle");
         }
+    }
+
+    static std::optional<module::ModuleId> parse_neighbor(int64_t id)
+    {
+        if (id == 0)
+            return {};
+        return module::ModuleId(id);
     }
 
     void parse_settings(fs::path settings, fs::path layout)
@@ -158,9 +168,9 @@ namespace settings
                 util::require(neighbors != nullptr && neighbors->is_array(), "Attribute 'neighbors' not found for module " + std::to_string(id));
                 util::require(neighbors->size() == 3, "Invalid value for attribute 'neighbors' of module " + std::to_string(id));
 
-                module_settings[id].left = module::ModuleId(static_cast<uint8_t>(neighbors->get(0)->value_exact<int64_t>().value()));
-                module_settings[id].middle = module::ModuleId(static_cast<uint8_t>(neighbors->get(1)->value_exact<int64_t>().value()));
-                module_settings[id].right = module::ModuleId(static_cast<uint8_t>(neighbors->get(2)->value_exact<int64_t>().value()));
+                module_settings[id].left = parse_neighbor(neighbors->get(0)->value_exact<int64_t>().value());
+                module_settings[id].middle = parse_neighbor(neighbors->get(1)->value_exact<int64_t>().value());
+                module_settings[id].right = parse_neighbor(neighbors->get(2)->value_exact<int64_t>().value());
             }
         }
 

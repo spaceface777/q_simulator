@@ -74,8 +74,8 @@ TEST_F(SettingsTest, GetNonExistentSettingThrows)
 
 TEST_F(SettingsTest, GetModuleSettingsBounds)
 {
-    EXPECT_THROW(settings::get_module_settings(module::ModuleId(0)), std::invalid_argument);
-    EXPECT_THROW(settings::get_module_settings(module::ModuleId(MAX_MODULES)), std::invalid_argument);
+    EXPECT_THROW(settings::get_module_settings(module::ModuleId(0)), std::out_of_range);
+    EXPECT_THROW(settings::get_module_settings(module::ModuleId(MAX_MODULES)), std::out_of_range);
 }
 
 TEST_F(SettingsTest, ParseValidSettings)
@@ -108,18 +108,18 @@ angle = 90
 
     settings::ModuleSettings mod1 = settings::get_module_settings(module::ModuleId(1));
     EXPECT_TRUE(mod1.active);
-    EXPECT_EQ(2, mod1.left.raw());
-    EXPECT_EQ(0, mod1.middle.raw());
-    EXPECT_EQ(0, mod1.right.raw());
+    EXPECT_EQ(2, mod1.left->raw());
+    EXPECT_EQ(0, mod1.middle->raw());
+    EXPECT_EQ(0, mod1.right->raw());
     EXPECT_EQ(settings::ModuleAngle::UPSIDE_DOWN, mod1.angle);
     EXPECT_EQ(2, mod1.x);
     EXPECT_EQ(2, mod1.y);
 
     settings::ModuleSettings mod2 = settings::get_module_settings(module::ModuleId(2));
     EXPECT_FALSE(mod2.active);
-    EXPECT_EQ(0, mod2.left.raw());
-    EXPECT_EQ(0, mod2.middle.raw());
-    EXPECT_EQ(1, mod2.right.raw());
+    EXPECT_EQ(0, mod2.left->raw());
+    EXPECT_EQ(0, mod2.middle->raw());
+    EXPECT_EQ(1, mod2.right->raw());
     EXPECT_EQ(settings::ModuleAngle::ROTATED_90, mod2.angle);
     EXPECT_EQ(1, mod2.x);
     EXPECT_EQ(1, mod2.y);
@@ -183,7 +183,7 @@ active = true
 angle = 400
 )");
 
-    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::out_of_range);
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidModuleBottom)
@@ -196,7 +196,7 @@ pos = [0, 0]
 angle = 0
 )");
 
-    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::out_of_range);
 }
 
 TEST_F(SettingsTest, ParseSettingsOneWayConnectionThrows)
