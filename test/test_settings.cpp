@@ -26,6 +26,13 @@ protected:
 
         std::ofstream outfile(temp_router_path);
         outfile << "dummy content";
+
+        write_settings("router_path = \"" + temp_router_path.string() + "\"\n" +
+                       R"(
+simulation_speed = 1.0
+scale = 1.0
+)");
+        write_layout("");
     }
 
     void TearDown() override
@@ -78,6 +85,7 @@ TEST_F(SettingsTest, ParseValidSettings)
 simulation_speed = 1.5
 scale = 2.0
 )");
+
     write_layout(R"(
 [module.1]
 active = true
@@ -121,12 +129,6 @@ angle = 90
 
 TEST_F(SettingsTest, ParseSettingsResetsPreviousModuleState)
 {
-    write_settings("router_path = \"" + temp_router_path.string() + "\"\n" +
-                   R"(
-simulation_speed = 1.5
-scale = 2.0
-)");
-
     write_layout(R"(
 [module.1]
 active = true
@@ -138,11 +140,6 @@ angle = 0
     EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
     EXPECT_EQ(1, settings::get_modules_active());
 
-    write_settings("router_path = \"" + temp_router_path.string() + "\"\n" +
-                   R"(
-simulation_speed = 1.0
-scale = 1.0
-)");
     write_layout("");
 
     EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
@@ -151,6 +148,8 @@ scale = 1.0
 
 TEST_F(SettingsTest, ParseSettingsMissingFile)
 {
+    TearDown();
+
     EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
@@ -189,7 +188,7 @@ angle = 400
 
 TEST_F(SettingsTest, ParseSettingsInvalidModuleBottom)
 {
-    write_settings(R"(
+    write_layout(R"(
 [module.1]
 active = true
 neighbors = [0, 25, 0]
@@ -202,11 +201,7 @@ angle = 0
 
 TEST_F(SettingsTest, ParseSettingsOneWayConnectionThrows)
 {
-    std::string invalid_toml =
-        "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(simulation_speed = 1.0
-scale = 1.0
-
+    write_layout(R"(
 [module.1]
 active = true
 neighbors = [0, 0, 2]
@@ -218,44 +213,32 @@ active = true
 neighbors = [0, 0, 0]
 pos = [1, 4]
 angle = 0
-)";
+)");
 
-    write_settings(invalid_toml);
     EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsDuplicatePortConnectionThrows)
 {
-    std::string invalid_toml =
-        "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(simulation_speed = 1.0
-scale = 1.0
-
-[module.1]
+    write_layout(R"(
+        [module.1]
 active = true
-left = 0
-right = 2
-bottom = 0
+neighbors = [0, 0, 2]
 pos = [0, 4]
 angle = 0
 
 [module.2]
 active = true
-left = 1
-right = 0
-bottom = 0
+neighbors = [1, 0, 0]
 pos = [1, 4]
 angle = 0
 
 [module.3]
 active = true
-left = 2
-right = 0
-bottom = 0
+neighbors = [2, 0, 0]
 pos = [2, 4]
 angle = 0
-)";
+)");
 
-    write_settings(invalid_toml);
     EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }

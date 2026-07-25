@@ -25,6 +25,15 @@ FetchContent_MakeAvailable(tomlplusplus)
 
 find_package(SDL2 REQUIRED)
 
+# === Test coverage ===
+
+option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
+
+if(ENABLE_COVERAGE)
+    add_compile_options(-O0 -g --coverage)
+    add_link_options(--coverage)
+endif()
+
 # === Builds ===
 
 add_library(core STATIC
