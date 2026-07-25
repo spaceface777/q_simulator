@@ -7,7 +7,7 @@
 #include <list>
 
 #include "../src/event/events.h"
-#include <toml++/toml.h>
+#include <toml++/toml.hpp>
 #include "../src/synchronization/virtual_clock.h"
 
 namespace fs = std::filesystem;

@@ -27,8 +27,7 @@ find_package(SDL2 REQUIRED)
 
 # === Builds ===
 
-add_executable(simulation 
-    src/main.cpp 
+add_library(core STATIC
     src/tcp/server.cpp 
     src/tcp/client.cpp 
     src/util.cpp 
@@ -38,18 +37,22 @@ add_executable(simulation
     src/visualization/visualization.cpp
     src/visualization/buttons.cpp
     src/settings.cpp
-    src/event/events.cpp)
+    src/event/events.cpp
+)
+
+target_link_libraries(core PUBLIC
+    pthread 
+    tomlplusplus::tomlplusplus
+    SDL2::SDL2
+)
+
+add_executable(simulation src/main.cpp)
+target_link_libraries(simulation PRIVATE core)
 
 target_compile_definitions(simulation PRIVATE
     APP_VERSION="${PROJECT_VERSION}"
     APP_OS="${CMAKE_SYSTEM_NAME}"
     APP_ARCH="${CMAKE_SYSTEM_PROCESSOR}"
-)
-
-target_link_libraries(simulation PRIVATE
-    pthread 
-    tomlplusplus::tomlplusplus
-    SDL2::SDL2
 )
 
 configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)
