@@ -912,7 +912,6 @@ namespace visualization
         belt_offset_ += (dt.count() / 16.0) * BELT_FACTOR;
 
         SDL_RenderPresent(renderer_);
-        SDL_Delay(FPS_TARGET / 1000);
     }
 
     bool is_running()

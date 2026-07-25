@@ -28,6 +28,11 @@
 #include "settings.h"
 
 /**
+ * Target FPS.
+ */
+static constexpr double FPS_TARGET = 60;
+
+/**
  * The amount of seconds before a module connection times out.
  */
 static constexpr std::chrono::seconds MODULE_CONNECT_TIMEOUT = std::chrono::seconds(3);
@@ -60,6 +65,9 @@ constexpr std::string_view get_target_arch()
 #endif
 }
 
+static bool using_visualization = true;
+static bool is_running = true;
+
 /**
  * Handles closing interrupts.
  * @param code The interrupt.
@@ -71,9 +79,12 @@ static void handle_close(int code)
     server::stop();
     server::join();
     client::stop();
-    visualization::stop();
+    if (using_visualization)
+        visualization::stop();
 
-    _exit(code);
+    is_running = false;
+
+    ::_exit(code);
 }
 
 /**
@@ -97,8 +108,9 @@ static void init_modules()
             {
                 tub::stop();
                 server::stop();
-                visualization::stop();
                 client::stop();
+                if (using_visualization)
+                    visualization::stop();
 
                 throw std::runtime_error("Failed to establish connection with module " + std::to_string(id) + " after " + std::to_string(MODULE_CONNECT_TIMEOUT.count()) + " seconds");
             }
@@ -192,10 +204,28 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         const std::string_view arg(argv[i]);
         if (arg == "-v" || arg == "--version")
         {
-            std::cout << "Quercus Airport Simulation version " << APP_VERSION 
-            << " (" << get_target_os() << " " << get_target_arch() << ")" << std::endl;
+            std::cout << "Quercus Airport Simulation version " << APP_VERSION
+                      << " (" << get_target_os() << " " << get_target_arch() << ")" << std::endl;
             return EXIT_SUCCESS;
         }
+        else if (arg == "-g" || arg == "--no-gui")
+        {
+            using_visualization = false;
+            continue;
+        }
+        else if (arg != "-h" || arg != "--help")
+        {
+            std::cout << "Invalid option: " << arg << std::endl;
+        }
+
+        std::cout << "Use: ./simulation [options]" << std::endl;
+        std::cout << "Options:" << std::endl;
+        std::cout << "  -h, --help              Prints all options" << std::endl;
+        std::cout << "  -g, --no-gui            Disables GUI" << std::endl;
+        std::cout << "  -v, --version           Prints version" << std::endl;
+        std::cout << std::endl;
+        std::cout << "Report bugs and provide suggestions at <https://gitlab.tue.nl/2irr70-capstone-quercus-airport/simulation/-/work_items>" << std::endl;
+        return EXIT_SUCCESS;
     }
 
     ::signal(SIGTERM, handle_close);
@@ -213,24 +243,36 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
     virtual_clock::VirtualClock vclock = virtual_clock::VirtualClock();
     vclock.set_simulation_speed(settings::get_setting<double>("simulation_speed"));
 
-    visualization::init();
-    while (visualization::is_running())
+    if (using_visualization)
+        visualization::init();
+    while (is_running)
     {
         try
         {
             events::fire_events(vclock, events);
-            visualization::update(vclock);
+            if (using_visualization)
+                visualization::update(vclock);
             vclock.tick();
 
             server::check();
             tub::check();
             client::check();
+
+            is_running = visualization::is_running();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(FPS_TARGET / 1000.0)));
         }
         catch (std::exception &ex)
         {
             std::cerr << "Shutting down due to failed check: " << ex.what() << std::endl;
 
-            handle_close(-1);
+            tub::stop();
+            tub::join();
+            server::stop();
+            server::join();
+            client::stop();
+            if (using_visualization)
+                visualization::stop();
             return EXIT_FAILURE;
         }
     }
@@ -240,7 +282,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
     server::stop();
     server::join();
     client::stop();
-    visualization::stop();
+    if (using_visualization)
+        visualization::stop();
 
     return EXIT_SUCCESS;
 }

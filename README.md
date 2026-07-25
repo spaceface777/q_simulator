@@ -28,6 +28,7 @@ simulation/
 ├── .gitignore               # Ignored Git files
 ├── .gitlab-ci.yml           # GitLab CI runner details
 ├── events_example.toml      # Example event schedule input
+├── layout_example.toml      # Example layout
 ├── README.md                # Project overview
 ├── settings_example.toml    # Example simulator configuration input
 └── CMakeLists.txt           # Main build script for the application and tests
@@ -77,7 +78,7 @@ genhtml coverage_filtered.info --output-directory coverage_html
 cd ..
 ```
 
-Last measured test coverage: 52.1% of lines and 56.5% of functions on 25-06-2026.
+Last measured test coverage: 52.6% of lines and 56.5% of functions on 25-06-2026.
 
 ## Support
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
