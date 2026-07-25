@@ -284,8 +284,6 @@ namespace server
 
             std::this_thread::sleep_for(TIMEOUT);
         }
-
-        close(socket.fd());
     }
 
     void run()

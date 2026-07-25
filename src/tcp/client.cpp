@@ -95,8 +95,6 @@ namespace client
                     break;
                 }
             }
-
-            close(fd_);
         }
     }
 
