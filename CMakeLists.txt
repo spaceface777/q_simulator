@@ -64,12 +64,19 @@ target_compile_definitions(simulation PRIVATE
     APP_ARCH="${CMAKE_SYSTEM_PROCESSOR}"
 )
 
-configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/events_example.toml ${CMAKE_BINARY_DIR}/events_example.toml COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/layout.toml ${CMAKE_BINARY_DIR}/layout.toml COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/layout_example.toml ${CMAKE_BINARY_DIR}/layout_example.toml COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/settings.toml ${CMAKE_BINARY_DIR}/settings.toml COPYONLY)
 configure_file(${CMAKE_SOURCE_DIR}/settings_example.toml ${CMAKE_BINARY_DIR}/settings_example.toml COPYONLY)
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/events.toml)
+    configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)
+endif()
+if(EXISTS ${CMAKE_SOURCE_DIR}/layout.toml)
+    configure_file(${CMAKE_SOURCE_DIR}/layout.toml ${CMAKE_BINARY_DIR}/layout.toml COPYONLY)
+endif()
+if(EXISTS ${CMAKE_SOURCE_DIR}/settings.toml)
+    configure_file(${CMAKE_SOURCE_DIR}/settings.toml ${CMAKE_BINARY_DIR}/settings.toml COPYONLY)
+endif()
 
 # === Testing ===
 

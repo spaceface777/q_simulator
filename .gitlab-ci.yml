@@ -8,8 +8,9 @@ before_script:
 
 build:
   script:
-    - mv settings_example.toml settings.toml
-    - mv events_example.toml events.toml
+    - cp settings_example.toml settings.toml
+    - cp layout_example.toml layout.toml
+    - cp events_example.toml events.toml
     - cmake -B build -S . -G Ninja
     - cmake --build build -j
     - ./build/tests
