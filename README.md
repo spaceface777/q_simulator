@@ -64,6 +64,21 @@ To run the tests, change the target to `tests` when using the C/C++ VSCode exten
 cmake --build build -j && ./build/tests
 ```
 
+To calculate test coverage, you must first install lcov. Then, run the following commands and open the webpage at `build/coverage_html/index.html`:
+
+```sh
+cmake -B build -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --target tests
+./build/tests
+cd build
+lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,gcov
+lcov --remove coverage.info '/usr/*' '*/_deps/*' '*/test/*' --output-file coverage_filtered.info
+genhtml coverage_filtered.info --output-directory coverage_html
+cd ..
+```
+
+Last measured test coverage: 52.1% of lines and 56.5% of functions on 25-06-2026.
+
 ## Support
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
 
