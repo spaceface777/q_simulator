@@ -2,7 +2,9 @@ image: ubuntu:24.04
 
 before_script:
   - apt-get update
-  - apt-get install -y git cmake build-essential libsdl2-dev
+  - apt-get install -y --no-install-recommends git cmake build-essential libsdl2-dev
+  - apt-get clean
+  - rm -rf /var/lib/apt/lists/*
 
 build:
   script:
