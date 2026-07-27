@@ -9,7 +9,8 @@ add_executable(tests
     synchronization/test_vclock.cpp 
     event/test_events.cpp
     module/test_types.cpp
-    tcp/test_socket.cpp)
+    tcp/test_socket.cpp
+    tub/test_tub.cpp)
 
 target_link_libraries(tests PRIVATE 
     gtest gtest_main

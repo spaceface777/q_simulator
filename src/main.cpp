@@ -93,9 +93,9 @@ static void init_modules()
 {
     std::cout << "Initializing modules" << std::endl;
 
-    for (std::size_t id = 1; id < MAX_MODULES; id++)
+    for (uint8_t id = 1; id < MAX_MODULES; id++)
     {
-        if (!settings::get_module_settings(module::ModuleId(id)).active)
+        if (!settings::get_module_settings(module::ModuleId{id}).active)
             continue;
 
         std::unique_ptr<module::Module> module = std::make_unique<module::Module>(id);
@@ -148,9 +148,9 @@ static void init_layout()
     bool first = true;
 
     std::size_t size = 0;
-    for (std::size_t id = 1; id < MAX_MODULES; id++)
+    for (uint8_t id = 1; id < MAX_MODULES; id++)
     {
-        const auto settings = settings::get_module_settings(module::ModuleId(id));
+        const auto settings = settings::get_module_settings(module::ModuleId{id});
         if (!settings.active)
             continue;
 

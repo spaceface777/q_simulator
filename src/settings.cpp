@@ -96,7 +96,7 @@ namespace settings
     {
         if (id == 0)
             return {};
-        return module::ModuleId(id);
+        return module::ModuleId{static_cast<uint8_t>(id)};
     }
 
     void parse_settings(fs::path settings, fs::path layout)

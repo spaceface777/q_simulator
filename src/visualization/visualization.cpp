@@ -855,9 +855,9 @@ namespace visualization
         SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
         SDL_RenderClear(renderer_);
 
-        for (int i = 1; i < MAX_MODULES; ++i)
+        for (uint8_t i = 1; i < MAX_MODULES; ++i)
         {
-            const auto mid = module::ModuleId(i);
+            const auto mid = module::ModuleId{i};
 
             if (!settings::get_module_settings(mid).active)
                 continue;

@@ -66,19 +66,19 @@ namespace module
 	{
 		if (message.device() == "big belt")
 		{
-			big_speed_ = BeltSpeed(message.value());
+			big_speed_ = BeltSpeed{message.value()};
 		}
 		else if (message.device() == "small belt")
 		{
-			small_speed_ = BeltSpeed(message.value());
+			small_speed_ = BeltSpeed{message.value()};
 		}
 		else if (message.device() == "servo")
 		{
-			servo_degrees_ = ServoAngle(message.value());
+			servo_degrees_ = ServoAngle{message.value()};
 		}
 		else if (message.device() == "led")
 		{
-			led_color_ = LedColor(message.value());
+			led_color_ = LedColor{static_cast<uint32_t>(message.value())};
 		}
 	}
 

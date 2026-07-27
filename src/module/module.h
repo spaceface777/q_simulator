@@ -34,7 +34,7 @@ namespace module
     public:
         Module(uint8_t id)
         {
-            id_ = ModuleId(id);
+            id_ = ModuleId{id};
         }
 
         /**

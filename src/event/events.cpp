@@ -146,14 +146,14 @@ namespace events
                     toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
 
                     // Parse origin
-                    events::TubData origin{LocationType::MODULE, module::ModuleId()};
+                    events::TubData origin{LocationType::MODULE, module::ModuleId{}};
                     if (event_tbl.contains("origin") && event_tbl["origin"].is_array())
                     {
                         auto &origin_arr = *event_tbl["origin"].as_array();
                         if (origin_arr.size() >= 2)
                         {
                             std::string location_type = origin_arr[0].value_or("");
-                            int location_id = origin_arr[1].value_or(-1);
+                            uint8_t location_id = origin_arr[1].value_or(-1);
 
                             if (location_type == "module")
                             {
@@ -167,19 +167,19 @@ namespace events
                             {
                                 throw std::invalid_argument("Invalid origin location type: " + location_type);
                             }
-                            origin.id = module::ModuleId(location_id);
+                            origin.id = module::ModuleId{location_id};
                         }
                     }
 
                     // Parse destination
-                    TubData destination{LocationType::MODULE, module::ModuleId()};
+                    TubData destination{LocationType::MODULE, module::ModuleId{}};
                     if (event_tbl.contains("destination") && event_tbl["destination"].is_array())
                     {
                         auto &dest_arr = *event_tbl["destination"].as_array();
                         if (dest_arr.size() == 2)
                         {
                             std::string location_type = dest_arr[0].value_or("");
-                            int location_id = dest_arr[1].value_or(-1);
+                            uint8_t location_id = dest_arr[1].value_or(-1);
 
                             if (location_type == "module")
                             {
@@ -193,7 +193,7 @@ namespace events
                             {
                                 throw std::invalid_argument("Invalid destination location type: " + location_type);
                             }
-                            destination.id = module::ModuleId(location_id);
+                            destination.id = module::ModuleId{location_id};
                         }
                     }
 
@@ -232,10 +232,10 @@ namespace events
                     }
 
                     auto rfid = parse_rfid(rfid_arr);
-                    rfid[0] = {(int8_t)module, 0, 0, 0};
-                    rfid[1] = {(int8_t)(leaves_in & 0xFF), (int8_t)((leaves_in >> 8) & 0xFF), (int8_t)((leaves_in >> 16) & 0xFF), (int8_t)((leaves_in >> 24) & 0xFF)};
+                    rfid[0] = {static_cast<int8_t>(module), 0, 0, 0};
+                    rfid[1] = {static_cast<int8_t>(leaves_in & 0xFF), static_cast<int8_t>((leaves_in >> 8) & 0xFF), static_cast<int8_t>((leaves_in >> 16) & 0xFF), static_cast<int8_t>((leaves_in >> 24) & 0xFF)};
 
-                    events.push_back(std::make_unique<PlaneEvent>(time, id, module::ModuleId(module), leaves_in, rfid));
+                    events.push_back(std::make_unique<PlaneEvent>(time, id, module::ModuleId{static_cast<uint8_t>(module)}, leaves_in, rfid));
                 }
             }
         }

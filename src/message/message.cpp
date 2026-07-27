@@ -145,7 +145,7 @@ namespace message
             return {};
         }
 
-        return Init(module::ModuleId(id));
+        return Init(module::ModuleId{static_cast<uint8_t>(id)});
     }
 
     bool InitFinish::is_valid() const noexcept
@@ -213,7 +213,7 @@ namespace message
             return {};
         }
 
-        return InitFinish(module::ModuleId(id));
+        return InitFinish(module::ModuleId{static_cast<uint8_t>(id)});
     }
 
     bool Update::is_valid() const noexcept
@@ -307,7 +307,7 @@ namespace message
             return {};
         }
 
-        return Update(module::ModuleId(module), device, value);
+        return Update(module::ModuleId{static_cast<uint8_t>(module)}, device, value);
     }
 
     bool UpdateRfid::is_valid() const noexcept
@@ -451,7 +451,7 @@ namespace message
             return {};
         }
 
-        return Packet(module::ModuleId(module), length, data);
+        return Packet(module::ModuleId{static_cast<uint8_t>(module)}, length, data);
     }
 
     bool TubSchedule::is_valid() const noexcept

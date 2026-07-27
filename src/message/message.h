@@ -101,7 +101,7 @@ namespace message
     private:
         module::ModuleId module_;
         std::string device_;
-        int value_;
+        double value_;
 
     public:
         Update(module::ModuleId module, std::string device, int value)
@@ -130,7 +130,7 @@ namespace message
         /**
          * @return The updated value.
          */
-        int value() const noexcept
+        double value() const noexcept
         {
             return value_;
         }

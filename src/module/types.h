@@ -42,19 +42,19 @@ namespace module
     class ServoAngle
     {
     private:
-        float value_ = 0;
+        double value_ = 0;
 
     public:
         constexpr ServoAngle() noexcept = default;
 
-        explicit constexpr ServoAngle(float angle)
+        explicit constexpr ServoAngle(double angle)
         {
             util::require_range(angle >= 0 && angle <= 180, "Servo angle must be between 0 and 180");
 
             value_ = angle;
         }
 
-        [[nodiscard]] constexpr float raw() const noexcept
+        [[nodiscard]] constexpr double raw() const noexcept
         {
             return value_;
         }
