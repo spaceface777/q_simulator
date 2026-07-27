@@ -272,9 +272,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
     while (is_running)
     {
         if (vclock.get_virtual_time() > timeout)
-        {
             break;
-        }
 
         try
         {
