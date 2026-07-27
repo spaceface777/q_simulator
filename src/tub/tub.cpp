@@ -57,7 +57,7 @@ namespace tub
             if (!module_opt)
             {
                 stop();
-                throw std::runtime_error("Tub " + std::to_string(id_) + " is owned by invalid module " + std::to_string(module_.raw()));
+                throw std::runtime_error("Tub " + std::to_string(id_.raw()) + " is owned by invalid module " + std::to_string(module_.raw()));
             }
             const std::shared_ptr<module::Module> module = module_opt.value();
             const settings::ModuleSettings settings = settings::get_module_settings(module_);
@@ -101,7 +101,7 @@ namespace tub
                     throw std::invalid_argument("Module " + std::to_string(old_module.raw()) + " and " + std::to_string(new_module->raw()) + " are not connected in settings.toml");
                 }
 
-                location_progress_ = 1;
+                location_progress_ = LocationProgress{1.0};
                 module_ = *new_module;
             }
             else if (location_progress_ < 0)
@@ -109,7 +109,7 @@ namespace tub
                 switch (location_)
                 {
                 case ModuleLocation::MIDDLE:
-                    if (module->servo_angle().raw() > 90)
+                    if (module->servo_angle() > 90)
                     {
                         location_ = ModuleLocation::RIGHT;
                     }
@@ -119,7 +119,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::LEFT:
-                    if (module->servo_angle().raw() < 10 || module->servo_angle().raw() > 170)
+                    if (module->servo_angle() < 10 || module->servo_angle() > 170)
                     {
                         location_ = ModuleLocation::RIGHT;
                     }
@@ -129,7 +129,7 @@ namespace tub
                     }
                     break;
                 case ModuleLocation::RIGHT:
-                    if (module->servo_angle().raw() > 170 || module->servo_angle().raw() < 10)
+                    if (module->servo_angle() > 170 || module->servo_angle() < 10)
                     {
                         location_ = ModuleLocation::LEFT;
                     }
@@ -139,7 +139,7 @@ namespace tub
                     }
                     break;
                 }
-                location_progress_ = 0;
+                location_progress_ = LocationProgress{0};
             }
             else
             {
@@ -207,7 +207,9 @@ namespace tub
 
     void Tub::run()
     {
-        util::require(!stopped_, "Cannot run the same tub twice");
+        util::require(stopped_, "Cannot run the same tub twice");
+
+        stopped_ = false;
 
         tub_future_ = std::async(std::launch::async, [this]
                                  { run_(); });
@@ -240,39 +242,33 @@ namespace tub
         }
     }
 
+    static std::map<uint8_t, std::shared_ptr<tub::Tub>> map;
+
     void stop()
     {
         for (auto &tub : get_tubs())
         {
             tub->stop();
-        }
-    }
-
-    void join()
-    {
-        for (auto &tub : get_tubs())
-        {
             tub->join();
         }
+        map.clear();
     }
-
-    static std::map<uint8_t, std::shared_ptr<tub::Tub>> map;
 
     void add_tub(std::unique_ptr<tub::Tub> ptr)
     {
-        if (map.count(ptr->id()))
+        if (map.count(ptr->id().raw()))
         {
             stop();
             throw std::invalid_argument("Attempted to double register tubs");
         }
-        map[ptr->id()] = std::move(ptr);
+        map[ptr->id().raw()] = std::move(ptr);
     }
 
-    std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id)
+    std::optional<std::shared_ptr<tub::Tub>> get_tub(TubId id)
     {
-        if (map.count(id))
+        if (map.count(id.raw()))
         {
-            return map.at(id);
+            return map.at(id.raw());
         }
         return {};
     }

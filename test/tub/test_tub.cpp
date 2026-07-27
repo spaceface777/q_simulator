@@ -13,13 +13,11 @@ protected:
     void SetUp() override
     {
         tub::stop();
-        tub::join();
     }
 
     void TearDown() override
     {
         tub::stop();
-        tub::join();
     }
 
     // Helper to generate empty/default RFID content data
@@ -36,55 +34,48 @@ protected:
 
 TEST_F(TubTest, InitializationAndGetters)
 {
-    uint8_t tub_id = 42;
+    tub::TubId tub_id{42};
     module::ModuleId initial_module{1};
     module::ModuleId target_module{5};
     ModuleLocation target_location = ModuleLocation::LEFT;
-    auto rfid_data = create_default_rfid();
 
-    tub::Tub tub(tub_id, initial_module, target_module, target_location, rfid_data);
+    tub::Tub tub(tub_id, initial_module, target_module, target_location, create_default_rfid());
 
     EXPECT_EQ(tub.id(), tub_id);
     EXPECT_EQ(tub.module(), initial_module);
     EXPECT_EQ(tub.target_module(), target_module);
     EXPECT_EQ(tub.target_module_location(), target_location);
     EXPECT_EQ(tub.module_location(), ModuleLocation::MIDDLE);
-    EXPECT_DOUBLE_EQ(tub.module_location_progress(), 0.5);
+    EXPECT_DOUBLE_EQ(tub.module_location_progress().raw(), 0.5);
 }
 
 TEST_F(TubTest, AddAndGetTub)
 {
-    uint8_t tub_id = 10;
-    auto rfid_data = create_default_rfid();
+    tub::TubId tub_id{10};
 
-    auto tub_ptr = std::make_unique<tub::Tub>(tub_id, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::RIGHT, rfid_data);
+    auto tub_ptr = std::make_unique<tub::Tub>(tub_id, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::RIGHT, create_default_rfid());
     add_tub(std::move(tub_ptr));
 
-    auto fetched = tub::get_tub(tub_id);
+    const auto fetched = tub::get_tub(tub_id);
     ASSERT_TRUE(fetched.has_value());
     EXPECT_EQ((*fetched)->id(), tub_id);
 
-    auto non_existent = tub::get_tub(99);
+    const auto non_existent = tub::get_tub(tub::TubId{99});
     EXPECT_FALSE(non_existent.has_value());
 }
 
 TEST_F(TubTest, DuplicateRegistrationThrows)
 {
-    uint8_t tub_id = 7;
-    auto rfid_1 = create_default_rfid();
-    auto rfid_2 = create_default_rfid();
+    tub::TubId tub_id{7};
 
-    add_tub(std::make_unique<tub::Tub>(tub_id, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::LEFT, rfid_1));
-
-    EXPECT_THROW({ add_tub(std::make_unique<tub::Tub>(tub_id, module::ModuleId{3}, module::ModuleId{4}, ModuleLocation::RIGHT, rfid_2)); }, std::invalid_argument);
+    add_tub(std::make_unique<tub::Tub>(tub_id, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::LEFT, create_default_rfid()));
+    EXPECT_THROW({ add_tub(std::make_unique<tub::Tub>(tub_id, module::ModuleId{3}, module::ModuleId{4}, ModuleLocation::RIGHT, create_default_rfid())); }, std::invalid_argument);
 }
 
 TEST_F(TubTest, GetAllTubs)
 {
-    auto rfid_data = create_default_rfid();
-
-    add_tub(std::make_unique<tub::Tub>(1, module::ModuleId{10}, module::ModuleId{20}, ModuleLocation::MIDDLE, rfid_data));
-    add_tub(std::make_unique<tub::Tub>(2, module::ModuleId{10}, module::ModuleId{20}, ModuleLocation::MIDDLE, rfid_data));
+    add_tub(std::make_unique<tub::Tub>(tub::TubId{1}, module::ModuleId{10}, module::ModuleId{20}, ModuleLocation::MIDDLE, create_default_rfid()));
+    add_tub(std::make_unique<tub::Tub>(tub::TubId{2}, module::ModuleId{10}, module::ModuleId{20}, ModuleLocation::MIDDLE, create_default_rfid()));
 
     std::vector<std::shared_ptr<tub::Tub>> tubs = tub::get_tubs();
     EXPECT_EQ(tubs.size(), 2);
@@ -92,35 +83,28 @@ TEST_F(TubTest, GetAllTubs)
 
 TEST_F(TubTest, DoubleRunThrowsException)
 {
-    auto rfid_data = create_default_rfid();
-    tub::Tub tub(1, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::MIDDLE, rfid_data);
+    tub::Tub tub(tub::TubId{1}, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::MIDDLE, create_default_rfid());
+    tub.run();
 
-    // Note: Calling run() directly will start run_() which accesses module singletons.
-    // Ensure module mocks/dependencies are configured in your system before calling run().
+    // cannot double run a tub
+    EXPECT_THROW(tub.run(), std::invalid_argument);
+
     tub.stop();
-    // Verify that attempting to run an already stopped/running tub triggers validation logic
-    EXPECT_THROW(tub.run(), std::runtime_error);
+    EXPECT_NO_THROW(tub.run());
 }
 
 TEST_F(TubTest, SafeDestructionWhileRunning)
 {
-    auto rfid_data = create_default_rfid();
-    {
-        tub::Tub tub(100, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::MIDDLE, rfid_data);
-        // Destructor should invoke stop() and join() without deadlocking or crashing
-    }
-    SUCCEED();
+    EXPECT_NO_THROW({
+        tub::Tub tub(tub::TubId{100}, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::MIDDLE, create_default_rfid());
+        // test stop()
+    });
 }
 
 TEST_F(TubTest, GlobalStopAndJoin)
 {
-    auto rfid_data = create_default_rfid();
+    add_tub(std::make_unique<tub::Tub>(tub::TubId{1}, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::MIDDLE, create_default_rfid()));
+    add_tub(std::make_unique<tub::Tub>(tub::TubId{2}, module::ModuleId{2}, module::ModuleId{3}, ModuleLocation::MIDDLE, create_default_rfid()));
 
-    add_tub(std::make_unique<tub::Tub>(1, module::ModuleId{1}, module::ModuleId{2}, ModuleLocation::MIDDLE, rfid_data));
-    add_tub(std::make_unique<tub::Tub>(2, module::ModuleId{2}, module::ModuleId{3}, ModuleLocation::MIDDLE, rfid_data));
-
-    // Global stop and join commands execution safety
     tub::stop();
-    tub::join();
-    SUCCEED();
 }

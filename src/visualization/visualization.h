@@ -27,7 +27,7 @@ namespace visualization
     /**
      * @return Whether the visualization is still running or whether it has been closed/finished.
      */
-    bool is_running();
+   [[nodiscard]] bool is_running();
 
     enum class GlyphId : uint8_t
     {

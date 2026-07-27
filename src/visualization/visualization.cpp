@@ -602,20 +602,20 @@ namespace visualization
                 switch (module_settings.angle)
                 {
                 case settings::ModuleAngle::NORMAL:
-                    rel_x = (1.0 - tub->module_location_progress()) * scale_within_module(90.0);
+                    rel_x = (1.0 - tub->module_location_progress().raw()) * scale_within_module(90.0);
                     rel_y = scale_within_module(90.0);
                     break;
                 case settings::ModuleAngle::ROTATED_90:
                     rel_x = scale_within_module(90.0);
-                    rel_y = (1.0 - tub->module_location_progress()) * scale_within_module(90.0);
+                    rel_y = (1.0 - tub->module_location_progress().raw()) * scale_within_module(90.0);
                     break;
                 case settings::ModuleAngle::UPSIDE_DOWN:
-                    rel_x = scale_within_module(90) + tub->module_location_progress() * scale_within_module(90.0);
+                    rel_x = scale_within_module(90) + tub->module_location_progress().raw() * scale_within_module(90.0);
                     rel_y = scale_within_module(90.0);
                     break;
                 case settings::ModuleAngle::ROTATED_270:
                     rel_x = scale_within_module(90.0);
-                    rel_y = scale_within_module(90) + tub->module_location_progress() * scale_within_module(90.0);
+                    rel_y = scale_within_module(90) + tub->module_location_progress().raw() * scale_within_module(90.0);
                     break;
 
                 default:
@@ -627,20 +627,20 @@ namespace visualization
                 switch (module_settings.angle)
                 {
                 case settings::ModuleAngle::NORMAL:
-                    rel_x = scale_within_module(90) + tub->module_location_progress() * scale_within_module(90.0);
+                    rel_x = scale_within_module(90) + tub->module_location_progress().raw() * scale_within_module(90.0);
                     rel_y = scale_within_module(90.0);
                     break;
                 case settings::ModuleAngle::ROTATED_90:
                     rel_x = scale_within_module(90.0);
-                    rel_y = scale_within_module(90) + tub->module_location_progress() * scale_within_module(90.0);
+                    rel_y = scale_within_module(90) + tub->module_location_progress().raw() * scale_within_module(90.0);
                     break;
                 case settings::ModuleAngle::UPSIDE_DOWN:
-                    rel_x = (1.0 - tub->module_location_progress()) * scale_within_module(90.0);
+                    rel_x = (1.0 - tub->module_location_progress().raw()) * scale_within_module(90.0);
                     rel_y = scale_within_module(90.0);
                     break;
                 case settings::ModuleAngle::ROTATED_270:
                     rel_x = scale_within_module(90.0);
-                    rel_y = (1.0 - tub->module_location_progress()) * scale_within_module(90.0);
+                    rel_y = (1.0 - tub->module_location_progress().raw()) * scale_within_module(90.0);
                     break;
 
                 default:
@@ -653,18 +653,18 @@ namespace visualization
                 {
                 case settings::ModuleAngle::NORMAL:
                     rel_x = scale_within_module(90.0);
-                    rel_y = scale_within_module(105.0) + tub->module_location_progress() * scale_within_module(75.0);
+                    rel_y = scale_within_module(105.0) + tub->module_location_progress().raw() * scale_within_module(75.0);
                     break;
                 case settings::ModuleAngle::ROTATED_90:
-                    rel_x = scale_within_module(75.0) - tub->module_location_progress() * scale_within_module(75.0);
+                    rel_x = scale_within_module(75.0) - tub->module_location_progress().raw() * scale_within_module(75.0);
                     rel_y = scale_within_module(90.0);
                     break;
                 case settings::ModuleAngle::UPSIDE_DOWN:
                     rel_x = scale_within_module(90.0);
-                    rel_y = scale_within_module(75.0) - tub->module_location_progress() * scale_within_module(75.0);
+                    rel_y = scale_within_module(75.0) - tub->module_location_progress().raw() * scale_within_module(75.0);
                     break;
                 case settings::ModuleAngle::ROTATED_270:
-                    rel_x = scale_within_module(105.0) + tub->module_location_progress() * scale_within_module(75.0);
+                    rel_x = scale_within_module(105.0) + tub->module_location_progress().raw() * scale_within_module(75.0);
                     rel_y = scale_within_module(90.0);
                     break;
 
@@ -690,9 +690,9 @@ namespace visualization
             }
 
             SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-            draw_number(renderer_, x - 4, y - 6, tub->id(), 2);
+            draw_number(renderer_, x - 4, y - 6, tub->id().raw(), 2);
             if (settings::get_setting<bool>("debug"))
-                draw_number(renderer_, x - 4, y + 5, tub->module_location_progress(), 1);
+                draw_number(renderer_, x - 4, y + 5, tub->module_location_progress().raw(), 1);
         }
     }
 

@@ -45,7 +45,7 @@ namespace settings
      * @throws if the setting is not found.
      */
     template <typename T>
-    T get_setting(std::string_view setting);
+    [[nodiscard]] T get_setting(std::string_view setting);
 
     /**
      * Sets the value of a setting.
@@ -59,7 +59,7 @@ namespace settings
     /**
      * @return The amount of active modules.
      */
-    std::size_t get_modules_active();
+    [[nodiscard]] std::size_t get_modules_active();
 
     /**
      * Gets the settings of a specific module.
@@ -67,7 +67,7 @@ namespace settings
      * @returns The values of the module.
      * @throws if the module is not found.
      */
-    ModuleSettings get_module_settings(module::ModuleId id);
+    [[nodiscard]] ModuleSettings get_module_settings(module::ModuleId id);
 
 }
 

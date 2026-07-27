@@ -32,7 +32,7 @@ namespace events
         /**
          * Returns the arrival time of the object.
          */
-        double time() const noexcept
+        [[nodiscard]] double time() const noexcept
         {
             return time_;
         }
@@ -40,7 +40,7 @@ namespace events
         /**
          * Returns the id of the object.
          */
-        unsigned int id() const noexcept
+        [[nodiscard]] unsigned int id() const noexcept
         {
             return id_;
         }

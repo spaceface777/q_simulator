@@ -69,7 +69,7 @@ TEST_F(SettingsTest, SetAndGetSettings)
 
 TEST_F(SettingsTest, GetNonExistentSettingThrows)
 {
-    EXPECT_THROW(settings::get_setting<int>("non_existent_key"), std::invalid_argument);
+    EXPECT_THROW(static_cast<void>(settings::get_setting<int>("non_existent_key")), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseValidSettings)

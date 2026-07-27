@@ -58,6 +58,16 @@ namespace module
         {
             return value_;
         }
+
+        constexpr bool operator>(const double &other) const noexcept
+        {
+            return value_ > other;
+        }
+
+        constexpr bool operator<(const double &other) const noexcept
+        {
+            return value_ < other;
+        }
     };
 
     class BeltSpeed

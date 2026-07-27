@@ -26,14 +26,9 @@ namespace server
     void stop();
 
     /**
-     * Waits for the server thread to finish. Call stop() first.
-     */
-    void join();
-
-    /**
      * @return The amount of connections this server is handling.
      */
-    std::size_t size();
+    [[nodiscard]] std::size_t size();
 
     void check();
 

@@ -75,9 +75,7 @@ static bool is_running = true;
 static void handle_close(int code)
 {
     tub::stop();
-    tub::join();
     server::stop();
-    server::join();
     if (using_visualization)
         visualization::stop();
 
@@ -297,9 +295,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
             std::cerr << "Shutting down due to failed check: " << ex.what() << std::endl;
 
             tub::stop();
-            tub::join();
             server::stop();
-            server::join();
             if (using_visualization)
                 visualization::stop();
             return EXIT_FAILURE;
@@ -307,9 +303,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
     }
 
     tub::stop();
-    tub::join();
     server::stop();
-    server::join();
     if (using_visualization)
         visualization::stop();
 

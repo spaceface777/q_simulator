@@ -307,10 +307,7 @@ namespace server
         {
             close(fds[i]);
         }
-    }
 
-    void join()
-    {
         if (server_future_.valid())
         {
             server_future_.wait();

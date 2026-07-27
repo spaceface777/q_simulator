@@ -9,6 +9,7 @@
 #include <future>
 #include <array>
 
+#include "types.h"
 #include "../defs.h"
 #include "../module/types.h"
 
@@ -18,7 +19,7 @@ namespace tub
     class Tub
     {
     private:
-        uint8_t id_;
+        TubId id_;
         module::ModuleId module_;
         ModuleLocation location_ = ModuleLocation::MIDDLE;
 
@@ -28,19 +29,19 @@ namespace tub
         bool in_laser_ = false;
         bool in_rfid_ = false;
         // 0 = middle, 1 = extremity
-        double location_progress_ = 0.5;
+        LocationProgress location_progress_{0.5};
 
         std::future<void> tub_future_;
-        std::atomic_bool stopped_ = false;
+        std::atomic_bool stopped_ = true;
         std::array<int8_t, RFID_UID_SIZE_BYTES> rfid_uid_;
         std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        Tub(uint8_t id, module::ModuleId module, module::ModuleId target_module,
+        Tub(TubId id, module::ModuleId module, module::ModuleId target_module,
             ModuleLocation target_module_location, std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
             : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location), rfid_(rfid)
         {
-            rfid_uid_ = {static_cast<int8_t>(id), 0, 0, 0, 0, 0, 0};
+            rfid_uid_ = {static_cast<int8_t>(id.raw()), 0, 0, 0, 0, 0, 0};
         }
 
         /**
@@ -53,12 +54,12 @@ namespace tub
             join();
         }
 
-        uint8_t id() const noexcept
+        [[nodiscard]] TubId id() const noexcept
         {
             return id_;
         }
 
-        module::ModuleId module() const noexcept
+        [[nodiscard]] module::ModuleId module() const noexcept
         {
             return module_;
         }
@@ -66,12 +67,12 @@ namespace tub
         /**
          * @returns The module location of the current tub.
          */
-        ModuleLocation module_location() const noexcept
+        [[nodiscard]] ModuleLocation module_location() const noexcept
         {
             return location_;
         }
 
-        module::ModuleId target_module() const noexcept
+        [[nodiscard]] module::ModuleId target_module() const noexcept
         {
             return target_module_;
         }
@@ -79,7 +80,7 @@ namespace tub
         /**
          * @returns The target module location of the current tub.
          */
-        ModuleLocation target_module_location() const noexcept
+        [[nodiscard]] ModuleLocation target_module_location() const noexcept
         {
             return target_module_location_;
         }
@@ -88,7 +89,7 @@ namespace tub
          * @returns A number between 0 and 1 indicating how far along the module location this tub is.
          * 0 = at center, 1 = at outskirts.
          */
-        double module_location_progress() const noexcept
+        [[nodiscard]] LocationProgress module_location_progress() const noexcept
         {
             return location_progress_;
         }
@@ -125,30 +126,22 @@ namespace tub
     void stop();
 
     /**
-     * Waits for all tub worker threads to finish. Call stop() first.
-     * Must be called before main() returns: static destruction begins the
-     * moment main returns, and a still-running worker would use freed
-     * globals (e.g. the settings table).
-     */
-    void join();
-
-    /**
      * Adds a tub.
      * @param ptr A unique_ptr to the tub.
      */
-    void add_tub(std::unique_ptr<tub::Tub> ptr);
+    void add_tub(std::unique_ptr<Tub> ptr);
 
     /**
      * Gets an optional tub from its id.
      * @param id The id.
      * @returns The tub instance from the id.
      */
-    std::optional<std::shared_ptr<tub::Tub>> get_tub(uint8_t id);
+    std::optional<std::shared_ptr<Tub>> get_tub(TubId id);
 
     /**
      * @returns All tubs.
      */
-    std::vector<std::shared_ptr<tub::Tub>> get_tubs();
+    std::vector<std::shared_ptr<Tub>> get_tubs();
 
     void check();
 

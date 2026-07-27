@@ -187,19 +187,19 @@ namespace module
      * Adds a module.
      * @param ptr A unique_ptr to the module.
      */
-    void add_module(std::unique_ptr<module::Module> ptr);
+    void add_module(std::unique_ptr<Module> ptr);
 
     /**
      * Gets an optional module from its id.
      * @param id The id.
      * @returns The module instance from the id.
      */
-    std::optional<std::shared_ptr<module::Module>> get_module(module::ModuleId id);
+    std::optional<std::shared_ptr<Module>> get_module(ModuleId id);
 
     /**
      * @returns All modules.
      */
-    std::vector<std::shared_ptr<module::Module>> get_modules();
+    std::vector<std::shared_ptr<Module>> get_modules();
 
 }
 
