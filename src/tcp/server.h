@@ -1,11 +1,15 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include <unordered_map>
+
 #include "../message/message.h"
 #include "../module/types.h"
 
 namespace server
 {
+
+    static constexpr int PORT = 7777;
 
     /**
      * Sends a message to module id.
@@ -31,6 +35,10 @@ namespace server
     [[nodiscard]] std::size_t size();
 
     void check();
+
+#ifdef TESTING
+    [[nodiscard]] std::unordered_map<uint8_t, int> get_module_fds();
+#endif
 
 }
 

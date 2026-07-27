@@ -9,7 +9,6 @@
 #include <cstring>
 #include <utility>
 #include <thread>
-#include <unordered_map>
 #include <mutex>
 #include <queue>
 #include <algorithm>
@@ -29,9 +28,7 @@
 namespace server
 {
     static std::future<void> server_future_;
-    static std::atomic_bool stopped = false;
-
-    static constexpr int PORT = 7777;
+    static std::atomic_bool stopped = true;
 
     static std::vector<unsigned int> fds;
     static std::unordered_map<uint8_t, int> module_fds;
@@ -293,7 +290,9 @@ namespace server
 
     void run()
     {
-        util::require(!stopped, "Cannot run two servers");
+        util::require(stopped, "Cannot run two servers");
+
+        stopped = false;
 
         server_future_ = std::async(std::launch::async, []
                                     { run_(); });
@@ -312,6 +311,8 @@ namespace server
         {
             server_future_.wait();
         }
+
+        fds.clear();
     }
 
     std::size_t size()
@@ -332,4 +333,11 @@ namespace server
             server_future_.get();
         }
     }
+
+#ifdef TESTING
+    [[nodiscard]] std::unordered_map<uint8_t, int> get_module_fds()
+    {
+        return module_fds;
+    }
+#endif
 }

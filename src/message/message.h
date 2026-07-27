@@ -191,14 +191,12 @@ namespace message
     {
     private:
         module::ModuleId module_;
-        std::size_t length_;
         std::string data_;
 
     public:
-        Packet(module::ModuleId module, std::size_t length, std::string data)
+        Packet(module::ModuleId module, std::string data)
         {
             module_ = module;
-            length_ = length;
             data_ = data;
         }
 

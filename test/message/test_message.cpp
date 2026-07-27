@@ -29,7 +29,7 @@ TEST(PacketTest, ToToml)
 
 TEST(PacketTest, ToTomlPacket)
 {
-    message::Packet packet(module::ModuleId(1), 4, "heyy");
+    message::Packet packet(module::ModuleId(1), "heyy");
     const std::string toml = packet.to_toml();
     const std::vector<std::string_view> parts = util::split(toml, "\n");
 
@@ -150,12 +150,10 @@ TEST(UpdateRfidTest, ValidityAndSerialization)
 
 TEST(PacketTest, Validity)
 {
-    // Content length matches length property
-    message::Packet valid_packet(module::ModuleId(1), 5, "hello");
+    message::Packet valid_packet(module::ModuleId(1), "hello");
     EXPECT_TRUE(valid_packet.is_valid());
 
-    // Content length mismatch
-    message::Packet invalid_packet(module::ModuleId(1), 10, "hello");
+    message::Packet invalid_packet(module::ModuleId(1), "");
     EXPECT_FALSE(invalid_packet.is_valid());
 }
 

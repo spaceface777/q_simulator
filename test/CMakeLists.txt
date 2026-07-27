@@ -10,11 +10,15 @@ add_executable(tests
     event/test_events.cpp
     module/test_types.cpp
     tcp/test_socket.cpp
+    tcp/test_server.cpp
     tub/test_tub.cpp
     tub/test_types.cpp)
 
 target_link_libraries(tests PRIVATE 
     gtest gtest_main
     core)
+
+target_compile_definitions(core PRIVATE TESTING)
+target_compile_definitions(tests PRIVATE TESTING)
 
 add_test(NAME tests COMMAND tests)

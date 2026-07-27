@@ -357,12 +357,7 @@ namespace message
 
     bool Packet::is_valid() const noexcept
     {
-        if (data_.length() != length_)
-        {
-            return false;
-        }
-
-        return true;
+        return !data_.empty();
     }
 
     std::string Packet::to_toml() const noexcept
@@ -370,7 +365,7 @@ namespace message
         std::string buf = create_buffer();
         append_header(buf, "packet");
         append_value(buf, "module", module_.raw());
-        append_value(buf, "length", length_);
+        append_value(buf, "length", data_.length());
         append_value(buf, "data", data_);
         trim_trailing_nl(buf);
         return buf;
@@ -387,7 +382,6 @@ namespace message
 
         int stage = 0;
         int module = -1;
-        std::size_t length = 0;
         std::string data;
         for (const std::string_view line : lines)
         {
@@ -427,13 +421,6 @@ namespace message
             }
             else if (left == "length" && stage == 1)
             {
-                const auto parsed_length = util::parse_size(right);
-                if (!parsed_length.has_value())
-                {
-                    return {};
-                }
-
-                length = parsed_length.value();
                 continue;
             }
             else if (left == "data" && stage == 1)
@@ -451,7 +438,7 @@ namespace message
             return {};
         }
 
-        return Packet(module::ModuleId{static_cast<uint8_t>(module)}, length, data);
+        return Packet(module::ModuleId{static_cast<uint8_t>(module)}, data);
     }
 
     bool TubSchedule::is_valid() const noexcept
