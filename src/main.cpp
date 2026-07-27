@@ -18,7 +18,6 @@
 
 #include "event/events.h"
 #include "tcp/server.h"
-#include "tcp/client.h"
 #include "message/message.h"
 #include "module/module.h"
 #include "visualization/visualization.h"
@@ -78,7 +77,6 @@ static void handle_close(int code)
     tub::join();
     server::stop();
     server::join();
-    client::stop();
     if (using_visualization)
         visualization::stop();
 
@@ -92,6 +90,8 @@ static void handle_close(int code)
  */
 static void init_modules()
 {
+    std::cout << "Initializing modules" << std::endl;
+
     for (std::size_t id = 1; id < MAX_MODULES; id++)
     {
         if (!settings::get_module_settings(module::ModuleId(id)).active)
@@ -108,7 +108,6 @@ static void init_modules()
             {
                 tub::stop();
                 server::stop();
-                client::stop();
                 if (using_visualization)
                     visualization::stop();
 
@@ -117,7 +116,6 @@ static void init_modules()
 
             server::check();
             tub::check();
-            client::check();
 
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             attempts++;
@@ -127,6 +125,7 @@ static void init_modules()
     // wait until init.finish is sent
     while (true)
     {
+        std::cout << "Waiting until modules finish startup" << std::endl;
         const auto modules = module::get_modules();
         bool all = std::all_of(modules.begin(), modules.end(), [](const std::shared_ptr<module::Module> &module)
                                { return module->is_initialization_finished(); });
@@ -142,6 +141,8 @@ static void init_modules()
 
 static void init_layout()
 {
+    std::cout << "Sending layouts" << std::endl;
+
     std::stringstream ss;
     bool first = true;
 
@@ -178,6 +179,7 @@ static void init_layout()
 
 static void init_schedule(const std::list<std::unique_ptr<events::Event>> &events)
 {
+    std::cout << "Sending schedules" << std::endl;
     for (auto &event : events)
     {
         if (auto *tub_event = dynamic_cast<events::TubEvent *>(event.get()))
@@ -256,7 +258,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 
             server::check();
             tub::check();
-            client::check();
 
             is_running = visualization::is_running();
 
@@ -270,7 +271,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
             tub::join();
             server::stop();
             server::join();
-            client::stop();
             if (using_visualization)
                 visualization::stop();
             return EXIT_FAILURE;
@@ -281,7 +281,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
     tub::join();
     server::stop();
     server::join();
-    client::stop();
     if (using_visualization)
         visualization::stop();
 

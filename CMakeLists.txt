@@ -37,8 +37,7 @@ endif()
 # === Builds ===
 
 add_library(core STATIC
-    src/tcp/server.cpp 
-    src/tcp/client.cpp 
+    src/tcp/server.cpp
     src/util.cpp 
     src/module/module.cpp
     src/message/message.cpp

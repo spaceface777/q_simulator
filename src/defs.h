@@ -11,12 +11,12 @@ inline constexpr uint8_t MAX_MODULES = 25;
 /**
  * Max size for TCP messages.
  */
-inline constexpr uint16_t MAX_TCP_BYTES_SIZE = 512;
+inline constexpr std::size_t MAX_TCP_BYTES_SIZE = 512;
 
 /**
  * Max TCP backlog.
  */
-inline constexpr uint8_t MAX_TCP_BACKLOG = 25;
+inline constexpr int MAX_TCP_BACKLOG = 128;
 
 /**
  * A constant timeout value.
@@ -30,8 +30,8 @@ enum class ModuleLocation
     RIGHT,
 };
 
-inline constexpr uint8_t RFID_UID_SIZE_BYTES = 7;
-inline constexpr uint8_t RFID_BLOCK_SIZE_BYTES = 4;
-inline constexpr uint8_t RFID_CONTENT_BLOCK_COUNT = 36;
+inline constexpr std::size_t RFID_UID_SIZE_BYTES = 7;
+inline constexpr std::size_t RFID_BLOCK_SIZE_BYTES = 4;
+inline constexpr std::size_t RFID_CONTENT_BLOCK_COUNT = 36;
 
 #endif

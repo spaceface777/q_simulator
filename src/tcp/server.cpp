@@ -18,7 +18,6 @@
 #include <errno.h>
 
 #include "server.h"
-#include "client.h"
 #include "socket.h"
 #include "../message/message.h"
 #include "../util.h"
@@ -36,6 +35,8 @@ namespace server
     static constexpr int PORT = 7777;
 
     static std::vector<unsigned int> fds;
+    static std::unordered_map<uint8_t, int> module_fds;
+    static std::mutex socket_mutex;
 
     /**
      * Sets up the port for a server connection.
@@ -122,73 +123,90 @@ namespace server
             return;
         }
 
-        const std::optional<std::shared_ptr<client::Client>> client = client::get_client(id);
-        if (!client)
+        std::lock_guard<std::mutex> lock(socket_mutex);
+        auto it = module_fds.find(id.raw());
+        if (it != module_fds.end())
         {
-            return;
+            std::string toml = message.to_toml();
+            if (::write(it->second, toml.c_str(), toml.length() + 1) <= 0)
+            {
+                remove(it->second);
+                std::cout << "Closed connection with " << std::to_string(it->second) << std::endl;
+            }
         }
-
-        client.value()->queue(message);
     }
 
     /**
-     * Parses a buffer to a message::Packet, and performs the appropriate action.
+     * Parses a buffer to messages.
      */
-    static void parse_packet(char *buff)
+    static void parse_messages(int module_fd, char *buff)
     {
-        const std::optional<message::Init> intro = message::Init::from_toml(buff);
-        if (intro)
+        char *msg = buff;
+        while (true)
         {
-            const message::Init message = intro.value();
-            const module::ModuleId id = message.id();
-
-            const std::optional<std::shared_ptr<client::Client>> existing_client = client::get_client(id);
-            if (existing_client)
+            char *end = strchr(msg, '\0');
+            if (end == NULL || end == msg)
             {
-                std::cout << "Attempted to double up client creation at " << std::to_string(8888 + id.raw()) << std::endl;
-                return;
+                break;
             }
 
-            const std::shared_ptr<client::Client> ptr = std::make_shared<client::Client>(id, 8888 + id.raw());
-            ptr->run();
-            client::add_client(ptr);
-
-            std::cout << "Started client at " << std::to_string(8888 + id.raw()) << std::endl;
-
-            return;
-        }
-
-        const std::optional<message::InitFinish> init_finish = message::InitFinish::from_toml(buff);
-        if (init_finish)
-        {
-            const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(init_finish.value().id());
-            if (ptr)
             {
-                ptr.value()->set_initialization_finished(true);
+                const std::optional<message::Init> intro = message::Init::from_toml(msg);
+                if (intro)
+                {
+                    const message::Init message = intro.value();
+                    const module::ModuleId id = message.id();
+
+                    std::lock_guard<std::mutex> lock(socket_mutex);
+                    module_fds[id.raw()] = module_fd;
+
+                    std::cout << "Registered module " << std::to_string(id.raw()) << " at fd " << std::to_string(module_fd) << std::endl;
+
+                    goto next;
+                }
             }
 
-            return;
-        }
-
-        const std::optional<message::Update> update = message::Update::from_toml(buff);
-        if (update)
-        {
-            const message::Update message = update.value();
-            const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
-            if (ptr)
             {
-                ptr.value()->update(message);
+                const std::optional<message::InitFinish> init_finish = message::InitFinish::from_toml(msg);
+                if (init_finish)
+                {
+                    const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(init_finish.value().id());
+                    if (ptr)
+                    {
+                        ptr.value()->set_initialization_finished(true);
+                    }
+
+                    goto next;
+                }
             }
 
-            return;
-        }
+            {
+                const std::optional<message::Update> update = message::Update::from_toml(msg);
+                if (update)
+                {
+                    const message::Update message = update.value();
+                    const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
+                    if (ptr)
+                    {
+                        ptr.value()->update(message);
+                    }
 
-        const std::optional<message::Packet> sent = message::Packet::from_toml(buff);
-        if (sent)
-        {
-            const message::Packet message = sent.value();
-            send(message.module(), message);
-            return;
+                    goto next;
+                }
+            }
+
+            {
+                const std::optional<message::Packet> sent = message::Packet::from_toml(msg);
+                if (sent)
+                {
+                    const message::Packet message = sent.value();
+                    send(message.module(), message);
+                    goto next;
+                }
+            }
+
+        next:
+            msg += end - msg + 1;
         }
     }
 
@@ -204,54 +222,47 @@ namespace server
         {
             struct pollfd pollfd;
             pollfd.fd = static_cast<int>(fds.at(i));
-            pollfd.events = POLLIN | POLLERR | POLLNVAL;
+            pollfd.events = POLLIN | POLLERR | POLLNVAL | POLLHUP;
             pollfd.revents = 0;
 
             pfds[i] = pollfd;
         }
 
-        int selected = ::poll(pfds.data(), fds.size(), TIMEOUT.count());
-        if (selected == 0)
+        int selected = ::poll(pfds.data(), pfds.size(), 0);
+        if (selected <= 0)
         {
             return;
         }
 
-        for (size_t i = 0; i < fds.size(); i++)
+        for (size_t i = 0; i < pfds.size(); i++)
         {
-            const unsigned int fd = fds.at(i);
+            const unsigned int fd = pfds.at(i).fd;
 
             if (pfds[i].revents == 0)
             {
                 continue;
             }
-            else if (pfds[i].revents & (POLLERR | POLLNVAL))
+            if (pfds[i].revents & (POLLERR | POLLNVAL | POLLHUP))
             {
                 // invalid fd
                 remove(fd);
                 std::cout << "Closed connection with " << std::to_string(fd) << std::endl;
                 continue;
             }
-
-            // there is a value to be read, yay
-            char buff[MAX_TCP_BYTES_SIZE];
-            memset(buff, '\0', MAX_TCP_BYTES_SIZE); // avoid leftover buff from previous loop
-            const ssize_t size = ::read(fd, buff, MAX_TCP_BYTES_SIZE);
-            if (size <= 0)
+            if (pfds[i].revents & POLLIN)
             {
-                remove(fd);
-                std::cout << "Closed connection with " << std::to_string(fd) << std::endl;
-                continue;
-            }
+                // there is a value to be read, yay
+                char buff[MAX_TCP_BYTES_SIZE] = {0}; // avoid leftover buff from previous loop
+                const ssize_t size = ::recv(fd, buff, MAX_TCP_BYTES_SIZE - 1, MSG_DONTWAIT);
+                if (size <= 0)
+                {
+                    remove(fd);
+                    std::cout << "Closed connection with " << std::to_string(fd) << std::endl;
+                    continue;
+                }
 
-            const std::string_view trimmed = util::ltrim(buff);
-            const std::size_t first_nl = trimmed.find('\n');
-            if (first_nl == trimmed.npos) // invalid message
-            {
-                std::cout << "Received invalid message" << std::endl;
-                continue;
+                parse_messages(fd, buff);
             }
-
-            parse_packet(buff);
         }
     }
 
@@ -261,7 +272,6 @@ namespace server
         if (!socket.is_valid())
         {
             stop();
-            close(socket.fd());
             throw std::runtime_error("Failed to initialize socket");
         }
         setup_port(socket);
