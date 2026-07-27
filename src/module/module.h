@@ -201,6 +201,11 @@ namespace module
      */
     std::vector<std::shared_ptr<Module>> get_modules();
 
+    /**
+     * Clears all modules.
+     */
+    void clear();
+
 }
 
 #endif // MODULE_H

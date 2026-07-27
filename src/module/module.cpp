@@ -85,7 +85,7 @@ namespace module
 	static std::map<uint8_t, std::shared_ptr<module::Module>> map;
 	static std::mutex map_mutex;
 
-	void add_module(std::unique_ptr<module::Module> ptr)
+	void add_module(std::unique_ptr<Module> ptr)
 	{
 		std::lock_guard<std::mutex> lock(map_mutex);
 		util::require(!map.count(ptr->id().raw()), "Attempted to double register modules");
@@ -94,7 +94,7 @@ namespace module
 		map[id] = std::move(ptr);
 	}
 
-	std::optional<std::shared_ptr<module::Module>> get_module(ModuleId id)
+	std::optional<std::shared_ptr<Module>> get_module(ModuleId id)
 	{
 		std::lock_guard<std::mutex> lock(map_mutex);
 		if (map.count(id.raw()))
@@ -104,15 +104,21 @@ namespace module
 		return {};
 	}
 
-	std::vector<std::shared_ptr<module::Module>> get_modules()
+	std::vector<std::shared_ptr<Module>> get_modules()
 	{
 		std::lock_guard<std::mutex> lock(map_mutex);
-		std::vector<std::shared_ptr<module::Module>> modules;
+		std::vector<std::shared_ptr<Module>> modules;
 		for (const auto &pair : map)
 		{
 			modules.push_back(pair.second);
 		}
 		return modules;
+	}
+
+	void clear()
+	{
+		std::lock_guard<std::mutex> lock(map_mutex);
+		map.clear();
 	}
 
 }

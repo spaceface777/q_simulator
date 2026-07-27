@@ -9,6 +9,7 @@ add_executable(tests
     synchronization/test_vclock.cpp 
     event/test_events.cpp
     module/test_types.cpp
+    module/test_module.cpp
     tcp/test_socket.cpp
     tcp/test_server.cpp
     tub/test_tub.cpp

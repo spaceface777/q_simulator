@@ -104,7 +104,7 @@ namespace message
         double value_;
 
     public:
-        Update(module::ModuleId module, std::string device, int value)
+        Update(module::ModuleId module, std::string device, double value)
         {
             module_ = module;
             device_ = device;
