@@ -65,85 +65,6 @@ namespace message
         }
     }
 
-    static std::optional<uint8_t> parse_byte(std::string_view text)
-    {
-        try
-        {
-            std::size_t consumed = 0;
-            const long long value = std::stoll(std::string(text), &consumed);
-            if (consumed != text.size() || value < 0 || value > std::numeric_limits<uint8_t>::max())
-            {
-                return {};
-            }
-
-            return static_cast<uint8_t>(value);
-        }
-        catch (const std::invalid_argument &)
-        {
-            return {};
-        }
-        catch (const std::out_of_range &)
-        {
-            return {};
-        }
-    }
-
-    static std::optional<int> parse_int(std::string_view text)
-    {
-        try
-        {
-            std::size_t consumed = 0;
-            const long long value = std::stoll(std::string(text), &consumed);
-            if (consumed != text.size() || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max())
-            {
-                return {};
-            }
-
-            return static_cast<int>(value);
-        }
-        catch (const std::invalid_argument &)
-        {
-            return {};
-        }
-        catch (const std::out_of_range &)
-        {
-            return {};
-        }
-    }
-
-    static std::optional<std::size_t> parse_size(std::string_view text)
-    {
-        try
-        {
-            std::size_t consumed = 0;
-            const long long value = std::stoll(std::string(text), &consumed);
-            if (consumed != text.size() || value < 0)
-            {
-                return {};
-            }
-
-            return static_cast<std::size_t>(value);
-        }
-        catch (const std::invalid_argument &)
-        {
-            return {};
-        }
-        catch (const std::out_of_range &)
-        {
-            return {};
-        }
-    }
-
-    static std::optional<std::string> parse_quoted_string(std::string_view text)
-    {
-        if (text.size() < 2 || text.front() != '"' || text.back() != '"')
-        {
-            return {};
-        }
-
-        return std::string(text.substr(1, text.size() - 2));
-    }
-
     bool Message::is_valid() const noexcept
     {
         return false;
@@ -211,7 +132,7 @@ namespace message
 
             if (left == "id" && stage == 1)
             {
-                const auto parsed_id = parse_byte(right);
+                const auto parsed_id = util::parse_byte(right);
                 if (!parsed_id.has_value())
                 {
                     return {};
@@ -279,7 +200,7 @@ namespace message
 
             if (left == "id" && stage == 1)
             {
-                const auto parsed_id = parse_byte(right);
+                const auto parsed_id = util::parse_byte(right);
                 if (!parsed_id.has_value())
                 {
                     return {};
@@ -351,7 +272,7 @@ namespace message
 
             if (left == "module" && stage == 1)
             {
-                const auto parsed_module = parse_byte(right);
+                const auto parsed_module = util::parse_byte(right);
                 if (!parsed_module.has_value())
                 {
                     return {};
@@ -362,7 +283,7 @@ namespace message
             }
             else if (left == "device" && stage == 1)
             {
-                const auto parsed_device = parse_quoted_string(right);
+                const auto parsed_device = util::parse_quoted_string(right);
                 if (!parsed_device.has_value())
                 {
                     return {};
@@ -373,7 +294,7 @@ namespace message
             }
             else if (left == "value" && stage == 1)
             {
-                const auto parsed_value = parse_int(right);
+                const auto parsed_value = util::parse_int(right);
                 if (!parsed_value.has_value())
                 {
                     return {};
@@ -495,7 +416,7 @@ namespace message
 
             if (left == "module" && stage == 1)
             {
-                const auto parsed_module = parse_byte(right);
+                const auto parsed_module = util::parse_byte(right);
                 if (!parsed_module.has_value())
                 {
                     return {};
@@ -506,7 +427,7 @@ namespace message
             }
             else if (left == "length" && stage == 1)
             {
-                const auto parsed_length = parse_size(right);
+                const auto parsed_length = util::parse_size(right);
                 if (!parsed_length.has_value())
                 {
                     return {};
@@ -517,7 +438,7 @@ namespace message
             }
             else if (left == "data" && stage == 1)
             {
-                const auto parsed_data = parse_quoted_string(right);
+                const auto parsed_data = util::parse_quoted_string(right);
                 if (!parsed_data.has_value())
                 {
                     return {};

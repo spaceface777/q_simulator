@@ -68,8 +68,8 @@ cmake --build build -j && ./build/tests
 To calculate test coverage, you must first install lcov. Then, run the following commands and open the webpage at `build/coverage_html/index.html`:
 
 ```sh
-cmake -B build -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target tests
+cmake -B build -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug -S . -G Ninja
+cmake --build build --target tests -j
 ./build/tests
 cd build
 lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,gcov
@@ -79,7 +79,7 @@ cd ..
 cmake -B build -S . -G Ninja
 ```
 
-Last measured test coverage: 58.2% of lines and 65.3% of functions on 27-06-2026.
+Last measured test coverage: 59.0% of lines and 67.4% of functions on 27-06-2026.
 
 ## Support
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.

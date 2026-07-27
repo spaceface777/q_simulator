@@ -15,6 +15,7 @@
 #include <string>
 #include <string_view>
 #include <sys/utsname.h>
+#include <limits>
 
 #include "event/events.h"
 #include "tcp/server.h"
@@ -122,10 +123,10 @@ static void init_modules()
         }
     }
 
+    std::cout << "Waiting until modules finish startup" << std::endl;
     // wait until init.finish is sent
     while (true)
     {
-        std::cout << "Waiting until modules finish startup" << std::endl;
         const auto modules = module::get_modules();
         bool all = std::all_of(modules.begin(), modules.end(), [](const std::shared_ptr<module::Module> &module)
                                { return module->is_initialization_finished(); });
@@ -201,6 +202,8 @@ static void init_schedule(const std::list<std::unique_ptr<events::Event>> &event
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 {
+    std::chrono::milliseconds timeout = std::chrono::milliseconds(std::numeric_limits<int64_t>::max());
+
     for (int i = 1; i < argc; i++)
     {
         const std::string_view arg(argv[i]);
@@ -210,10 +213,30 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
                       << " (" << get_target_os() << " " << get_target_arch() << ")" << std::endl;
             return EXIT_SUCCESS;
         }
-        else if (arg == "-g" || arg == "--no-gui")
+        else if (arg == "--no-gui")
         {
             using_visualization = false;
             continue;
+        }
+        else if (arg == "--timeout")
+        {
+            if (i + 1 < argc)
+            {
+                const auto timeout_opt = util::parse_double(argv[i + 1]);
+                if (timeout_opt)
+                {
+                    timeout = std::chrono::milliseconds(static_cast<int64_t>(*timeout_opt * 1000));
+                    i++;
+                    continue;
+                }
+                std::cout << "Invalid timeout: " << argv[i + 1] << std::endl;
+                return EXIT_SUCCESS;
+            }
+            else
+            {
+                std::cout << "Missing <sec> for option '--timeout'" << std::endl;
+                return EXIT_SUCCESS;
+            }
         }
         else if (arg != "-h" || arg != "--help")
         {
@@ -223,7 +246,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         std::cout << "Use: ./simulation [options]" << std::endl;
         std::cout << "Options:" << std::endl;
         std::cout << "  -h, --help              Prints all options" << std::endl;
-        std::cout << "  -g, --no-gui            Disables GUI" << std::endl;
+        std::cout << "  --no-gui                Disables GUI" << std::endl;
+        std::cout << "  --timeout <sec>         Closes the simulation after <sec> seconds" << std::endl;
         std::cout << "  -v, --version           Prints version" << std::endl;
         std::cout << std::endl;
         std::cout << "Report bugs and provide suggestions at <https://gitlab.tue.nl/2irr70-capstone-quercus-airport/simulation/-/work_items>" << std::endl;
@@ -249,6 +273,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         visualization::init();
     while (is_running)
     {
+        if (vclock.get_virtual_time() > timeout)
+        {
+            break;
+        }
+
         try
         {
             events::fire_events(vclock, events);

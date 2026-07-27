@@ -6,6 +6,7 @@
 #include <chrono>
 #include <exception>
 #include <stdexcept>
+#include <optional>
 
 namespace util
 {
@@ -62,6 +63,12 @@ namespace util
      * @return The string view without leading or trailing whitespace.
      */
     std::string_view trim(std::string_view sv);
+
+    std::optional<uint8_t> parse_byte(std::string_view text);
+    std::optional<int> parse_int(std::string_view text);
+    std::optional<std::size_t> parse_size(std::string_view text);
+    std::optional<std::string> parse_quoted_string(std::string_view text);
+    std::optional<double> parse_double(std::string_view text);
 
 }
 

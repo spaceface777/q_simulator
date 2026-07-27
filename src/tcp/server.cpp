@@ -80,12 +80,11 @@ namespace server
         pfd.events = POLLIN | POLLERR | POLLNVAL;
         pfd.revents = 0;
 
-        int selected = ::poll(&pfd, 1, TIMEOUT.count());
+        int selected = ::poll(&pfd, 1, 0);
         if (selected <= 0)
         {
             return;
         }
-
         if (pfd.revents & (POLLERR | POLLNVAL))
         {
             return;

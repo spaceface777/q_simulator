@@ -2,7 +2,6 @@
 #include <cctype>
 #include <locale>
 #include <vector>
-#include <string_view>
 
 #include "util.h"
 
@@ -68,4 +67,106 @@ std::string_view util::rtrim(std::string_view sv)
 std::string_view util::trim(std::string_view sv)
 {
     return rtrim(ltrim(sv));
+}
+
+std::optional<uint8_t> util::parse_byte(std::string_view text)
+{
+    try
+    {
+        std::size_t consumed = 0;
+        const long long value = std::stoll(std::string(text), &consumed);
+        if (consumed != text.size() || value < 0 || value > std::numeric_limits<uint8_t>::max())
+        {
+            return {};
+        }
+
+        return static_cast<uint8_t>(value);
+    }
+    catch (const std::invalid_argument &)
+    {
+        return {};
+    }
+    catch (const std::out_of_range &)
+    {
+        return {};
+    }
+}
+
+std::optional<int> util::parse_int(std::string_view text)
+{
+    try
+    {
+        std::size_t consumed = 0;
+        const long long value = std::stoll(std::string(text), &consumed);
+        if (consumed != text.size() || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max())
+        {
+            return {};
+        }
+
+        return static_cast<int>(value);
+    }
+    catch (const std::invalid_argument &)
+    {
+        return {};
+    }
+    catch (const std::out_of_range &)
+    {
+        return {};
+    }
+}
+
+std::optional<std::size_t> util::parse_size(std::string_view text)
+{
+    try
+    {
+        std::size_t consumed = 0;
+        const long long value = std::stoll(std::string(text), &consumed);
+        if (consumed != text.size() || value < 0)
+        {
+            return {};
+        }
+
+        return static_cast<std::size_t>(value);
+    }
+    catch (const std::invalid_argument &)
+    {
+        return {};
+    }
+    catch (const std::out_of_range &)
+    {
+        return {};
+    }
+}
+
+std::optional<std::string> util::parse_quoted_string(std::string_view text)
+{
+    if (text.size() < 2 || text.front() != '"' || text.back() != '"')
+    {
+        return {};
+    }
+
+    return std::string(text.substr(1, text.size() - 2));
+}
+
+std::optional<double> util::parse_double(std::string_view text)
+{
+    try
+    {
+        std::size_t consumed = 0;
+        const double value = std::stod(std::string(text), &consumed);
+        if (consumed != text.size())
+        {
+            return {};
+        }
+
+        return static_cast<double>(value);
+    }
+    catch (const std::invalid_argument &)
+    {
+        return {};
+    }
+    catch (const std::out_of_range &)
+    {
+        return {};
+    }
 }
