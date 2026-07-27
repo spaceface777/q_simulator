@@ -108,7 +108,7 @@ namespace server
      */
     static void remove(int fd)
     {
-        std::remove(fds.begin(), fds.end(), fd);
+        fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
     }
 
     void send(module::ModuleId id, const message::Message &message)
