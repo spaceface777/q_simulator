@@ -76,9 +76,10 @@ lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,gc
 lcov --remove coverage.info '/usr/*' '*/_deps/*' '*/test/*' --output-file coverage_filtered.info
 genhtml coverage_filtered.info --output-directory coverage_html
 cd ..
+cmake -B build -S . -G Ninja
 ```
 
-Last measured test coverage: 52.6% of lines and 56.5% of functions on 25-06-2026.
+Last measured test coverage: 58.2% of lines and 65.3% of functions on 27-06-2026.
 
 ## Support
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <thread>
 #include <chrono>
-#include "../src/synchronization/virtual_clock.h"
+#include "../../src/synchronization/virtual_clock.h"
 
 using namespace virtual_clock;
 using namespace std::chrono_literals;

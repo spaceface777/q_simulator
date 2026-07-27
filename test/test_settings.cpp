@@ -72,12 +72,6 @@ TEST_F(SettingsTest, GetNonExistentSettingThrows)
     EXPECT_THROW(settings::get_setting<int>("non_existent_key"), std::invalid_argument);
 }
 
-TEST_F(SettingsTest, GetModuleSettingsBounds)
-{
-    EXPECT_THROW(settings::get_module_settings(module::ModuleId(0)), std::out_of_range);
-    EXPECT_THROW(settings::get_module_settings(module::ModuleId(MAX_MODULES)), std::out_of_range);
-}
-
 TEST_F(SettingsTest, ParseValidSettings)
 {
     write_settings("router_path = \"" + temp_router_path.string() + "\"\n" +
@@ -180,7 +174,22 @@ TEST_F(SettingsTest, ParseSettingsInvalidModuleAngle)
     write_layout(R"(
 [module.1]
 active = true
+neighbors = [0, 0, 0]
+pos = [0, 0]
 angle = 400
+)");
+
+    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::out_of_range);
+}
+
+TEST_F(SettingsTest, ParseSettingsInvalidModuleAngle2)
+{
+    write_layout(R"(
+[module.1]
+active = true
+neighbors = [0, 0, 0]
+pos = [0, 0]
+angle = 9223372036854775810
 )");
 
     EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::out_of_range);

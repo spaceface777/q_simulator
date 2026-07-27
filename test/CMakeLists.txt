@@ -4,10 +4,11 @@ project(test)
 enable_testing()
 
 add_executable(tests 
-    test_message.cpp 
+    message/test_message.cpp 
     test_settings.cpp 
-    test_vclock.cpp 
-    test_events.cpp)
+    synchronization/test_vclock.cpp 
+    event/test_events.cpp
+    module/test_types.cpp)
 
 target_link_libraries(tests PRIVATE 
     gtest gtest_main

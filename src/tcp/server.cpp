@@ -16,6 +16,7 @@
 #include <memory>
 #include <poll.h>
 #include <errno.h>
+#include <future>
 
 #include "server.h"
 #include "socket.h"
@@ -24,8 +25,6 @@
 #include "../defs.h"
 #include "../settings.h"
 #include "../module/module.h"
-
-#include <future>
 
 namespace server
 {
@@ -91,21 +90,18 @@ namespace server
         {
             return;
         }
-
-        if ((pfd.revents & POLLIN) == 0)
+        if (pfd.revents & POLLIN)
         {
-            return;
-        }
+            sockaddr other_addr;
+            socklen_t other_len = sizeof(other_addr);
+            int other = ::accept(socket.fd(), &other_addr, &other_len);
+            if (other < 0)
+            {
+                return;
+            }
 
-        sockaddr other_addr;
-        socklen_t other_len = sizeof(other_addr);
-        int other = ::accept(socket.fd(), &other_addr, &other_len);
-        if (other < 0)
-        {
-            return;
+            fds.push_back(other);
         }
-
-        fds.push_back(other);
     }
 
     /**
@@ -113,7 +109,7 @@ namespace server
      */
     static void remove(int fd)
     {
-        fds.erase(std::remove(fds.begin(), fds.end(), fd), fds.end());
+        std::remove(fds.begin(), fds.end(), fd);
     }
 
     void send(module::ModuleId id, const message::Message &message)

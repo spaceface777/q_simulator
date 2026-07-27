@@ -1,5 +1,5 @@
-#ifndef BELT_SPEED_H
-#define BELT_SPEED_H
+#ifndef MODULE_TYPES_H
+#define MODULE_TYPES_H
 
 #include <stdint.h>
 #include <stdexcept>
@@ -42,19 +42,19 @@ namespace module
     class ServoAngle
     {
     private:
-        uint8_t value_ = 0;
+        float value_ = 0;
 
     public:
         constexpr ServoAngle() noexcept = default;
 
-        explicit constexpr ServoAngle(uint8_t angle)
+        explicit constexpr ServoAngle(float angle)
         {
-            util::require_range(angle > 0 && angle <= 180, "Servo angle must be between 0 and 180");
+            util::require_range(angle >= 0 && angle <= 180, "Servo angle must be between 0 and 180");
 
             value_ = angle;
         }
 
-        [[nodiscard]] constexpr uint8_t raw() const noexcept
+        [[nodiscard]] constexpr float raw() const noexcept
         {
             return value_;
         }
@@ -63,19 +63,19 @@ namespace module
     class BeltSpeed
     {
     private:
-        int8_t value_ = 0;
+        double value_ = 0;
 
     public:
         constexpr BeltSpeed() noexcept = default;
 
-        explicit constexpr BeltSpeed(int8_t speed)
+        explicit constexpr BeltSpeed(double speed)
         {
-            util::require_range(speed >= -100 && speed <= 100, "Belt speed must be between -100 and 100");
+            util::require_range(speed >= -100.0 && speed <= 100.0, "Belt speed must be between -100 and 100");
 
             value_ = speed;
         }
 
-        [[nodiscard]] constexpr int8_t raw() const noexcept
+        [[nodiscard]] constexpr double raw() const noexcept
         {
             return value_;
         }
