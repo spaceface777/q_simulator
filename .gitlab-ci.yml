@@ -1,6 +1,7 @@
 image: ubuntu:24.04
 
 before_script:
+  - df -h
   - apt-get update
   - apt-get install -y --no-install-recommends git cmake build-essential libsdl2-dev ninja-build ca-certificates
   - apt-get clean
