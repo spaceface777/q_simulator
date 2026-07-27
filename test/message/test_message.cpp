@@ -118,15 +118,12 @@ value = 1
 
 TEST(UpdateTest, FromTomlInvalidInput)
 {
-    // Invalid integer conversion for module
     std::string bad_module = "[update]\nmodule = bad\ndevice = \"test\"\nvalue = 1";
     EXPECT_FALSE(message::Update::from_toml(bad_module).has_value());
 
-    // Invalid integer conversion for value
     std::string bad_val = "[update]\nmodule = 1\ndevice = \"test\"\nvalue = bad";
     EXPECT_FALSE(message::Update::from_toml(bad_val).has_value());
 
-    // Out-of-range module ids and malformed strings should be rejected
     std::string bad_module_range = "[update]\nmodule = 300\ndevice = \"test\"\nvalue = 1";
     EXPECT_FALSE(message::Update::from_toml(bad_module_range).has_value());
 
@@ -219,4 +216,31 @@ TEST(PlaneDepartureTest, ToToml)
     std::string toml = plane.to_toml();
     EXPECT_NE(toml.find("[plane.departure]"), std::string::npos);
     EXPECT_NE(toml.find("module = 1"), std::string::npos);
+}
+
+TEST(UpdateGraph, ToToml)
+{
+    message::UpdateGraph graph(module::ModuleId(1), 2, "1:1,2,3|2:3,4,5");
+    EXPECT_TRUE(graph.is_valid());
+
+    std::string toml = graph.to_toml();
+    EXPECT_NE(toml.find("[update.graph]"), std::string::npos);
+    EXPECT_NE(toml.find("module = 1"), std::string::npos);
+    EXPECT_NE(toml.find("size = 2"), std::string::npos);
+    EXPECT_NE(toml.find("data_length = 15"), std::string::npos);
+    EXPECT_NE(toml.find("data = \"1:1,2,3|2:3,4,5\""), std::string::npos);
+}
+
+TEST(UpdateRfidTest, ToToml)
+{
+    message::UpdateRfid rfid(module::ModuleId(1), "AA", "BBCC");
+    EXPECT_TRUE(rfid.is_valid());
+
+    std::string toml = rfid.to_toml();
+    EXPECT_NE(toml.find("[update.rfid]"), std::string::npos);
+    EXPECT_NE(toml.find("module = 1"), std::string::npos);
+    EXPECT_NE(toml.find("uid_length = 2"), std::string::npos);
+    EXPECT_NE(toml.find("uid = \"AA\""), std::string::npos);
+    EXPECT_NE(toml.find("data_length = 4"), std::string::npos);
+    EXPECT_NE(toml.find("data = \"BBCC\""), std::string::npos);
 }

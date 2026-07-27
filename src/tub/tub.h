@@ -28,7 +28,6 @@ namespace tub
 
         bool in_laser_ = false;
         bool in_rfid_ = false;
-        // 0 = middle, 1 = extremity
         LocationProgress location_progress_{0.5};
 
         std::future<void> tub_future_;

@@ -62,7 +62,7 @@ namespace tub
             const std::shared_ptr<module::Module> module = module_opt.value();
             const settings::ModuleSettings settings = settings::get_module_settings(module_);
 
-            if (location_progress_ > 1)
+            if (location_progress_.is_at_end())
             {
                 const module::ModuleId old_module = module_;
                 std::optional<module::ModuleId> new_module;
@@ -104,7 +104,7 @@ namespace tub
                 location_progress_ = LocationProgress{1.0};
                 module_ = *new_module;
             }
-            else if (location_progress_ < 0)
+            else if (location_progress_.is_at_begin())
             {
                 switch (location_)
                 {

@@ -157,10 +157,10 @@ static void init_layout()
 
         first = false;
 
-        ss << id << ":"
-           << (settings.left ? settings.left->raw() : 0) << ","
-           << (settings.middle ? settings.middle->raw() : 0) << ","
-           << (settings.right ? settings.right->raw() : 0);
+        ss << std::to_string(id) << ":"
+           << std::to_string(settings.left ? settings.left->raw() : 0) << ","
+           << std::to_string(settings.middle ? settings.middle->raw() : 0) << ","
+           << std::to_string(settings.right ? settings.right->raw() : 0);
         size++;
     }
     std::string data = ss.str();
