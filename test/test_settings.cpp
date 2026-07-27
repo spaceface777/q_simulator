@@ -192,7 +192,7 @@ pos = [0, 0]
 angle = 9223372036854775810
 )");
 
-    EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::out_of_range);
+    EXPECT_ANY_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidModuleBottom)

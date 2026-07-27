@@ -8,7 +8,8 @@ add_executable(tests
     test_settings.cpp 
     synchronization/test_vclock.cpp 
     event/test_events.cpp
-    module/test_types.cpp)
+    module/test_types.cpp
+    tcp/test_socket.cpp)
 
 target_link_libraries(tests PRIVATE 
     gtest gtest_main

@@ -23,6 +23,6 @@ TEST(SocketTest, WrapperConstructorWithCustomFd)
     } // sock out of scope so raw_fd should close
 
     char buf[1];
-    EXPECT_EQ(::read(fd, buf, 1), -1);
+    EXPECT_EQ(::read(raw_fd, buf, 1), -1);
     EXPECT_EQ(errno, EBADF);
 }
