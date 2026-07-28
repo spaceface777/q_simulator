@@ -4,8 +4,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Debug)
 
-add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-
 # === Libraries ===
 
 include(FetchContent)
@@ -23,6 +21,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
+FetchContent_Declare(
+    SDL3
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+    GIT_TAG        release-3.4.12
+)
+FetchContent_MakeAvailable(SDL3)
+
 # === Test coverage ===
 
 option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
@@ -33,6 +38,8 @@ if(ENABLE_COVERAGE)
 endif()
 
 # === Builds ===
+
+# Core
 
 add_library(core STATIC
     src/tcp/server.cpp
@@ -49,7 +56,9 @@ target_link_libraries(core PUBLIC
     tomlplusplus::tomlplusplus
 )
 
-find_package(SDL2 REQUIRED)
+target_compile_options(core PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+# Simulation
 
 add_executable(simulation src/main.cpp
     src/visualization/visualization.cpp
@@ -57,9 +66,10 @@ add_executable(simulation src/main.cpp
 
 target_link_libraries(simulation PRIVATE 
     core 
-    SDL2::SDL2
+    SDL3::SDL3
 )
 
+target_compile_options(core PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_compile_definitions(simulation PRIVATE
     APP_VERSION="${PROJECT_VERSION}"
     APP_OS="${CMAKE_SYSTEM_NAME}"
