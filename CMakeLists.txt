@@ -49,13 +49,18 @@ add_library(core STATIC
 target_link_libraries(core PUBLIC
     pthread 
     tomlplusplus::tomlplusplus
-    SDL2::SDL2
 )
+
+find_package(SDL2 REQUIRED)
 
 add_executable(simulation src/main.cpp
     src/visualization/visualization.cpp
     src/visualization/buttons.cpp)
-target_link_libraries(simulation PRIVATE core)
+
+target_link_libraries(simulation PRIVATE 
+    core 
+    SDL2::SDL2
+)
 
 target_compile_definitions(simulation PRIVATE
     APP_VERSION="${PROJECT_VERSION}"
