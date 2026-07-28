@@ -137,7 +137,7 @@ namespace server
         while (true)
         {
             char *end = strchr(msg, '\0');
-            if (end == NULL || end == msg)
+            if (end == nullptr || end == msg)
             {
                 break;
             }

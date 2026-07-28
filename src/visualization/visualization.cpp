@@ -30,7 +30,7 @@ namespace visualization
     /**
      * Belt movement reduction.
      */
-    static constexpr float BELT_FACTOR = 0.8;
+    static constexpr float BELT_FACTOR = 0.4;
 
     /**
      * The current scale.
@@ -809,7 +809,7 @@ namespace visualization
 
             if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP)
             {
-                const bool *keyboard = SDL_GetKeyboardState(NULL);
+                const bool *keyboard = SDL_GetKeyboardState(nullptr);
 
                 if (keyboard[SDL_SCANCODE_F4])
                 {
@@ -860,7 +860,6 @@ namespace visualization
         for (uint8_t i = 1; i < MAX_MODULES; ++i)
         {
             const auto mid = module::ModuleId{i};
-
             if (!settings::get_module_settings(mid).active)
                 continue;
 

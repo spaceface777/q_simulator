@@ -286,7 +286,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
 
             is_running = visualization::is_running();
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(FPS_TARGET / 1000.0)));
+            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(1000.0 / FPS_TARGET)));
         }
         catch (std::exception &ex)
         {
