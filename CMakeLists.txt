@@ -23,8 +23,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
-find_package(SDL2 REQUIRED)
-
 # === Test coverage ===
 
 option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
