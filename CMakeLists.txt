@@ -15,6 +15,7 @@ FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_TAG        v1.17.0
+    GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(googletest)
 
@@ -22,10 +23,11 @@ FetchContent_Declare(
     tomlplusplus
     GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
     GIT_TAG        v3.4.0
+    GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
-# === Test coverage ===
+# === Options ===
 
 option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
 
@@ -34,6 +36,7 @@ if(ENABLE_COVERAGE)
     add_link_options(--coverage)
 endif()
 
+option(TESTING "Testing mode" OFF)
 
 # === Builds ===
 
