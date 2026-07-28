@@ -1,7 +1,7 @@
 #ifndef BUTTONS_H
 #define BUTTONS_H
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <atomic>
 #include <memory>
 #include <vector>
@@ -25,8 +25,8 @@ namespace visualization::buttons
     protected:
         ScreenAnchor anchor_;
 
-        SDL_Rect rect_ = {0, 0, 0, 0};
-        SDL_Rect projected_ = {0, 0, 0, 0};
+        SDL_FRect rect_ = {0, 0, 0, 0};
+        SDL_FRect projected_ = {0, 0, 0, 0};
         SDL_Color base_color_;
         SDL_Color hover_color_;
         SDL_Color active_color_;
@@ -40,12 +40,12 @@ namespace visualization::buttons
 
             int w = 0;
             int h = 0;
-            if (SDL_GetRendererOutputSize(renderer, &w, &h) != 0)
+            if (SDL_GetCurrentRenderOutputSize(renderer, &w, &h) != 0)
             {
                 return;
             }
 
-            int render_x, render_y;
+            float render_x, render_y;
             switch (anchor_)
             {
             case ScreenAnchor::TOP_LEFT:
@@ -72,7 +72,7 @@ namespace visualization::buttons
         }
 
     public:
-        Button(ScreenAnchor anchor, int x, int y, int w, int h,
+        Button(ScreenAnchor anchor, float x, float y, float w, float h,
                SDL_Color base_color, SDL_Color hover_color, SDL_Color active_color)
             : anchor_(anchor), rect_{x, y, w, h},
               base_color_(base_color), hover_color_(hover_color), active_color_(active_color)

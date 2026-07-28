@@ -22,4 +22,6 @@ target_link_libraries(tests PRIVATE
 target_compile_definitions(core PRIVATE TESTING)
 target_compile_definitions(tests PRIVATE TESTING)
 
+target_compile_options(tests PRIVATE ${COMPILATION_FLAGS})
+
 add_test(NAME tests COMMAND tests)

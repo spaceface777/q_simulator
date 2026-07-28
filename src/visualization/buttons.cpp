@@ -9,11 +9,11 @@ namespace visualization::buttons
 
     void Button::handle(const SDL_Event &event, virtual_clock::ISimulationClock &vclock) noexcept
     {
-        if (event.type == SDL_MOUSEMOTION ||
-            event.type == SDL_MOUSEBUTTONDOWN ||
-            event.type == SDL_MOUSEBUTTONUP)
+        if (event.type == SDL_EVENT_MOUSE_MOTION ||
+            event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+            event.type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
-            int mx, my;
+            float mx, my;
             SDL_GetMouseState(&mx, &my);
 
             bool inside = true;
@@ -30,11 +30,11 @@ namespace visualization::buttons
             {
                 hovering_ = true;
 
-                if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
+                if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT)
                 {
                     pressing_ = true;
                 }
-                else if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT)
+                else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_LEFT)
                 {
                     if (pressing_)
                     {
@@ -104,7 +104,7 @@ namespace visualization::buttons
 
     void SlowSlowerButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
-        double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - LARGE_STEP);
+        double new_value = std::max(0.0, settings::get_setting<double>("simulation_speed") - LARGE_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
@@ -118,7 +118,7 @@ namespace visualization::buttons
 
     void SlowerButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
-        double new_value = fmax(0.0, settings::get_setting<double>("simulation_speed") - SMALL_STEP);
+        double new_value = std::max(0.0, settings::get_setting<double>("simulation_speed") - SMALL_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
@@ -131,7 +131,7 @@ namespace visualization::buttons
 
     void FastFasterButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
-        double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + LARGE_STEP);
+        double new_value = std::min(5.0, settings::get_setting<double>("simulation_speed") + LARGE_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
@@ -145,7 +145,7 @@ namespace visualization::buttons
 
     void FasterButton::on_click(virtual_clock::ISimulationClock &vclock) noexcept
     {
-        double new_value = fmin(5.0, settings::get_setting<double>("simulation_speed") + SMALL_STEP);
+        double new_value = std::min(5.0, settings::get_setting<double>("simulation_speed") + SMALL_STEP);
         settings::set_setting("simulation_speed", new_value);
         vclock.set_simulation_speed(new_value);
     }
@@ -174,7 +174,7 @@ namespace visualization::buttons
 
     void ZoomInButton::on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
-        double new_value = fmin(5.0, settings::get_setting<double>("scale") + SMALL_STEP);
+        double new_value = std::min(5.0, settings::get_setting<double>("scale") + SMALL_STEP);
         settings::set_setting("scale", new_value);
     }
 
@@ -186,7 +186,7 @@ namespace visualization::buttons
 
     void ZoomOutButton::on_click([[maybe_unused]] virtual_clock::ISimulationClock &vclock) noexcept
     {
-        double new_value = fmax(0.0, settings::get_setting<double>("scale") - SMALL_STEP);
+        double new_value = std::max(0.0, settings::get_setting<double>("scale") - SMALL_STEP);
         settings::set_setting("scale", new_value);
     }
 

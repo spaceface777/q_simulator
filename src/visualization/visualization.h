@@ -3,7 +3,7 @@
 #ifndef VISUALIZATION_H
 #define VISUALIZATION_H
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include "../synchronization/virtual_clock.h"
 
 namespace visualization

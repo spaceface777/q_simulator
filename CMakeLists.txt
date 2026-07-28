@@ -1,12 +1,16 @@
 cmake_minimum_required(VERSION 3.10.0)
 project(simulation VERSION 1.0.0 LANGUAGES CXX)
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Debug)
 
+set(COMPILATION_FLAGS -Wall -Wextra -Wpedantic -Werror)
+
 # === Libraries ===
 
 include(FetchContent)
+
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
@@ -15,18 +19,11 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(googletest)
 
 FetchContent_Declare(
-  tomlplusplus
-  GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
-  GIT_TAG        v3.4.0
+    tomlplusplus
+    GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+    GIT_TAG        v3.4.0
 )
 FetchContent_MakeAvailable(tomlplusplus)
-
-FetchContent_Declare(
-    SDL3
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG        release-3.4.12
-)
-FetchContent_MakeAvailable(SDL3)
 
 # === Test coverage ===
 
@@ -37,9 +34,8 @@ if(ENABLE_COVERAGE)
     add_link_options(--coverage)
 endif()
 
-# === Builds ===
 
-# Core
+# === Builds ===
 
 add_library(core STATIC
     src/tcp/server.cpp
@@ -56,41 +52,11 @@ target_link_libraries(core PUBLIC
     tomlplusplus::tomlplusplus
 )
 
-target_compile_options(core PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_compile_options(core PRIVATE ${COMPILATION_FLAGS})
 
-# Simulation
+# === Subdirectories ===
 
-add_executable(simulation src/main.cpp
-    src/visualization/visualization.cpp
-    src/visualization/buttons.cpp)
-
-target_link_libraries(simulation PRIVATE 
-    core 
-    SDL3::SDL3
-)
-
-target_compile_options(core PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_compile_definitions(simulation PRIVATE
-    APP_VERSION="${PROJECT_VERSION}"
-    APP_OS="${CMAKE_SYSTEM_NAME}"
-    APP_ARCH="${CMAKE_SYSTEM_PROCESSOR}"
-)
-
-configure_file(${CMAKE_SOURCE_DIR}/events_example.toml ${CMAKE_BINARY_DIR}/events_example.toml COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/layout_example.toml ${CMAKE_BINARY_DIR}/layout_example.toml COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/settings_example.toml ${CMAKE_BINARY_DIR}/settings_example.toml COPYONLY)
-
-if(EXISTS ${CMAKE_SOURCE_DIR}/events.toml)
-    configure_file(${CMAKE_SOURCE_DIR}/events.toml ${CMAKE_BINARY_DIR}/events.toml COPYONLY)
-endif()
-if(EXISTS ${CMAKE_SOURCE_DIR}/layout.toml)
-    configure_file(${CMAKE_SOURCE_DIR}/layout.toml ${CMAKE_BINARY_DIR}/layout.toml COPYONLY)
-endif()
-if(EXISTS ${CMAKE_SOURCE_DIR}/settings.toml)
-    configure_file(${CMAKE_SOURCE_DIR}/settings.toml ${CMAKE_BINARY_DIR}/settings.toml COPYONLY)
-endif()
-
-# === Testing ===
+add_subdirectory(src)
 
 include(CTest)
 enable_testing()
