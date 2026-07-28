@@ -211,6 +211,15 @@ namespace settings
         return module_settings[id.raw()];
     }
 
+#ifdef TESTING
+
+    void set_module_settings(module::ModuleId id, ModuleSettings settings)
+    {
+        module_settings[id.raw()] = settings;
+    }
+
+#endif
+
 }
 
 template int settings::get_setting<int>(std::string_view setting);

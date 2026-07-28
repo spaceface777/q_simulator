@@ -94,6 +94,42 @@ namespace module
         }
 
         /**
+         * Sets the speed of the big belt.
+         * @param speed The new speed for the big belt.
+         */
+        void set_big_belt_speed(BeltSpeed speed) noexcept
+        {
+            big_speed_ = speed;
+        }
+
+        /**
+         * Sets the speed of the small belt.
+         * @param speed The new speed for the small belt.
+         */
+        void set_small_belt_speed(BeltSpeed speed) noexcept
+        {
+            small_speed_ = speed;
+        }
+
+        /**
+         * Sets the angle of the servo.
+         * @param degrees The new angle for the servo.
+         */
+        void set_servo_angle(ServoAngle degrees) noexcept
+        {
+            servo_degrees_ = degrees;
+        }
+
+        /**
+         * Sets the color of the led.
+         * @param color The new color for the led.
+         */
+        void set_led_color(LedColor color) noexcept
+        {
+            led_color_ = color;
+        }
+
+        /**
          * @return Whether the left laser is active.
          */
         bool is_left_laser_active() const noexcept
@@ -175,12 +211,6 @@ namespace module
          */
         void send(const message::Message &message);
 
-        /**
-         * Runs when an update message has been sent from this module's simulation.
-         *
-         * @param message The message that was sent to this module's simulation.
-         */
-        void update(const message::Update message);
     };
 
     /**

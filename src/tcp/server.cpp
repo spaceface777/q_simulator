@@ -177,10 +177,25 @@ namespace server
                 if (update)
                 {
                     const message::Update message = update.value();
-                    const std::optional<std::shared_ptr<module::Module>> ptr = module::get_module(message.module());
-                    if (ptr)
+                    const std::optional<std::shared_ptr<module::Module>> module_opt = module::get_module(message.module());
+                    if (module_opt)
                     {
-                        ptr.value()->update(message);
+                        if (message.device() == "big belt")
+                        {
+                            (*module_opt)->set_big_belt_speed(module::BeltSpeed{message.value()});
+                        }
+                        else if (message.device() == "small belt")
+                        {
+                            (*module_opt)->set_small_belt_speed(module::BeltSpeed{message.value()});
+                        }
+                        else if (message.device() == "servo")
+                        {
+                            (*module_opt)->set_servo_angle(module::ServoAngle{message.value()});
+                        }
+                        else if (message.device() == "led")
+                        {
+                            (*module_opt)->set_led_color(module::LedColor{static_cast<uint32_t>(message.value())});
+                        }
                     }
 
                     goto next;

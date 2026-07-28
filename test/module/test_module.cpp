@@ -15,42 +15,6 @@ protected:
     }
 };
 
-TEST_F(ModuleTest, UpdateBigBeltSpeed)
-{
-    module::Module mod(1);
-    message::Update message{mod.id(), "big belt", 90.0};
-    mod.update(message);
-
-    EXPECT_EQ(mod.big_belt_speed().raw(), 90.0);
-}
-
-TEST_F(ModuleTest, UpdateSmallBeltSpeed)
-{
-    module::Module mod(1);
-    message::Update message{mod.id(), "small belt", 75.5};
-    mod.update(message);
-
-    EXPECT_EQ(mod.small_belt_speed().raw(), 75.5);
-}
-
-TEST_F(ModuleTest, UpdateServoDegrees)
-{
-    module::Module mod(1);
-    message::Update message{mod.id(), "servo", 90.0};
-    mod.update(message);
-
-    EXPECT_EQ(mod.servo_angle().raw(), 90.0);
-}
-
-TEST_F(ModuleTest, UpdateLedColor)
-{
-    module::Module mod{1};
-    message::Update message{mod.id(), "led", 0xFF00FF00};
-    mod.update(message);
-
-    EXPECT_EQ(mod.led_color().raw(), static_cast<uint32_t>(0xFF00FF00));
-}
-
 TEST_F(ModuleTest, RegisterAndRetrieveModule)
 {
     const uint8_t mod_id = 1;

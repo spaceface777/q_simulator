@@ -62,26 +62,6 @@ namespace module
 		server::send(id_, message);
 	}
 
-	void Module::update(const message::Update message)
-	{
-		if (message.device() == "big belt")
-		{
-			big_speed_ = BeltSpeed{message.value()};
-		}
-		else if (message.device() == "small belt")
-		{
-			small_speed_ = BeltSpeed{message.value()};
-		}
-		else if (message.device() == "servo")
-		{
-			servo_degrees_ = ServoAngle{message.value()};
-		}
-		else if (message.device() == "led")
-		{
-			led_color_ = LedColor{static_cast<uint32_t>(message.value())};
-		}
-	}
-
 	static std::map<uint8_t, std::shared_ptr<module::Module>> map;
 	static std::mutex map_mutex;
 

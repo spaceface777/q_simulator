@@ -36,9 +36,9 @@ namespace tub
         std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_;
 
     public:
-        Tub(TubId id, module::ModuleId module, module::ModuleId target_module,
+        Tub(TubId id, module::ModuleId module, ModuleLocation location, module::ModuleId target_module,
             ModuleLocation target_module_location, std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid)
-            : id_(id), module_(module), target_module_(target_module), target_module_location_(target_module_location), rfid_(rfid)
+            : id_(id), module_(module), location_(location), target_module_(target_module), target_module_location_(target_module_location), rfid_(rfid)
         {
             rfid_uid_ = {static_cast<int8_t>(id.raw()), 0, 0, 0, 0, 0, 0};
         }

@@ -69,6 +69,12 @@ namespace settings
      */
     [[nodiscard]] ModuleSettings get_module_settings(module::ModuleId id);
 
+#ifdef TESTING
+
+    void set_module_settings(module::ModuleId id, ModuleSettings settings);
+
+#endif
+
 }
 
 #endif

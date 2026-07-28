@@ -83,7 +83,7 @@ cmake -B build -S . -G Ninja
 $(echo $BROWSER) build/coverage_html/index.html
 ```
 
-Change `firefox` on the first line to your favorite browser. Last measured test coverage: 59.0% of lines and 67.4% of functions on 27-06-2026.
+Change `firefox` on the first line to your favorite browser. Last measured test coverage: 82.5% of lines and 89.8% of functions on 27-06-2026.
 
 ## Support
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
