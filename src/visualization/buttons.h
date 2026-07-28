@@ -5,6 +5,7 @@
 #include <atomic>
 #include <memory>
 #include <vector>
+#include <iostream>
 
 #include "../synchronization/virtual_clock.h"
 #include "visualization.h"
@@ -40,7 +41,7 @@ namespace visualization::buttons
 
             int w = 0;
             int h = 0;
-            if (SDL_GetCurrentRenderOutputSize(renderer, &w, &h) != 0)
+            if (!SDL_GetCurrentRenderOutputSize(renderer, &w, &h))
             {
                 return;
             }

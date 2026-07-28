@@ -25,26 +25,26 @@ namespace visualization
     /**
      * Default scaling is kind of large, so reduce by a factor.
      */
-    static constexpr double SCALING_FACTOR = 0.7;
+    static constexpr float SCALING_FACTOR = 0.7;
 
     /**
      * Belt movement reduction.
      */
-    static constexpr double BELT_FACTOR = 0.4;
+    static constexpr float BELT_FACTOR = 0.8;
 
     /**
      * The current scale.
      */
-    static double scale = 1.0;
+    static float scale = 1.0;
 
     /**
      * Scales a constant by the current scaling.
      * @param x The constant.
      * @return The scaled constant.
      */
-    float scale_within_module(int x)
+    float scale_within_module(float x)
     {
-        return static_cast<float>(x * SCALING_FACTOR * scale);
+        return x * SCALING_FACTOR * scale;
     }
 
     static std::atomic<bool> running_;
@@ -336,7 +336,7 @@ namespace visualization
 
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
             double step = 20.0;
-            double offset = fmod(belt_offset_ * (-speed.raw() / 100.0), step);
+            double offset = std::fmod(belt_offset_ * (-speed.raw() / 100.0), step);
             int longer_dimension = height > width ? height : width;
             for (double l = -step; l < longer_dimension + step; l += step)
             {
@@ -345,8 +345,7 @@ namespace visualization
                 case settings::ModuleAngle::NORMAL:
                 case settings::ModuleAngle::UPSIDE_DOWN:
                 {
-                    int draw_x = belt_x + (rotation == settings::ModuleAngle::NORMAL ? static_cast<int>(l + offset)
-                                                                                     : width - static_cast<int>(l + offset));
+                    float draw_x = belt_x + (rotation == settings::ModuleAngle::NORMAL ? (l + offset) : width - (l + offset));
                     if (draw_x >= belt_x && draw_x < belt_x + width)
                     {
                         SDL_RenderLine(renderer_, draw_x, belt_y, draw_x, belt_y + height - 1);
@@ -356,8 +355,7 @@ namespace visualization
                 case settings::ModuleAngle::ROTATED_90:
                 case settings::ModuleAngle::ROTATED_270:
                 {
-                    int draw_y = belt_y + (rotation == settings::ModuleAngle::ROTATED_90 ? static_cast<int>(l + offset)
-                                                                                         : height - static_cast<int>(l + offset));
+                    float draw_y = belt_y + (rotation == settings::ModuleAngle::ROTATED_90 ? (l + offset) : height - (l + offset));
                     if (draw_y >= belt_y && draw_y < belt_y + height)
                     {
                         SDL_RenderLine(renderer_, belt_x, draw_y, belt_x + width - 1, draw_y);
@@ -431,7 +429,7 @@ namespace visualization
 
             SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
             double step = 20.0;
-            double offset = -fmod(belt_offset_ * (-speed.raw() / 100.0), step);
+            double offset = -std::fmod(belt_offset_ * (-speed.raw() / 100.0), step);
             int longer_dimension = height > width ? height : width;
             for (double l = -step; l < longer_dimension + step; l += step)
             {
@@ -440,8 +438,7 @@ namespace visualization
                 case settings::ModuleAngle::NORMAL:
                 case settings::ModuleAngle::UPSIDE_DOWN:
                 {
-                    int draw_y = belt_y + (rotation == settings::ModuleAngle::NORMAL ? static_cast<int>(l + offset)
-                                                                                     : height - static_cast<int>(l + offset));
+                    float draw_y = belt_y + (rotation == settings::ModuleAngle::NORMAL ? (l + offset) : height - (l + offset));
                     if (draw_y >= belt_y && draw_y < belt_y + height)
                     {
                         SDL_RenderLine(renderer_, belt_x, draw_y, belt_x + width - 1, draw_y);
@@ -451,8 +448,7 @@ namespace visualization
                 case settings::ModuleAngle::ROTATED_90:
                 case settings::ModuleAngle::ROTATED_270:
                 {
-                    int draw_x = belt_x + (rotation == settings::ModuleAngle::ROTATED_270 ? static_cast<int>(l + offset)
-                                                                                          : width - static_cast<int>(l + offset));
+                    float draw_x = belt_x + (rotation == settings::ModuleAngle::ROTATED_270 ? (l + offset) : width - (l + offset));
                     if (draw_x >= belt_x && draw_x < belt_x + width)
                     {
                         SDL_RenderLine(renderer_, draw_x, belt_y, draw_x, belt_y + height - 1);
@@ -478,7 +474,7 @@ namespace visualization
         }
 
         float x1, y1, x2, y2;
-        int margin = scale_within_module(36); // 20% of 180
+        float margin = scale_within_module(36); // 20% of 180
 
         switch (rotation)
         {
@@ -524,7 +520,7 @@ namespace visualization
         SDL_RenderFillRect(renderer_, &dot2);
     }
 
-    static void render_servo(int module_x, int module_y, module::ServoAngle angle, settings::ModuleAngle rotation)
+    static void render_servo(float module_x, float module_y, module::ServoAngle angle, settings::ModuleAngle rotation)
     {
         // Pivot at (90, 75) relative to module (top-middle of big belt)
         double pivot_rel_x = scale_within_module(90.0);
@@ -563,10 +559,10 @@ namespace visualization
         double end_rel_y = pivot_rel_y + length * sin(total_angle_rad);
 
         SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
-        int x1 = module_x + static_cast<int>(pivot_rel_x);
-        int y1 = module_y + static_cast<int>(pivot_rel_y);
-        int x2 = module_x + static_cast<int>(end_rel_x);
-        int y2 = module_y + static_cast<int>(end_rel_y);
+        float x1 = module_x + pivot_rel_x;
+        float y1 = module_y + pivot_rel_y;
+        float x2 = module_x + end_rel_x;
+        float y2 = module_y + end_rel_y;
 
         // Draw thick line (width 4)
         for (int i = -2; i <= 1; ++i)
@@ -604,7 +600,7 @@ namespace visualization
             float module_x, module_y;
             get_module_coords(tub->module(), module_x, module_y);
 
-            double rel_x = 0, rel_y = 0;
+            float rel_x = 0, rel_y = 0;
             if (tub->module_location() == ModuleLocation::LEFT)
             {
                 switch (module_settings.angle)
@@ -681,8 +677,8 @@ namespace visualization
                 }
             }
 
-            int x = module_x + (int)rel_x;
-            int y = module_y + (int)rel_y;
+            float x = module_x + rel_x;
+            float y = module_y + rel_y;
 
             SDL_SetRenderDrawColor(renderer_, 255, 192, 203, 255);
             int radius = 10;
@@ -770,7 +766,7 @@ namespace visualization
             return;
         }
 
-        renderer_ = SDL_CreateRenderer(window_, "Renderer");
+        renderer_ = SDL_CreateRenderer(window_, nullptr);
         if (!renderer_)
         {
             std::cerr << "Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
