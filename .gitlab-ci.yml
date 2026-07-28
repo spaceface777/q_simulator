@@ -1,11 +1,9 @@
 image: ubuntu:24.04
 
 before_script:
-  - df -h
   - apt-get update
-  - apt-get install -y --no-install-recommends git cmake build-essential libsdl2-dev ninja-build ca-certificates
+  - apt-get install -y --no-install-recommends git cmake build-essential ninja-build
   - apt-get clean
-  - rm -rf /var/lib/apt/lists/*
 
 build:
   script:
@@ -13,5 +11,5 @@ build:
     - cp layout_example.toml layout.toml
     - cp events_example.toml events.toml
     - cmake -B build -S . -G Ninja
-    - cmake --build build -j
+    - cmake --build build -j --target tests
     - ./build/tests

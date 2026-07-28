@@ -32,7 +32,7 @@ namespace server
 
     static std::vector<unsigned int> fds;
     static std::unordered_map<uint8_t, int> module_fds;
-    static std::mutex socket_mutex;
+    static std::mutex module_fds_mutex;
 
     /**
      * Sets up the port for a server connection.
@@ -115,7 +115,7 @@ namespace server
             return;
         }
 
-        std::lock_guard<std::mutex> lock(socket_mutex);
+        std::lock_guard<std::mutex> lock(module_fds_mutex);
         auto it = module_fds.find(id.raw());
         if (it != module_fds.end())
         {
@@ -149,7 +149,7 @@ namespace server
                     const message::Init message = intro.value();
                     const module::ModuleId id = message.id();
 
-                    std::lock_guard<std::mutex> lock(socket_mutex);
+                    std::lock_guard<std::mutex> lock(module_fds_mutex);
                     module_fds[id.raw()] = module_fd;
 
                     std::cout << "Registered module " << std::to_string(id.raw()) << " at fd " << std::to_string(module_fd) << std::endl;
