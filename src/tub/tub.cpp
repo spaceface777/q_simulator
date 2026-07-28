@@ -243,11 +243,9 @@ namespace tub
     }
 
     static std::map<uint8_t, std::shared_ptr<tub::Tub>> map;
-	static std::mutex map_mutex;
 
     void stop()
     {
-		std::lock_guard<std::mutex> lock(map_mutex);
         for (auto &tub : get_tubs())
         {
             tub->stop();
@@ -258,7 +256,6 @@ namespace tub
 
     void add_tub(std::unique_ptr<tub::Tub> ptr)
     {
-		std::lock_guard<std::mutex> lock(map_mutex);
         if (map.count(ptr->id().raw()))
         {
             stop();
@@ -269,7 +266,6 @@ namespace tub
 
     std::optional<std::shared_ptr<tub::Tub>> get_tub(TubId id)
     {
-		std::lock_guard<std::mutex> lock(map_mutex);
         if (map.count(id.raw()))
         {
             return map.at(id.raw());
@@ -279,7 +275,6 @@ namespace tub
 
     std::vector<std::shared_ptr<tub::Tub>> get_tubs()
     {
-		std::lock_guard<std::mutex> lock(map_mutex);
         std::vector<std::shared_ptr<tub::Tub>> tubs;
         for (const auto &pair : map)
         {
@@ -290,7 +285,6 @@ namespace tub
 
     void check()
     {
-		std::lock_guard<std::mutex> lock(map_mutex);
         for (auto &tub : get_tubs())
         {
             tub->check();

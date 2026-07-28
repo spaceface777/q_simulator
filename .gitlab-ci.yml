@@ -10,6 +10,6 @@ build:
     - cp settings_example.toml settings.toml
     - cp layout_example.toml layout.toml
     - cp events_example.toml events.toml
-    - cmake -B build -S . -G Ninja -DTESTING=ON -DSDL_UNIX_CONSOLE_BUILD=ON
+    - cmake -B build -S . -G Ninja -DTESTING_CONSOLE_BUILD=ON -DSDL_UNIX_CONSOLE_BUILD=ON
     - cmake --build build -j --target tests
     - ./build/tests

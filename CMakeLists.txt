@@ -36,7 +36,7 @@ if(ENABLE_COVERAGE)
     add_link_options(--coverage)
 endif()
 
-option(TESTING "Testing mode" OFF)
+option(TESTING_CONSOLE_BUILD "Enable console-only testing build" OFF)
 
 # === Builds ===
 
@@ -59,7 +59,9 @@ target_compile_options(core PRIVATE ${COMPILATION_FLAGS})
 
 # === Subdirectories ===
 
-add_subdirectory(src)
+if(NOT TESTING_CONSOLE_BUILD)
+    add_subdirectory(src)
+endif()
 
 include(CTest)
 enable_testing()
