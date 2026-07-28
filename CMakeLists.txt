@@ -42,8 +42,6 @@ add_library(core STATIC
     src/module/module.cpp
     src/message/message.cpp
     src/tub/tub.cpp
-    src/visualization/visualization.cpp
-    src/visualization/buttons.cpp
     src/settings.cpp
     src/event/events.cpp
 )
@@ -54,7 +52,9 @@ target_link_libraries(core PUBLIC
     SDL2::SDL2
 )
 
-add_executable(simulation src/main.cpp)
+add_executable(simulation src/main.cpp
+    src/visualization/visualization.cpp
+    src/visualization/buttons.cpp)
 target_link_libraries(simulation PRIVATE core)
 
 target_compile_definitions(simulation PRIVATE
