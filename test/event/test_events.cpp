@@ -167,6 +167,15 @@ origin = ["module", 1]
 destination = ["plane", 2]
 rfid = [[1, 2, 3, 4]]
 
+[tub.event2]
+time = 1.5746
+id = 1
+safe = true
+needs_security = false
+origin = ["plane", 2]
+destination = ["module", 2]
+rfid = []
+
 [plane.event2]
 time = 4.0
 id = 200
@@ -179,7 +188,7 @@ rfid = [[5, 6, 7, 8]]
 
     std::list<std::unique_ptr<events::Event>> parsed_events;
     EXPECT_NO_THROW(events::parse_events(temp_file_path, parsed_events));
-    EXPECT_EQ(2u, parsed_events.size());
+    EXPECT_EQ(3, parsed_events.size());
 }
 
 TEST_F(EventsFileTest, ParseMissingFileThrows)
