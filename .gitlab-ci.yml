@@ -1,5 +1,9 @@
 image: ubuntu:24.04
 
+default:
+  tags:
+    - docker
+
 before_script:
   - apt-get update
   - apt-get install -y --no-install-recommends git cmake build-essential ninja-build ca-certificates
