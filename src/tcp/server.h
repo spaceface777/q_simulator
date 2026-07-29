@@ -9,37 +9,37 @@
 namespace server
 {
 
-    static constexpr int PORT = 7777;
+static constexpr int PORT = 7777;
 
-    /**
-     * Sends a message to module id.
-     *
-     * @param id The module id.
-     * @param message The message to send.
-     */
-    void send(module::ModuleId id, const message::Message &message);
+/**
+ * Sends a message to module id.
+ *
+ * @param id The module id.
+ * @param message The message to send.
+ */
+void send(module::ModuleId id, const message::Message &message);
 
-    /**
-     * Runs the server.
-     */
-    void run();
+/**
+ * Runs the server.
+ */
+void run();
 
-    /**
-     * Signals the server thread to stop execution.
-     */
-    void stop();
+/**
+ * Signals the server thread to stop execution.
+ */
+void stop();
 
-    /**
-     * @return The amount of connections this server is handling.
-     */
-    [[nodiscard]] std::size_t size();
+/**
+ * @return The amount of connections this server is handling.
+ */
+[[nodiscard]] std::size_t size();
 
-    void check();
+void check();
 
 #ifdef TESTING
-    [[nodiscard]] std::unordered_map<uint8_t, int> get_module_fds();
+[[nodiscard]] std::unordered_map<uint8_t, int> get_module_fds();
 #endif
 
-}
+} // namespace server
 
 #endif // SERVER_H

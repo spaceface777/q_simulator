@@ -1,18 +1,18 @@
+#include <array>
+#include <chrono>
+#include <functional>
 #include <gtest/gtest.h>
 #include <memory>
 #include <thread>
-#include <chrono>
-#include <array>
 #include <vector>
-#include <functional>
 
-#include "../../src/tub/tub.h"
 #include "../../src/module/module.h"
 #include "../../src/settings.h"
+#include "../../src/tub/tub.h"
 
 class TubTest : public ::testing::Test
 {
-protected:
+  protected:
     void SetUp() override
     {
         tub::stop();
@@ -36,14 +36,11 @@ protected:
         return rfid;
     }
 
-    void run_intra_module_integration_test(
-        ModuleLocation initial_location,
-        ModuleLocation target_location,
-        module::BeltSpeed small_belt_speed,
-        module::BeltSpeed big_belt_speed,
-        module::ServoAngle servo_angle,
-        std::function<bool(const module::Module &)> is_target_active,
-        std::function<bool(const module::Module &)> is_other_active)
+    void run_intra_module_integration_test(ModuleLocation initial_location, ModuleLocation target_location,
+                                           module::BeltSpeed small_belt_speed, module::BeltSpeed big_belt_speed,
+                                           module::ServoAngle servo_angle,
+                                           std::function<bool(const module::Module &)> is_target_active,
+                                           std::function<bool(const module::Module &)> is_other_active)
     {
         // setup
         settings::set_setting("simulation_speed", 5.0);
@@ -57,7 +54,8 @@ protected:
             module::add_module(std::move(module));
         }
         {
-            auto tub = std::make_unique<tub::Tub>(tub::TubId{1}, module::ModuleId{1}, initial_location, module::ModuleId{1}, initial_location, create_default_rfid());
+            auto tub = std::make_unique<tub::Tub>(tub::TubId{1}, module::ModuleId{1}, initial_location,
+                                                  module::ModuleId{1}, initial_location, create_default_rfid());
             tub->run();
             tub::add_tub(std::move(tub));
         }
@@ -119,7 +117,8 @@ TEST_F(TubTest, AddAndGetTub)
 {
     tub::TubId tub_id{10};
 
-    auto tub_ptr = std::make_unique<tub::Tub>(tub_id, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2}, ModuleLocation::RIGHT, create_default_rfid());
+    auto tub_ptr = std::make_unique<tub::Tub>(tub_id, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2},
+                                              ModuleLocation::RIGHT, create_default_rfid());
     tub::add_tub(std::move(tub_ptr));
 
     const auto fetched = tub::get_tub(tub_id);
@@ -134,14 +133,22 @@ TEST_F(TubTest, DuplicateRegistrationThrows)
 {
     tub::TubId tub_id{7};
 
-    tub::add_tub(std::make_unique<tub::Tub>(tub_id, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2}, ModuleLocation::LEFT, create_default_rfid()));
-    EXPECT_THROW({ add_tub(std::make_unique<tub::Tub>(tub_id, module::ModuleId{3}, ModuleLocation::MIDDLE, module::ModuleId{4}, ModuleLocation::RIGHT, create_default_rfid())); }, std::invalid_argument);
+    tub::add_tub(std::make_unique<tub::Tub>(tub_id, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2},
+                                            ModuleLocation::LEFT, create_default_rfid()));
+    EXPECT_THROW(
+        {
+            add_tub(std::make_unique<tub::Tub>(tub_id, module::ModuleId{3}, ModuleLocation::MIDDLE, module::ModuleId{4},
+                                               ModuleLocation::RIGHT, create_default_rfid()));
+        },
+        std::invalid_argument);
 }
 
 TEST_F(TubTest, GetAllTubs)
 {
-    tub::add_tub(std::make_unique<tub::Tub>(tub::TubId{1}, module::ModuleId{10}, ModuleLocation::MIDDLE, module::ModuleId{20}, ModuleLocation::MIDDLE, create_default_rfid()));
-    tub::add_tub(std::make_unique<tub::Tub>(tub::TubId{2}, module::ModuleId{10}, ModuleLocation::MIDDLE, module::ModuleId{20}, ModuleLocation::MIDDLE, create_default_rfid()));
+    tub::add_tub(std::make_unique<tub::Tub>(tub::TubId{1}, module::ModuleId{10}, ModuleLocation::MIDDLE,
+                                            module::ModuleId{20}, ModuleLocation::MIDDLE, create_default_rfid()));
+    tub::add_tub(std::make_unique<tub::Tub>(tub::TubId{2}, module::ModuleId{10}, ModuleLocation::MIDDLE,
+                                            module::ModuleId{20}, ModuleLocation::MIDDLE, create_default_rfid()));
 
     std::vector<std::shared_ptr<tub::Tub>> tubs = tub::get_tubs();
     EXPECT_EQ(tubs.size(), 2);
@@ -149,7 +156,8 @@ TEST_F(TubTest, GetAllTubs)
 
 TEST_F(TubTest, DoubleRunThrowsException)
 {
-    tub::Tub tub(tub::TubId{1}, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2}, ModuleLocation::MIDDLE, create_default_rfid());
+    tub::Tub tub(tub::TubId{1}, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2},
+                 ModuleLocation::MIDDLE, create_default_rfid());
     tub.run();
 
     // cannot double run a tub
@@ -162,15 +170,18 @@ TEST_F(TubTest, DoubleRunThrowsException)
 TEST_F(TubTest, SafeDestructionWhileRunning)
 {
     EXPECT_NO_THROW({
-        tub::Tub tub(tub::TubId{100}, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2}, ModuleLocation::MIDDLE, create_default_rfid());
+        tub::Tub tub(tub::TubId{100}, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2},
+                     ModuleLocation::MIDDLE, create_default_rfid());
         // test stop()
     });
 }
 
 TEST_F(TubTest, GlobalStopAndJoin)
 {
-    tub::add_tub(std::make_unique<tub::Tub>(tub::TubId{1}, module::ModuleId{1}, ModuleLocation::MIDDLE, module::ModuleId{2}, ModuleLocation::MIDDLE, create_default_rfid()));
-    tub::add_tub(std::make_unique<tub::Tub>(tub::TubId{2}, module::ModuleId{2}, ModuleLocation::MIDDLE, module::ModuleId{3}, ModuleLocation::MIDDLE, create_default_rfid()));
+    tub::add_tub(std::make_unique<tub::Tub>(tub::TubId{1}, module::ModuleId{1}, ModuleLocation::MIDDLE,
+                                            module::ModuleId{2}, ModuleLocation::MIDDLE, create_default_rfid()));
+    tub::add_tub(std::make_unique<tub::Tub>(tub::TubId{2}, module::ModuleId{2}, ModuleLocation::MIDDLE,
+                                            module::ModuleId{3}, ModuleLocation::MIDDLE, create_default_rfid()));
 
     tub::stop();
 }
@@ -178,83 +189,47 @@ TEST_F(TubTest, GlobalStopAndJoin)
 TEST_F(TubTest, IntraModuleIntegrationMiddleToRight)
 {
     run_intra_module_integration_test(
-        ModuleLocation::MIDDLE,
-        ModuleLocation::RIGHT,
-        module::BeltSpeed{-100},
-        module::BeltSpeed{-100},
-        module::ServoAngle{0},
-        [](const auto &m)
-        { return m.is_right_laser_active(); },
-        [](const auto &m)
-        { return m.is_rfid_active() || m.is_left_laser_active(); });
+        ModuleLocation::MIDDLE, ModuleLocation::RIGHT, module::BeltSpeed{-100}, module::BeltSpeed{-100},
+        module::ServoAngle{0}, [](const auto &m) { return m.is_right_laser_active(); },
+        [](const auto &m) { return m.is_rfid_active() || m.is_left_laser_active(); });
 }
 
 TEST_F(TubTest, IntraModuleIntegrationMiddleToLeft)
 {
     run_intra_module_integration_test(
-        ModuleLocation::MIDDLE,
-        ModuleLocation::LEFT,
-        module::BeltSpeed{-100},
-        module::BeltSpeed{100},
-        module::ServoAngle{0},
-        [](const auto &m)
-        { return m.is_left_laser_active(); },
-        [](const auto &m)
-        { return m.is_rfid_active() || m.is_right_laser_active(); });
+        ModuleLocation::MIDDLE, ModuleLocation::LEFT, module::BeltSpeed{-100}, module::BeltSpeed{100},
+        module::ServoAngle{0}, [](const auto &m) { return m.is_left_laser_active(); },
+        [](const auto &m) { return m.is_rfid_active() || m.is_right_laser_active(); });
 }
 
 TEST_F(TubTest, IntraModuleIntegrationLeftToMiddle)
 {
     run_intra_module_integration_test(
-        ModuleLocation::LEFT,
-        ModuleLocation::MIDDLE,
-        module::BeltSpeed{100},
-        module::BeltSpeed{-100},
-        module::ServoAngle{90},
-        [](const auto &m)
-        { return m.is_rfid_active(); },
-        [](const auto &m)
-        { return m.is_left_laser_active() || m.is_right_laser_active(); });
+        ModuleLocation::LEFT, ModuleLocation::MIDDLE, module::BeltSpeed{100}, module::BeltSpeed{-100},
+        module::ServoAngle{90}, [](const auto &m) { return m.is_rfid_active(); },
+        [](const auto &m) { return m.is_left_laser_active() || m.is_right_laser_active(); });
 }
 
 TEST_F(TubTest, IntraModuleIntegrationRightToMiddle)
 {
     run_intra_module_integration_test(
-        ModuleLocation::RIGHT,
-        ModuleLocation::MIDDLE,
-        module::BeltSpeed{100},
-        module::BeltSpeed{100},
-        module::ServoAngle{90},
-        [](const auto &m)
-        { return m.is_rfid_active(); },
-        [](const auto &m)
-        { return m.is_left_laser_active() || m.is_right_laser_active(); });
+        ModuleLocation::RIGHT, ModuleLocation::MIDDLE, module::BeltSpeed{100}, module::BeltSpeed{100},
+        module::ServoAngle{90}, [](const auto &m) { return m.is_rfid_active(); },
+        [](const auto &m) { return m.is_left_laser_active() || m.is_right_laser_active(); });
 }
 
 TEST_F(TubTest, IntraModuleIntegrationRightToLeft)
 {
     run_intra_module_integration_test(
-        ModuleLocation::RIGHT,
-        ModuleLocation::LEFT,
-        module::BeltSpeed{0},
-        module::BeltSpeed{100},
-        module::ServoAngle{0},
-        [](const auto &m)
-        { return m.is_left_laser_active(); },
-        [](const auto &m)
-        { return m.is_rfid_active() || m.is_right_laser_active(); });
+        ModuleLocation::RIGHT, ModuleLocation::LEFT, module::BeltSpeed{0}, module::BeltSpeed{100},
+        module::ServoAngle{0}, [](const auto &m) { return m.is_left_laser_active(); },
+        [](const auto &m) { return m.is_rfid_active() || m.is_right_laser_active(); });
 }
 
 TEST_F(TubTest, IntraModuleIntegrationLeftToRight)
 {
     run_intra_module_integration_test(
-        ModuleLocation::LEFT,
-        ModuleLocation::RIGHT,
-        module::BeltSpeed{0},
-        module::BeltSpeed{-100},
-        module::ServoAngle{0},
-        [](const auto &m)
-        { return m.is_right_laser_active(); },
-        [](const auto &m)
-        { return m.is_rfid_active() || m.is_left_laser_active(); });
+        ModuleLocation::LEFT, ModuleLocation::RIGHT, module::BeltSpeed{0}, module::BeltSpeed{-100},
+        module::ServoAngle{0}, [](const auto &m) { return m.is_right_laser_active(); },
+        [](const auto &m) { return m.is_rfid_active() || m.is_left_laser_active(); });
 }

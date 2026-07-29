@@ -1,9 +1,9 @@
+#include "util.h"
+
 #include <algorithm>
 #include <cctype>
 #include <locale>
 #include <vector>
-
-#include "util.h"
 
 std::vector<std::string_view> util::split(std::string_view sv, std::string_view delimiter)
 {
@@ -98,7 +98,8 @@ std::optional<int> util::parse_int(std::string_view text)
     {
         std::size_t consumed = 0;
         const long long value = std::stoll(std::string(text), &consumed);
-        if (consumed != text.size() || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max())
+        if (consumed != text.size() || value < std::numeric_limits<int>::min() ||
+            value > std::numeric_limits<int>::max())
         {
             return {};
         }

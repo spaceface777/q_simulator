@@ -1,18 +1,13 @@
 #include <gtest/gtest.h>
+
 #include "../../src/module/module.h"
 
 class ModuleTest : public ::testing::Test
 {
-protected:
-    void SetUp() override
-    {
-        module::clear();
-    }
+  protected:
+    void SetUp() override { module::clear(); }
 
-    void TearDown() override
-    {
-        module::clear();
-    }
+    void TearDown() override { module::clear(); }
 };
 
 TEST_F(ModuleTest, RegisterAndRetrieveModule)
@@ -37,9 +32,7 @@ TEST_F(ModuleTest, DoubleRegistrationThrowsException)
 {
     module::add_module(std::make_unique<module::Module>(1));
 
-    EXPECT_THROW(
-        module::add_module(std::make_unique<module::Module>(1)),
-        std::invalid_argument);
+    EXPECT_THROW(module::add_module(std::make_unique<module::Module>(1)), std::invalid_argument);
 }
 
 TEST_F(ModuleTest, GetAllModules)
@@ -71,8 +64,7 @@ TEST_F(ModuleTest, ConcurrentRegistrationThreadSafety)
 
     for (uint8_t i = 1; i < 1 + num_threads; ++i)
     {
-        threads.emplace_back([i]()
-                             { module::add_module(std::make_unique<module::Module>(i)); });
+        threads.emplace_back([i]() { module::add_module(std::make_unique<module::Module>(i)); });
     }
 
     for (auto &t : threads)

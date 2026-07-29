@@ -1,7 +1,8 @@
 #include <gtest/gtest.h>
+#include <netinet/ip.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <netinet/ip.h>
+
 #include "../../src/tcp/socket.h"
 
 TEST(SocketTest, DefaultConstructorCreatesValidSocket)

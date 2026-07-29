@@ -1,31 +1,29 @@
-#include <thread>
-#include <csignal>
-#include <map>
-#include <fstream>
-#include <atomic>
-#include <iostream>
-#include <list>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
-#include <string_view>
+#include <csignal>
+#include <fstream>
 #include <iostream>
+#include <limits>
+#include <list>
+#include <map>
 #include <string>
 #include <string_view>
+#include <sys/types.h>
 #include <sys/utsname.h>
-#include <limits>
+#include <sys/wait.h>
+#include <thread>
+#include <unistd.h>
 
+#include "defs.h"
 #include "event/events.h"
-#include "tcp/server.h"
 #include "message/message.h"
 #include "module/module.h"
-#include "visualization/visualization.h"
-#include "synchronization/virtual_clock.h"
-#include "util.h"
-#include "defs.h"
 #include "settings.h"
+#include "synchronization/virtual_clock.h"
+#include "tcp/server.h"
+#include "util.h"
+#include "visualization/visualization.h"
 
 /**
  * Target FPS.
@@ -110,7 +108,8 @@ static void init_modules()
                 if (using_visualization)
                     visualization::stop();
 
-                throw std::runtime_error("Failed to establish connection with module " + std::to_string(id) + " after " + std::to_string(MODULE_CONNECT_TIMEOUT.count()) + " seconds");
+                throw std::runtime_error("Failed to establish connection with module " + std::to_string(id) +
+                                         " after " + std::to_string(MODULE_CONNECT_TIMEOUT.count()) + " seconds");
             }
 
             server::check();
@@ -157,8 +156,7 @@ static void init_layout()
 
         first = false;
 
-        ss << std::to_string(id) << ":"
-           << std::to_string(settings.left ? settings.left->raw() : 0) << ","
+        ss << std::to_string(id) << ":" << std::to_string(settings.left ? settings.left->raw() : 0) << ","
            << std::to_string(settings.middle ? settings.middle->raw() : 0) << ","
            << std::to_string(settings.right ? settings.right->raw() : 0);
         size++;
@@ -183,8 +181,9 @@ static void init_schedule(const std::list<std::unique_ptr<events::Event>> &event
     {
         if (auto *tub_event = dynamic_cast<events::TubEvent *>(event.get()))
         {
-            const auto message = message::TubSchedule(tub_event->id(), tub_event->origin().id,
-                                                      tub_event->destination().id, tub_event->safe(), tub_event->needs_security());
+            const auto message =
+                message::TubSchedule(tub_event->id(), tub_event->origin().id, tub_event->destination().id,
+                                     tub_event->safe(), tub_event->needs_security());
             for (const auto &module : module::get_modules())
             {
                 if (!module)
@@ -207,8 +206,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         const std::string_view arg(argv[i]);
         if (arg == "-v" || arg == "--version")
         {
-            std::cout << "Quercus Airport Simulation version " << APP_VERSION
-                      << " (" << get_target_os() << " " << get_target_arch() << ")" << std::endl;
+            std::cout << "Quercus Airport Simulation version " << APP_VERSION << " (" << get_target_os() << " "
+                      << get_target_arch() << ")" << std::endl;
             return EXIT_SUCCESS;
         }
         else if (arg == "--no-gui")
@@ -248,7 +247,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const *argv[])
         std::cout << "  --timeout <sec>         Closes the simulation after <sec> seconds" << std::endl;
         std::cout << "  -v, --version           Prints version" << std::endl;
         std::cout << std::endl;
-        std::cout << "Report bugs and provide suggestions at <https://gitlab.tue.nl/2irr70-capstone-quercus-airport/simulation/-/work_items>" << std::endl;
+        std::cout << "Report bugs and provide suggestions at "
+                     "<https://gitlab.tue.nl/2irr70-capstone-quercus-airport/simulation/-/work_items>"
+                  << std::endl;
         return EXIT_SUCCESS;
     }
 

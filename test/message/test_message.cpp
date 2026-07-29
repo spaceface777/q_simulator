@@ -1,7 +1,8 @@
 #include <gtest/gtest.h>
+
 #include "../../src/message/message.h"
-#include "../../src/util.h"
 #include "../../src/module/types.h"
+#include "../../src/util.h"
 
 TEST(MessageTest, BaseMessageDefaultBehavior)
 {

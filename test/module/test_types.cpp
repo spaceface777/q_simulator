@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
-#include "../../src/module/types.h"
+
 #include "../../src/defs.h"
+#include "../../src/module/types.h"
 
 TEST(ModuleTypesTest, ModuleId)
 {

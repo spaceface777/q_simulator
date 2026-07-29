@@ -1,14 +1,14 @@
+#include <chrono>
 #include <gtest/gtest.h>
 #include <thread>
-#include <chrono>
+
 #include "../../src/synchronization/virtual_clock.h"
 
-using namespace virtual_clock;
 using namespace std::chrono_literals;
 
 TEST(VirtualClockTest, DefaultInitialization)
 {
-    VirtualClock clock;
+    virtual_clock::VirtualClock clock;
 
     // Initial virtual time should start at 0ms
     EXPECT_EQ(0ms, clock.get_virtual_time());
@@ -18,7 +18,7 @@ TEST(VirtualClockTest, DefaultInitialization)
 
 TEST(VirtualClockTest, SetValidSimulationSpeed)
 {
-    VirtualClock clock;
+    virtual_clock::VirtualClock clock;
 
     clock.set_simulation_speed(2.5);
     EXPECT_DOUBLE_EQ(2.5, clock.simulation_speed());
@@ -29,7 +29,7 @@ TEST(VirtualClockTest, SetValidSimulationSpeed)
 
 TEST(VirtualClockTest, SetInvalidSimulationSpeedThrows)
 {
-    VirtualClock clock;
+    virtual_clock::VirtualClock clock;
 
     // Speed < 0 should trigger util::require exception
     EXPECT_THROW(clock.set_simulation_speed(-0.1), std::invalid_argument);
@@ -38,7 +38,7 @@ TEST(VirtualClockTest, SetInvalidSimulationSpeedThrows)
 
 TEST(VirtualClockTest, RealTimeTickAdvancement)
 {
-    VirtualClock clock;
+    virtual_clock::VirtualClock clock;
 
     // Sleep for 50ms real time
     std::this_thread::sleep_for(50ms);
@@ -51,7 +51,7 @@ TEST(VirtualClockTest, RealTimeTickAdvancement)
 
 TEST(VirtualClockTest, SpeedMultiplier2X)
 {
-    VirtualClock clock;
+    virtual_clock::VirtualClock clock;
     clock.set_simulation_speed(2.0);
 
     // Initial tick to establish baseline
@@ -71,7 +71,7 @@ TEST(VirtualClockTest, SpeedMultiplier2X)
 
 TEST(VirtualClockTest, PausedClockZeroSpeed)
 {
-    VirtualClock clock;
+    virtual_clock::VirtualClock clock;
     clock.set_simulation_speed(0.0);
 
     std::this_thread::sleep_for(50ms);
@@ -83,7 +83,7 @@ TEST(VirtualClockTest, PausedClockZeroSpeed)
 
 TEST(VirtualClockTest, DynamicSpeedChanges)
 {
-    VirtualClock clock;
+    virtual_clock::VirtualClock clock;
 
     // Run at 1x for 30ms
     std::this_thread::sleep_for(30ms);
@@ -106,7 +106,7 @@ TEST(VirtualClockTest, DynamicSpeedChanges)
 
 TEST(VirtualClockTest, InterfacePolymorphicUsage)
 {
-    std::unique_ptr<ISimulationClock> clock = std::make_unique<VirtualClock>();
+    std::unique_ptr<virtual_clock::ISimulationClock> clock = std::make_unique<virtual_clock::VirtualClock>();
 
     clock->set_simulation_speed(3.0);
     EXPECT_DOUBLE_EQ(3.0, clock->simulation_speed());

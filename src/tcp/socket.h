@@ -1,8 +1,8 @@
 #ifndef SOCKET_H
 #define SOCKET_H
 
-#include <stdlib.h>
 #include <stdexcept>
+#include <stdlib.h>
 #include <unistd.h>
 
 /**
@@ -10,19 +10,13 @@
  */
 class Socket
 {
-private:
+  private:
     int fd_ = -1;
 
-public:
-    Socket()
-    {
-        fd_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    }
+  public:
+    Socket() { fd_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); }
 
-    Socket(int fd)
-    {
-        fd_ = fd;
-    }
+    Socket(int fd) { fd_ = fd; }
 
     ~Socket()
     {
@@ -35,18 +29,12 @@ public:
     /**
      * Returns whether this socket has a valid file descriptor.
      */
-    [[nodiscard]] bool is_valid() const noexcept
-    {
-        return fd_ >= 0;
-    }
+    [[nodiscard]] bool is_valid() const noexcept { return fd_ >= 0; }
 
     /**
      * Returns the file descriptor described by this socket.
      */
-    [[nodiscard]] int fd() const noexcept
-    {
-        return fd_;
-    }
+    [[nodiscard]] int fd() const noexcept { return fd_; }
 
     /**
      * Marks this socket as unused.
@@ -63,10 +51,7 @@ public:
     Socket &operator=(const Socket &) = delete;
 
     // disallow transfer
-    Socket(Socket &&other) noexcept
-    {
-        fd_ = other.release();
-    }
+    Socket(Socket &&other) noexcept { fd_ = other.release(); }
     Socket &operator=(Socket &&other) noexcept
     {
         if (this != &other)

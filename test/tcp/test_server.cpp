@@ -1,27 +1,21 @@
-#include <gtest/gtest.h>
-#include <thread>
-#include <chrono>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
+#include <chrono>
+#include <gtest/gtest.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
 
-#include "../../src/tcp/server.h"
 #include "../../src/message/message.h"
 #include "../../src/module/types.h"
+#include "../../src/tcp/server.h"
 
 class ServerTest : public ::testing::Test
 {
-protected:
-    void SetUp() override
-    {
-        server::stop();
-    }
+  protected:
+    void SetUp() override { server::stop(); }
 
-    void TearDown() override
-    {
-        server::stop();
-    }
+    void TearDown() override { server::stop(); }
 
     int create_client_socket()
     {

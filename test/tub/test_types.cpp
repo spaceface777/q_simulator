@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
-#include "../../src/tub/types.h"
 #include <limits>
+
+#include "../../src/tub/types.h"
 
 TEST(TubTypesTest, TubId)
 {

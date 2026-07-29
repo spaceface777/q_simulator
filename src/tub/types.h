@@ -1,100 +1,75 @@
 #ifndef TUB_TYPES_H
 #define TUB_TYPES_H
 
-#include <stdint.h>
-#include <stdexcept>
 #include <algorithm>
-#include "../util.h"
+#include <stdexcept>
+#include <stdint.h>
+
 #include "../defs.h"
+#include "../util.h"
 
 namespace tub
 {
 
-    class TubId
+class TubId
+{
+  private:
+    uint8_t value_ = 0;
+
+  public:
+    constexpr TubId() noexcept = default;
+
+    explicit constexpr TubId(uint8_t id)
     {
-    private:
-        uint8_t value_ = 0;
+        util::require_range(id > 0, "Tub id out of range");
 
-    public:
-        constexpr TubId() noexcept = default;
+        value_ = id;
+    }
 
-        explicit constexpr TubId(uint8_t id)
-        {
-            util::require_range(id > 0, "Tub id out of range");
+    [[nodiscard]] constexpr uint8_t raw() const noexcept { return value_; }
 
-            value_ = id;
-        }
+    constexpr bool operator==(const TubId &other) const noexcept { return value_ == other.value_; }
 
-        [[nodiscard]] constexpr uint8_t raw() const noexcept
-        {
-            return value_;
-        }
+    constexpr bool operator==(const uint8_t &other) const noexcept { return value_ == other; }
+};
 
-        constexpr bool operator==(const TubId &other) const noexcept
-        {
-            return value_ == other.value_;
-        }
+class LocationProgress
+{
+  private:
+    static constexpr double EXTREMES_EPSILON = 0.1;
 
-        constexpr bool operator==(const uint8_t &other) const noexcept
-        {
-            return value_ == other;
-        }
-    };
+    double value_ = 0;
 
-    class LocationProgress
+  public:
+    constexpr LocationProgress() noexcept = default;
+
+    explicit constexpr LocationProgress(double progress)
     {
-    private:
-        static constexpr double EXTREMES_EPSILON = 0.1;
+        util::require_range(progress >= 0 - EXTREMES_EPSILON && progress <= 1.0 + EXTREMES_EPSILON,
+                            "Location progress must be between 0 and 1.0");
 
-        double value_ = 0;
+        value_ = progress;
+    }
 
-    public:
-        constexpr LocationProgress() noexcept = default;
+    [[nodiscard]] constexpr bool is_at_end() const noexcept { return value_ > 1; }
 
-        explicit constexpr LocationProgress(double progress)
-        {
-            util::require_range(progress >= 0 - EXTREMES_EPSILON && progress <= 1.0 + EXTREMES_EPSILON, "Location progress must be between 0 and 1.0");
+    [[nodiscard]] constexpr bool is_at_begin() const noexcept { return value_ < 0; }
 
-            value_ = progress;
-        }
+    [[nodiscard]] constexpr double raw() const noexcept { return value_; }
 
-        [[nodiscard]] constexpr bool is_at_end() const noexcept
-        {
-            return value_ > 1;
-        }
+    constexpr bool operator==(const LocationProgress &other) const noexcept { return value_ == other.value_; }
 
-        [[nodiscard]] constexpr bool is_at_begin() const noexcept
-        {
-            return value_ < 0;
-        }
+    constexpr bool operator<(const double &other) const noexcept { return value_ < other; }
 
-        [[nodiscard]] constexpr double raw() const noexcept
-        {
-            return value_;
-        }
+    constexpr bool operator>(const double &other) const noexcept { return value_ > other; }
 
-        constexpr bool operator==(const LocationProgress &other) const noexcept
-        {
-            return value_ == other.value_;
-        }
+    constexpr LocationProgress &operator+=(double delta)
+    {
+        *this = LocationProgress(std::clamp(value_ + delta, 0.0 - EXTREMES_EPSILON, 1.0 + EXTREMES_EPSILON));
+        return *this;
+    }
+};
 
-        constexpr bool operator<(const double &other) const noexcept
-        {
-            return value_ < other;
-        }
-
-        constexpr bool operator>(const double &other) const noexcept
-        {
-            return value_ > other;
-        }
-
-        constexpr LocationProgress &operator+=(double delta)
-        {
-            *this = LocationProgress(std::clamp(value_ + delta, 0.0 - EXTREMES_EPSILON, 1.0 + EXTREMES_EPSILON));
-            return *this;
-        }
-    };
-
-}
+} // namespace tub
 
 #endif

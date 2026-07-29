@@ -1,15 +1,16 @@
-#include <gtest/gtest.h>
-#include <fstream>
-#include <filesystem>
-#include <random>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <gtest/gtest.h>
+#include <random>
+
 #include "../src/settings.h"
 
 namespace fs = std::filesystem;
 
 class SettingsTest : public ::testing::Test
 {
-protected:
+  protected:
     fs::path temp_settings_path;
     fs::path temp_layout_path;
     fs::path temp_router_path;
@@ -159,9 +160,8 @@ scale = 1.0
 
 TEST_F(SettingsTest, ParseSettingsInvalidScale)
 {
-    std::string invalid_toml =
-        "router_path = \"" + temp_router_path.string() + "\"\n" +
-        R"(simulation_speed = 1.0
+    std::string invalid_toml = "router_path = \"" + temp_router_path.string() + "\"\n" +
+                               R"(simulation_speed = 1.0
 scale = 10.0
 )";
 

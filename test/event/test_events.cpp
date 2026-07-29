@@ -1,10 +1,10 @@
-#include <gtest/gtest.h>
-#include <fstream>
-#include <filesystem>
-#include <random>
 #include <chrono>
-#include <memory>
+#include <filesystem>
+#include <fstream>
+#include <gtest/gtest.h>
 #include <list>
+#include <memory>
+#include <random>
 #include <toml++/toml.hpp>
 
 #include "../../src/event/events.h"
@@ -16,11 +16,11 @@ namespace fs = std::filesystem;
 // Mock clock for controlled testing of fire_events
 class MockClock : public virtual_clock::ISimulationClock
 {
-private:
+  private:
     std::chrono::milliseconds time_{0};
     double speed_{1.0};
 
-public:
+  public:
     void set_time_ms(int64_t ms) { time_ = std::chrono::milliseconds(ms); }
     void tick() noexcept override {}
     std::chrono::milliseconds get_virtual_time() const noexcept override { return time_; }
@@ -31,7 +31,7 @@ public:
 // Fixture for TOML file parsing tests
 class EventsFileTest : public ::testing::Test
 {
-protected:
+  protected:
     fs::path temp_file_path;
 
     void SetUp() override
@@ -61,7 +61,7 @@ protected:
 
 class TestEvent : public events::Event
 {
-public:
+  public:
     mutable bool fired = false;
 
     TestEvent(double time, unsigned int id)
@@ -70,10 +70,7 @@ public:
         id_ = id;
     }
 
-    void fire() const override
-    {
-        fired = true;
-    }
+    void fire() const override { fired = true; }
 };
 
 TEST(EventTest, BaseEventGettersAndEquality)
