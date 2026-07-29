@@ -5,7 +5,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Debug)
 
-set(COMPILATION_FLAGS -Wall -Wextra -Wpedantic -Werror)
+set(COMPILATION_FLAGS -Wall -Wextra -Wpedantic -Werror -D_GLIBCXX_DEBUG)
 
 # === Libraries ===
 
