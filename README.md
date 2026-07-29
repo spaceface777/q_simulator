@@ -22,16 +22,17 @@ The repository for the Quercus Airport Simulation. To avoid missing important in
 simulation/
 ├── .gitlab/                 # GitLab issue formats 
 ├── docs/                    # Architecture overview and diagrams
-├── layouts/                 # Example layouts for use in settings.toml
+├── layouts/                 # Example layouts for use in layout.toml
 ├── src/                     # The source code
 ├── test/                    # All tests
+├── .clang-format            # The code style guidelines
 ├── .gitignore               # Ignored Git files
 ├── .gitlab-ci.yml           # GitLab CI runner details
+└── CMakeLists.txt           # Main build script for the application and tests
+├── README.md                # Project overview
 ├── events_example.toml      # Example event schedule input
 ├── layout_example.toml      # Example layout
-├── README.md                # Project overview
 ├── settings_example.toml    # Example simulator configuration input
-└── CMakeLists.txt           # Main build script for the application and tests
 ```
 
 ## Requirements
@@ -54,6 +55,8 @@ sudo apt-get install build-essential git make pkg-config cmake ninja-build gnome
 1. Run `cmake -B build -S . -G Ninja`.
 
 ## Usage
+#### Running
+
 Run the project with the `Run` button when using the C/C++ VSCode extension, or use the following command in the project folder: 
 
 ```sh
@@ -62,12 +65,14 @@ cmake --build build -j && ./build/simulation
 
 This will start all modules and run the current events in the `events.toml` file until infinity. Settings can be changed by pressing the buttons at the bottom. Closing the GUI stops the simulation and all modules. Changes to the `events.toml` or `settings.toml` files will only apply after restarting the simulation by closing the GUI and re-running the project as described above.
 
+#### Testing
 To run the tests, change the target to `tests` when using the C/C++ VSCode extension, or use the following command in the project folder:
 
 ```sh
 cmake --build build -j && ./build/tests
 ```
 
+#### Test coverage
 To calculate test coverage, you must first install lcov. Then, run the following commands:
 
 ```sh
@@ -92,7 +97,9 @@ Change `firefox` on the first line to your favorite browser. Last measured test 
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
 
 ## Contributing
-If you make improvements to the digital simulation for your project, you are free to contribute these changes to this repo. Any merge requests will be thoroughly reviewed before merging, so make sure you are willing to change your code before opening a merge request.
+If you make improvements to the simulation during the course, you are encouraged to contribute these changes to this repo. Any merge requests will be thoroughly reviewed before merging, so make sure you are willing to change your code before opening a merge request.
+
+All code must follow the format defined in `.clang-format`. Additionally, all changes (except for those to the visualization or `main.cpp`) should contain unit and integration tests. All tests must pass before merging your merge request. 
 
 ## License
 (c) Eindhoven University of Technology, Rens Verstappen, and contributors (2025-2026).
