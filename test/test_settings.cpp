@@ -103,17 +103,19 @@ angle = 90
 
     settings::ModuleSettings mod1 = settings::get_module_settings(module::ModuleId(1));
     EXPECT_TRUE(mod1.active);
+    ASSERT_TRUE(mod1.left.has_value());
     EXPECT_EQ(2, mod1.left->raw());
-    EXPECT_EQ(0, mod1.middle->raw());
-    EXPECT_EQ(0, mod1.right->raw());
+    EXPECT_FALSE(mod1.middle.has_value());
+    EXPECT_FALSE(mod1.right.has_value());
     EXPECT_EQ(settings::ModuleAngle::UPSIDE_DOWN, mod1.angle);
     EXPECT_EQ(2, mod1.x);
     EXPECT_EQ(2, mod1.y);
 
     settings::ModuleSettings mod2 = settings::get_module_settings(module::ModuleId(2));
     EXPECT_FALSE(mod2.active);
-    EXPECT_EQ(0, mod2.left->raw());
-    EXPECT_EQ(0, mod2.middle->raw());
+    EXPECT_FALSE(mod2.left.has_value());
+    EXPECT_FALSE(mod2.middle.has_value());
+    ASSERT_TRUE(mod2.right.has_value());
     EXPECT_EQ(1, mod2.right->raw());
     EXPECT_EQ(settings::ModuleAngle::ROTATED_90, mod2.angle);
     EXPECT_EQ(1, mod2.x);
