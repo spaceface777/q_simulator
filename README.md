@@ -79,14 +79,14 @@ cmake --build build -j && ./build/tests
 To calculate test coverage, run the following commands:
 
 ```sh
-export BROWSER=firefox
+BROWSER=firefox
 
 cmake -B build -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug -S . -G Ninja
 cmake --build build --target clean -j
 cmake --build build --target tests -j
 ./build/tests
 cd build
-lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,gcov
+lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,gcov --ignore-errors inconsistent --rc geninfo_unexecuted_blocks=1
 lcov --remove coverage.info '/usr/*' '*/_deps/*' '*/test/*' --output-file coverage_filtered.info
 genhtml coverage_filtered.info --output-directory coverage_html
 cd ..
