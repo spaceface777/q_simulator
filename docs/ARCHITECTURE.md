@@ -90,6 +90,7 @@ simulation/
 │
 ├── test/                         # Unit and integration tests
 │   ├── CMakeLists.txt            # Test build instructions
+│   ├── test_settings.cpp         # Tests for src/settings.cpp
 │   │
 │   ├── event/                    # Event tests
 │   ├── message/                  # Message tests
@@ -101,7 +102,7 @@ simulation/
 ├── .clang-format                 # The code style guidelines
 ├── .gitignore                    # Ignored Git files
 ├── .gitlab-ci.yml                # GitLab CI runner details
-├── CMakeLists.txt                # Main build script for the application and tests
+├── CMakeLists.txt                # General build instructions
 ├── README.md                     # Project overview
 ├── events_example.toml           # Example event schedule input
 ├── layout_example.toml           # Example layout
@@ -110,20 +111,19 @@ simulation/
 
 ## 4. Events
 
-Events are stored in the `events.toml` file and represent the real-world actions that you can perform with tubs. These events have a time of occurrence in seconds, additionally supporting specifying milliseconds. 
+Events are stored in the `events.toml` file and represent the real-world actions that you can perform with tubs. After parsing, events are stored in `main.cpp` as classes that have an id (which may be a module id or plane id), and a time of occurrence in seconds, additionally supporting specifying milliseconds. There are two types of events:
 
-At the start, we collect all events. Then, every 16 milliseconds, we loop over all events and check whether an event should be fired. If an event should be fired, we run the event-specific code for announcing to the modules that an event has occurred.
+- **Tub arrival**: This is the arrival of a tub into the system at a specific module or at a specific plane. Each tub arrival has fields which populate the minimum amount of information required for tub routing to work. These are: the origin module or plane id, the destination module or plane id, whether this tub is safe (used for things like security) and whether this tub needs to go to security. This necessary data takes up the first two rows of each RFID chip. The remaining 33 rows of RFID data can be manually specified.
+- **Plane arrival**: This is the arrival of a plane at a specific module and at a specific time. The only data this event has, other than the plane id, is the amount of time left until this plane departs.
 
-There are two types of events:
+We process these two events as follows: at the start, we collect all events from `events.toml`. All tub arrival events are sent as a packet to all modules to populate the schedule of these modules. This allows users to run any `events.toml` without having to change the module code. 
 
-#### Tub arrivals
-This is the arrival of a tub into the system at a specific module or at a specific plane. Each tub arrival has fields which populate the minimum amount of information required for tub routing to work. These are: the origin module or plane id, the destination module or plane id, whether this tub is safe (used for things like security) and whether this tub needs to go to security. This necessary data takes up the first two rows of each RFID chip. The remaining 33 rows of RFID data can be manually specified.
-
-#### Plane arrival
-This is the arrival of a plane at a specific module and at a specific time.
+Then, every 16 milliseconds, we loop over all events and check whether an event should be fired. If an event should be fired, we run the event-specific code for announcing to the modules that an event has occurred. For tub arrivals, this means sending a packet to the modules which updates the values present at the RFID reader. For plane arrivals, this means sending a packet to all modules which indicates that a plane has arrived.
 
 ## 5. Tubs
 
 ## 6. Modules
 
 ## 7. Visualization
+
+The visualization takes the existing state of all tubs and modules and visualizes this in a 2D top-down view, using SDL3. We update every 16 milliseconds, giving a target FPS of 62.5. On every 
