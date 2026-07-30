@@ -4,7 +4,6 @@
 - analyze implementing scheduler process that communicates to the router processes
 - for hybrid mode send through pi, add separate interface for communication
 - make id in events.toml 7 byte rfid
-- remove server/client and fix tcp
 - support going to planes
 
 **event generator**
@@ -103,6 +102,8 @@ In case you encounter any problems, create an issue on GitLab. Please use the pr
 If you make improvements to the simulation during the course, you are encouraged to contribute these changes to this repo. Any merge requests will be thoroughly reviewed before merging, so make sure you are willing to change your code before opening a merge request.
 
 All code must follow the format defined in `.clang-format`. Additionally, all changes (except for those to the visualization or `main.cpp`) should contain unit and integration tests. All tests must pass before merging your merge request. 
+
+To help you get started, you are encouraged to read `docs/ARCHITECTURE.md`.
 
 ## License
 (c) Eindhoven University of Technology, Rens Verstappen, and contributors (2025-2026).
