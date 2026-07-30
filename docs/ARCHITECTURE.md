@@ -127,7 +127,7 @@ Then, every 16 milliseconds, we loop over all events and check whether an event 
 
 Modules are responsible for starting their respective module processes, which is the router code compiled for native_sim. This is done by creating a new thread, and using this thread to start the router code executable with `execlp`. Since we cannot pass command-line arguments to native_sim executables, we create a temp file before starting the router process and write the id of this router process in it. This gets read by the router process, and the file is deleted.
 
-Modules are classes that keep track of data received from each module process. This data is received by the TCP server from module processes by means of a `[update]` packet whenever an actuator is updated. The TCP server then gets the correct module and updates the affected value. 
+Modules are classes that keep track of data received from each module process. This data is received by the TCP server from module processes by means of a `[update]` packet whenever an actuator is updated, as specified in `docs/PROTOCOL.md`. The TCP server then gets the correct module and updates the affected value.
 
 ## 7. Visualization
 

@@ -1,8 +1,34 @@
 # PURPLE 4
-The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE), version 4.
+
+The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE), version 4. This protocol is used for communication between router processes and the simulation process.
 
 ## Format
-The format of PURPLE follows that of TOML. The header indicates the type of message that is sent. Currently accepted:
+The format of PURPLE follows that of TOML. The header indicates the type of message that is sent. 
+
+## Sending
+Messages should strictly follow the accepted style guide when being constructed.
+
+```toml
+[header]\n
+<name> = <value>\n
+<name1> = <value2>\n
+```
+
+## Receiving
+Receivers should be lenient in parsing receiving requests. Additional or dangling spaces should not invalidate a request. An example of an acceptable request is as follows:
+
+```toml
+[header]
+
+id  = 234
+
+device=     "heyy"
+
+
+```
+
+## Messages
+Below is a list of currently accepted messages:
 
 ### `[init]`
 Used to pass the id of the started module to the simulator.
@@ -175,26 +201,4 @@ Required elements:
 [plane.departure]
 id = 2
 module = 6
-```
-
-## Sending
-Messages should strictly follow the accepted style guide when being constructed.
-
-```toml
-[header]\n
-<name> = <value>\n
-<name1> = <value2>\n
-```
-
-## Receiving
-Receivers should be lenient in parsing receiving requests. Additional or dangling spaces should not invalidate a request. An example of an acceptable request is as follows:
-
-```toml
-[header]
-
-id  = 234
-
-device=     "heyy"
-
-
 ```
