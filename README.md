@@ -65,7 +65,7 @@ Run the project with the `Run` button when using the C/C++ VSCode extension, or 
 cmake --build build -j && ./build/simulation
 ```
 
-This will start all modules and run the current events in the `events.toml` file until infinity. Settings can be changed by pressing the buttons at the bottom. Closing the GUI stops the simulation and all modules. Changes to the `events.toml`, `layout.toml` or `settings.toml` files will only apply after restarting the simulation by closing the GUI and re-running the project as described above.
+This will start all modules and run the current events in the `events.toml` file until infinity. Settings can be changed by pressing the buttons at the bottom. Closing the GUI stops the simulation and all modules. Changes to the `events.toml`, `layout.toml`, or `settings.toml` files will only apply after restarting the simulation by closing the GUI and re-running the project as described above.
 
 #### Testing
 To run the tests, change the target to `tests` when using the C/C++ VSCode extension and click run, or use the following command in the project folder:
@@ -103,7 +103,7 @@ If you make improvements to the simulation during the course, you are encouraged
 
 All code must follow the format defined in `.clang-format`. Additionally, all changes (except for those to the visualization or `main.cpp`) should contain unit and integration tests. All tests must pass before merging your merge request. 
 
-To help you get started, you are encouraged to read `docs/ARCHITECTURE.md`.
+To help you get started, you are encouraged to read `docs/ARCHITECTURE.md` and `docs/IMPROVEMENTS.md`.
 
 ## License
 (c) Eindhoven University of Technology, Rens Verstappen, and contributors (2025-2026).

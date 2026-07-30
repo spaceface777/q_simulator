@@ -1,6 +1,6 @@
-# Simulator Architecture Guide
+# Simulation Architecture Guide
 
-## Table of Contents
+## Table of contents
 
 1. [Project Overview](#1-project-overview)
 1. [Software Architecture Overview](#2-software-architecture-overview)
@@ -8,12 +8,13 @@
 1. [Events](#4-events)
 1. [Tubs](#5-tubs)
 1. [Modules](#6-modules)
-1. [Visualization](#7-visualization)
-1. [Questions or feedback](#8-questions-or-feedback)
+1. [TCP server](#7-tcp-server)
+1. [Visualization](#8-visualization)
+1. [Questions or feedback](#9-questions-or-feedback)
 
-## 1. Project Overview
+## 1. Project overview
 
-The simulator intends to simulate running multiple instances of the same module code on the real-world model, allowing for easier debugging and faster iteration. 
+The simulation intends to simulate running multiple instances of the same module code on the real-world model, allowing for easier debugging and faster iteration. 
 
 A GUI is provided which shows the current state of all modules and actuators. Additionally, the GUI contains tools such as deterministic control over events such as tub or plane arrivals and data through the `events.toml` file, a (real-time) modifiable simulation speed (including pausing), a modifiable layout through the `layout.toml` file, and easy access to actuator values.
 
@@ -58,7 +59,7 @@ simulation/
 │   ├── CMakeLists.txt            # Simulation build instructions
 │   ├── main.cpp                  # Entry point, event loop, module startup, and shutdown handling
 │   ├── defs.h                    # Shared definitions and constants
-│   ├── util.cpp/.h               # General utility helpers used across the simulator
+│   ├── util.cpp/.h               # General utility helpers used across the simulation
 │   ├── settings.cpp/.h           # Settings file parsing and accessors
 │   │
 │   ├── event/                    # Event scheduling and dispatch
@@ -81,7 +82,7 @@ simulation/
 │   │   └── tub.cpp/.h            # Tub state updates and movement logic
 │   │   └── types.h               # Data types used in tubs
 │   │
-│   ├── visualization/            # SDL-based simulator UI
+│   ├── visualization/            # SDL-based simulation UI
 │   │   ├── buttons.cpp           # UI button handling and actions
 │   │   ├── buttons.h             # Button declarations
 │   │   └── visualization.cpp/.h  # Rendering loop and scene drawing
@@ -107,7 +108,7 @@ simulation/
 ├── README.md                     # Project overview
 ├── events_example.toml           # Example event schedule input
 ├── layout_example.toml           # Example layout
-└── settings_example.toml         # Example simulator configuration input
+└── settings_example.toml         # Example simulation configuration input
 ```
 
 ## 4. Events
@@ -123,15 +124,27 @@ Then, every 16 milliseconds, we loop over all events and check whether an event 
 
 ## 5. Tubs
 
+Tubs are classes which keep track of tub data, additionally including a thread for each tub. This thread continuously update the position of the tub based on the state of the module the tub belongs to. 
+
+When a tub is within the range of a sensor, it sends a packet to the owning module that the tub is present. For lasers, this is done using the value `true`. For the RFID chip, it sends all RFID data. When the tub exits the RFID chip area, it sends a packet with empty RFID data. For exiting the lasers, `false` is sent.
+
+When a tub should transfer from one belt part to the other on the same module, the value of the servo is read. Based on this, the correct belt is chosen. For transferring to other modules, the connections found in `layout.toml` are checked. Only the tub's owning module variable is updated; modules do not keep track of the tubs they own.
+
 ## 6. Modules
 
-Modules are responsible for starting their respective module processes, which is the router code compiled for native_sim. This is done by creating a new thread, and using this thread to start the router code executable with `execlp`. Since we cannot pass command-line arguments to native_sim executables, we create a temp file before starting the router process and write the id of this router process in it. This gets read by the router process, and the file is deleted.
+Modules are classes that keep track of data received from each module process. They are responsible for starting their respective module processes, which is the router code compiled for native_sim. This is done by creating a new thread, and using this thread to start the router code executable (called the module process) with `execlp`. Since we cannot pass command-line arguments to native_sim executables, we create a temp file before starting the module process and write the id of this module process in it. This gets read by the module process, and the file is deleted.
 
-Modules are classes that keep track of data received from each module process. This data is received by the TCP server from module processes by means of a `[update]` packet whenever an actuator is updated, as specified in `docs/PROTOCOL.md`. The TCP server then gets the correct module and updates the affected value.
+## 7. TCP server
 
-## 7. Visualization
+The TCP server establishes and maintains connections between the simulation and every module process. All communication happens in packets specified in `docs/PROTOCOL.md`. We check whether there are new packets to process every 5 milliseconds. 
 
-The visualization takes the existing state of all tubs and modules and visualizes this in a 2D top-down view, using SDL3. We update every 16 milliseconds, giving a target FPS of 62.5. We do not account for execution time, as this is at most 0.5 milliseconds, resulting in an average FPS of 61. 
+When a sensor needs to be updated due to a tub being present, the simulation sends a packet to the module process. When an actuator is updated by a module, a packet is sent to the simulation, and the correct value in the module class is updated.
+
+Communication between modules happens through the simulation. When module A wants to send something to module B, it sends a `[packet]` packet to the simulation, which then sends the packet to module B. 
+
+## 8. Visualization
+
+The visualization takes the existing state of all tubs and modules and visualizes this in a 2D top-down view, using SDL3, and runs on the main thread. We update every 16 milliseconds, giving a target FPS of 62.5. We do not account for execution time, as this is at most 0.5 milliseconds, resulting in an average FPS of 61. 
 
 The `layout.toml` file contains the position of all modules and angle of all modules, which are used to render each module. For each module, we use specific offsets at specific angles to render all elements properly. Every update, we check the current state of each module, and based on it, update the visualization parameters, such as the servo angle, belt speed, etc. For tubs, we use these specific offsets for each module to render their location correctly. Rendering tubs consists of getting the (x, y)-location of the module, and, based on the belt of the tub, rendering the circle. 
 
@@ -141,6 +154,6 @@ All buttons snap to a specific corner of the screen and are specified by an offs
 
 For tracking time with simulation speed, we use a virtual clock which ticks every 16 milliseconds. Each tick increments the time based on the value of the simulation speed setting. Since we do not allow simulation speed updates between ticks, this clock remains accurate.
 
-## 8. Questions or feedback
+## 9. Questions or feedback
 
 In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
