@@ -28,11 +28,11 @@ simulation/
 ├── .clang-format            # The code style guidelines
 ├── .gitignore               # Ignored Git files
 ├── .gitlab-ci.yml           # GitLab CI runner details
-└── CMakeLists.txt           # Main build script for the application and tests
+├── CMakeLists.txt           # Main build script for the application and tests
 ├── README.md                # Project overview
 ├── events_example.toml      # Example event schedule input
 ├── layout_example.toml      # Example layout
-├── settings_example.toml    # Example simulator configuration input
+└── settings_example.toml    # Example simulator configuration input
 ```
 
 ## Requirements
