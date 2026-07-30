@@ -20,8 +20,8 @@ class Module
   private:
     pid_t pid_;
     ModuleId id_;
-    bool running_ = false;       // whether the router process spawned by this module is running
-    bool init_finished_ = false; // whether the router process is ready to receive packets
+    bool running_ = false;       // whether the module process spawned by this module is running
+    bool init_finished_ = false; // whether the module process is ready to receive packets
 
     BeltSpeed big_speed_;
     BeltSpeed small_speed_;
@@ -132,8 +132,8 @@ class Module
     bool is_initialization_finished() const noexcept { return init_finished_; }
 
     /**
-     * Sets the initialization state of the router process.
-     * @param active Whether this module's router process has finished initialization.
+     * Sets the initialization state of the module process.
+     * @param active Whether this module's module process has finished initialization.
      */
     void set_initialization_finished(bool finished) noexcept { init_finished_ = finished; }
 

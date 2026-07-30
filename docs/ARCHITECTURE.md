@@ -9,15 +9,16 @@
 1. [Tubs](#5-tubs)
 1. [Modules](#6-modules)
 1. [Visualization](#7-visualization)
+1. [Questions or feedback](#8-questions-or-feedback)
 
 ## 1. Project Overview
 
-The simulator intends to simulate running multiple instances of the same router code on the real-world model, allowing for easier debugging and faster iteration. 
+The simulator intends to simulate running multiple instances of the same module code on the real-world model, allowing for easier debugging and faster iteration. 
 
 A GUI is provided which shows the current state of all modules and actuators. Additionally, the GUI contains tools such as deterministic control over events such as tub or plane arrivals and data through the `events.toml` file, a (real-time) modifiable simulation speed (including pausing), a modifiable layout through the `layout.toml` file, and easy access to actuator values.
 
 
-## 2. Software Architecture Overview
+## 2. Software architecture overview
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -49,7 +50,7 @@ A GUI is provided which shows the current state of all modules and actuators. Ad
            └──────────────────────────────────────────────────────────────┘
 ```
 
-## 3. File Structure
+## 3. File structure
 
 ```
 simulation/
@@ -124,6 +125,22 @@ Then, every 16 milliseconds, we loop over all events and check whether an event 
 
 ## 6. Modules
 
+Modules are responsible for starting their respective module processes, which is the router code compiled for native_sim. This is done by creating a new thread, and using this thread to start the router code executable with `execlp`. Since we cannot pass command-line arguments to native_sim executables, we create a temp file before starting the router process and write the id of this router process in it. This gets read by the router process, and the file is deleted.
+
+Modules are classes that keep track of data received from each module process. This data is received by the TCP server from module processes by means of a `[update]` packet whenever an actuator is updated. The TCP server then gets the correct module and updates the affected value. 
+
 ## 7. Visualization
 
-The visualization takes the existing state of all tubs and modules and visualizes this in a 2D top-down view, using SDL3. We update every 16 milliseconds, giving a target FPS of 62.5. On every 
+The visualization takes the existing state of all tubs and modules and visualizes this in a 2D top-down view, using SDL3. We update every 16 milliseconds, giving a target FPS of 62.5. We do not account for execution time, as this is at most 0.5 milliseconds, resulting in an average FPS of 61. 
+
+The `layout.toml` file contains the position of all modules and angle of all modules, which are used to render each module. For each module, we use specific offsets at specific angles to render all elements properly. Every update, we check the current state of each module, and based on it, update the visualization parameters, such as the servo angle, belt speed, etc. For tubs, we use these specific offsets for each module to render their location correctly. Rendering tubs consists of getting the (x, y)-location of the module, and, based on the belt of the tub, rendering the circle. 
+
+Scaling works by using a wrapper function for all constant offsets in a module. All offsets were chosen with a module size of 180x180 pixels in mind, which is a scaling of 1.0. Each offset is multiplied by the current scaling, which reduces or increases size.
+
+All buttons snap to a specific corner of the screen and are specified by an offset. These check for click events every 16 milliseconds, and, if one has occurred, performs the correct action. The pause button keeps track of the previous value, allowing pausing and playing. The current simulation speed, time and scaling are also buttons, but these have no functionality. 
+
+For tracking time with simulation speed, we use a virtual clock which ticks every 16 milliseconds. Each tick increments the time based on the value of the simulation speed setting. Since we do not allow simulation speed updates between ticks, this clock remains accurate.
+
+## 8. Questions or feedback
+
+In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.

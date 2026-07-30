@@ -83,7 +83,7 @@ static void handle_close(int code)
 }
 
 /**
- * Initializes all module instances and starts the router processes.
+ * Initializes all module instances and starts the module processes.
  */
 static void init_modules()
 {
