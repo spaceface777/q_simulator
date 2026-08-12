@@ -1,0 +1,9 @@
+# === Layout ===
+# A single module, for scenarios about one application's own outputs rather than about routing.
+# Starting one child instead of eighteen keeps a scenario run to about a second.
+
+[module.1]
+active = true
+neighbors = [0, 0, 0]
+pos = [0, 0]
+angle = 0
