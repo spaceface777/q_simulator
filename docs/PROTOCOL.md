@@ -1,204 +1,91 @@
-# PURPLE 4
+# Quercus RPC
 
-The details for the Protocol for Unified Real-time Physical-Logical Exchange (PURPLE), version 4. This protocol is used for communication between router processes and the simulation process.
+This document defines the RPC frame and shared-memory exchange between each Quercus application process and the simulation process. The simulator and applications compile the wire types from the pinned `quercus_sdk` headers.
 
 ## Format
-The format of PURPLE follows that of TOML. The header indicates the type of message that is sent. 
+
+Each RPC frame has an 8-byte packed header followed by zero or more payload bytes. A complete frame is at most 1024 bytes. All multi-byte header fields use the host representation used by the `native_sim` application and simulator.
+
+| Offset | Size | Field | Meaning |
+|---:|---:|---|---|
+| 0 | 1 | `type` | Request, response, event, tick, or acknowledgement |
+| 1 | 1 | `cmd` | RPC command for requests and responses, or event mask for events |
+| 2 | 2 | `call_id` | Request and response correlation id |
+| 4 | 2 | `payload_len` | Number of payload bytes after the header |
+| 6 | 2 | `flags` or `status` | Request or event flags, or response status |
+
+The accepted types are `MT_REQ` (1), `MT_RESP` (2), `MT_EVENT` (3), `MT_TICK` (4), and `MT_ACK` (5). The lockstep shared-memory adapter uses the tick and acknowledgement types. Normal platform calls use requests, responses, and events.
 
 ## Sending
-Messages should strictly follow the accepted style guide when being constructed.
 
-```toml
-[header]\n
-<name> = <value>\n
-<name1> = <value2>\n
-```
+The sender encodes one complete header and payload into one mailbox slot. A mailbox has four slots and 4088 payload bytes. A frame must have a valid type, a non-negative payload length, and a total size of at most 1024 bytes.
+
+A request uses a unique `call_id`. A confirmable request receives one response with the same `cmd` and `call_id`. A request with `RPC_FLAG_NON_CON` does not receive a response. An event does not receive a response.
+
+The simulator supplies one inbound and one outbound mailbox for each relative tick in the granted batch. The sender writes only while the other process is blocked at the lockstep barrier.
 
 ## Receiving
-Receivers should be lenient in parsing receiving requests. Additional or dangling spaces should not invalidate a request. An example of an acceptable request is as follows:
 
-```toml
-[header]
+The receiver validates the mailbox slot offsets before it reads frame bytes. It then validates the header and waits for the complete payload. An invalid mailbox or frame stops the run because the two processes no longer share a valid protocol state.
 
-id  = 234
+A response has status 0 for success or a negative errno value for failure. Common values are permission denied (`-1`), not found (`-2`), try again (`-11`), invalid argument (`-22`), and not supported (`-38`). The platform can also return range and no-entry errors for commands that need them.
 
-device=     "heyy"
-
-
-```
+Requests cross an application handoff before the platform handles them. Responses and events return on an executed local tick. A skipped module tick also pauses that module's RPC service delays and rate-limit windows. Laser events have a configured additional delay. RFID event delays use a configured seeded distribution. Network packets, logs, and panic reports pass through the configured network delay and loss model.
 
 ## Messages
-Below is a list of currently accepted messages:
 
-### `[init]`
-Used to pass the id of the started module to the simulator.
+The command values are defined in `quercus/rpc_wire.h`. Payload numbers use the SDK representation. The main command groups are below.
 
-Required elements:
-- `id = <uint>`: The id of the module.
+### Laser sensors
 
-Example:
-```toml
-[init]
-id = 12
-```
+`CMD_LASER_LEFT_DETECT` and `CMD_LASER_RIGHT_DETECT` return one byte. A nonzero value means that the beam is clear. `CMD_LASER_LEFT_GET` and `CMD_LASER_RIGHT_GET` return whether the sensor is enabled. The matching `SET` commands take one byte.
 
-### `[init.finish]`
-Used to indicate to the simulator that a module is ready to receive packets.
+The platform can publish `EVENT_LASER_LEFT_DETECT` and `EVENT_LASER_RIGHT_DETECT` when an enabled subscribed beam changes from clear to blocked.
 
-Required elements:
-- `id = <uint>`: The id of the module.
+### Belts and encoders
 
-Example:
-```toml
-[init.finish]
-id = 12
-```
+`CMD_BELT_BIG_GET_SPEED` and `CMD_BELT_SMALL_GET_SPEED` return a float speed percentage. The matching `SET_SPEED` commands take one float. A valid command is zero or a magnitude from 25 through 100 percent.
 
-### `[update]`
-Used to indicate the value of a hardware component. May be sent by the simulator or a module.
+`GET_ENCODER_COUNT` returns a signed 32-bit count. `GET_ENCODER_FREQ` returns a double count rate. The physical calibration determines both values.
 
-Required elements:
-- `module = <uint>`: The module that this component belongs to.
-- `device = <string>`: The changed device. Currently accepted: `"led", "big belt", "small belt", "servo", "left laser", "right laser"`.
-- `value = <num>`: The updated value.
+### Servo and LED
 
-Example:
-```toml
-[update]
-module = 12
-device = "led"
-value = 2298889
-```
+`CMD_SERVO_ANGLE_GET` returns a float angle. `CMD_SERVO_ANGLE_SET` takes a float from 0 through 180 degrees.
 
-### `[update.rfid]`
-Used to indicate the value of the RFID chip on a sensor sent from the simulation.
+`CMD_LED_GET_COLOR` returns a four-byte color. `CMD_LED_SET_COLOR` takes the same four-byte value. The least significant byte comes first.
 
-Required elements:
-- `module = <uint>`: The module that this component belongs to.
-- `uid_length = <uint>`: The length of the UID data.
-- `uid = <string>`: The UID of the RFID chip.
-- `data_length = <uint>`: The length of the data.
-- `data = <string>`: The data contained in the rest of the RFID chip, with each byte being encoded as a hex value.
+### RFID reader
 
-Example:
-```toml
-[update.rfid]
-module = 12
-uid_length = 10
-uid = "88EA3D46DD"
-data_length = 12
-data = "0A306B2A4EEE"
-```
+`CMD_RFID_CHECK_TAG` returns one byte. A nonzero value means that a tag is in the reader. `CMD_RFID_GET_UID` returns the seven-byte UID, or an empty payload when no tag is present.
 
-### `[update.graph]`
-Used to update the graph of a module.
+`CMD_RFID_READ_DATA_BLOCK` takes one page index and returns its four bytes. `CMD_RFID_WRITE_DATA_BLOCK` takes one page index followed by four data bytes. Valid payload pages are 0 through 31.
 
-Required elements:
-- `module = <uint>`: The module that this component belongs to.
-- `size = <uint>`: The amount of modules in this graph.
-- `length = <uint>`: The length of the graph data.
-- `data = <string>`: The data of the graph. Format: `module:left,middle,right`.
+The platform can publish `EVENT_RFID_DETECT` with the seven-byte UID when a subscribed tag enters the reader.
 
-Example:
-```toml
-[update.graph]
-module = 12
-count = 2
-data_length = 11
-data = "1:1,2,3|2:3,2,1"
-```
+### Current and voltage sensor
 
-### `[packet]`
-Used to send a packet from one module to another module.
+`CMD_CV_SENSOR_GET_CURRENT`, `CMD_CV_SENSOR_GET_POWER`, and `CMD_CV_SENSOR_GET_VOLTAGE` return one float. The world model calculates the result from the module calibration and current actuator state.
 
-Required elements:
-- `module = <uint>`: The module that this packet is being sent to.
-- `length = <uint>`: The length of the data.
-- `data = <string>`: The data.
+### Module network
 
-Example:
-```toml
-[packet]
-module = 12
-length = 12
-data = "2394823492"
-```
+`CMD_SEND_PACKET` takes a destination module byte followed by packet data. `CMD_BROADCAST_PACKET` takes packet data and sends it to every other active module. The configured network model applies one delay and loss result to each delivery leg.
 
-<!-- ## `[tub.arrival]`
-Used to indicate the arrival of a tub in the system.
+`CMD_GET_OWN_ID` returns one module-id byte. `CMD_GET_NETWORK_MAP` returns the layout map. `CMD_GET_MODULE_LIST` returns a 16-bit module count followed by five bytes for each active module.
 
-Required elements:
-- `id = <uint>`: The id of the tub.
-- `module = <uint>`: The module that this tub arrives at.
-- `destination = <uint>`: The destination module. 
-- `safe = <bool>`: Whether the tub is safe.
-- `needs_security = <bool>`: Whether the tub should be routed to security.
+The platform publishes `EVENT_MESSAGE_RECEIVED` with packet data when a subscribed delivery reaches its destination.
 
-```toml
-[tub.arrival]
-id = 3
-module = 12
-destination = 6
-safe = false
-needs_security = false
-``` -->
+### Flight schedule
 
-<!-- ## `[tub.departure]`
-Used to indicate the departure of a tub in the system.
+`CMD_SET_FLIGHT_SCHEDULE` accepts a packed `quercus_flight_board_t`. Only module 255 can set the schedule. The platform returns permission denied for other modules and invalid argument for a malformed board.
 
-Required elements:
-- `id = <uint>`: The id of the tub.
-- `module = <uint>`: The module that this tub leaves from.
+### Event subscriptions
 
-```toml
-[tub.departure]
-id = 2
-module = 6
-``` -->
+`CMD_SUBSCRIBE_TO_EVENT` and `CMD_UNSUBSCRIBE_FROM_EVENT` take a 32-bit event mask. A module receives only events in its current mask. Module 255 cannot subscribe to physical hardware events.
 
-### `[tub.schedule]`
-Used to schedule the arrival of a tub in the system. Sent on startup to every module.
+The supported masks are left laser, right laser, RFID, long encoder stopped, short encoder stopped, current threshold, power threshold, and message received.
 
-Required elements:
-- `id = <uint>`: The id of the tub.
-- `module = <uint>`: The module that this tub arrives at.
-- `destination = <uint>`: The destination module. 
-- `safe = <bool>`: Whether the tub is safe.
-- `needs_security = <bool>`: Whether the tub should be routed to security.
+### Application lifecycle and diagnostics
 
-```toml
-[tub.arrival]
-id = 3
-module = 12
-destination = 6
-safe = false
-needs_security = false
-```
+`CMD_HEARTBEAT` marks an application as active and keeps its lifecycle check current. The simulator reports a late heartbeat and stops the run after the failure limit.
 
-### `[plane.arrival]`
-Used to indicate the arrival of a plane in the system. Sent by the simulator.
-
-Required elements:
-- `id = <uint>`: The id of the plane.
-- `module = <uint>`: The module that this plane arrives at.
-- `leaves_in = <uint>`: In how many seconds the plane leaves.
-
-```toml
-[plane.arrival]
-id = 2
-module = 6
-leaves_in = 23
-```
-
-### `[plane.departure]`
-Used to indicate the departure of a plane in the system. Sent by the simulator.
-
-Required elements:
-- `id = <uint>`: The id of the plane.
-- `module = <uint>`: The module that this plane leaves from.
-
-```toml
-[plane.departure]
-id = 2
-module = 6
-```
+`CMD_LOG` and `CMD_PANIC_REPORT` carry application diagnostic bytes. They use the normal network model plus the configured log-forwarding delay.

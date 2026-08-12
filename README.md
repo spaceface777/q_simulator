@@ -1,17 +1,6 @@
-<!-- 
-# TODO
-**general**
-- analyze implementing scheduler process that communicates to the router processes
-- for hybrid mode send through pi, add separate interface for communication
-- make id in events.toml 7 byte rfid
-- support going to planes
-
-**event generator**
-- total amount of tubs, density of tubs/planes
--->
-
 # Quercus Simulation
-The repository for the Quercus Airport Simulation. To avoid missing important information, please read the entire README before starting.
+
+This repository contains the Quercus Airport Simulation. Read this file before you build or run the simulator.
 
 ![A screenshot of the simulator GUI](docs/images/gui.png)
 
@@ -19,63 +8,129 @@ The repository for the Quercus Airport Simulation. To avoid missing important in
 
 ```
 simulation/
-├── .gitlab/                 # GitLab issue formats 
-├── docs/                    # Architecture overview and diagrams
-├── layouts/                 # Example layouts for use in layout.toml
-├── src/                     # The source code
-├── test/                    # All tests
-├── .clang-format            # The code style guidelines
-├── .gitignore               # Ignored Git files
-├── .gitlab-ci.yml           # GitLab CI runner details
-├── CMakeLists.txt           # Main build script for the application and tests
-├── README.md                # Project overview
-├── events_example.toml      # Example event schedule input
-├── layout_example.toml      # Example layout
-└── settings_example.toml    # Example simulator configuration input
+├── docs/                    # Architecture, protocol, and diagrams
+├── editors/                 # LTLf editor support
+├── external/                # Pinned application and SDK submodules
+├── layouts/                 # Example module layouts
+├── scenarios/               # Finite scenarios and LTLf properties
+├── src/                     # Simulator source code
+├── test/                    # Unit, integration, and scenario tests
+├── .clang-format            # C++ format rules
+├── .gitlab-ci.yml           # GitLab CI job
+├── .gitmodules              # Submodule locations
+├── CMakeLists.txt           # Main build file
+├── events_example.toml      # Example event schedule
+├── layout_example.toml      # Example module layout
+└── settings_example.toml    # Example run settings
 ```
 
 ## Requirements
+
 **Installation**
-- Ubuntu 24 or higher / Debian 13 or higher
-- Internet connection
+
+- Ubuntu 24 or later, or Debian 13 or later
+- CMake 3.12 or later
+- Ninja
+- A C++23 compiler
+- SDL3 development files for the GUI
+- West, Zephyr, and the native simulator toolchain for the applications
+- Internet access for the first CMake configuration
 
 **Usage**
-- Ubuntu 24 or higher / Debian 13 or higher
+
+- Ubuntu 24 or later, or Debian 13 or later
+- The `native_sim` application files used by the selected layout
 
 ## Installation
 
-This step can be skipped when using the course VM.
+This setup is already present on the course VM.
 
-1. Clone the router repo locally. Set up West and Zephyr, as described **[here](https://gitlab.tue.nl/2irr70-capstone-quercus-airport/quercus_platform_pico2#environment-setup-ci-compatible-baseline)**. If done correctly, you should be able to build a native `zephyr.exe` file using the run/build script present. This file is usually found at `build/zephyr/zephyr.exe`.
-1. Run the following command: 
+1. Clone this repository with its submodules.
+
+```sh
+git clone --recurse-submodules <repository-url>
+cd simulation
+```
+
+2. If the repository already exists, initialize the pinned submodules.
+
+```sh
+git submodule update --init --recursive
+```
+
+3. Install the build packages.
+
 ```sh
 sudo apt-get install lcov build-essential git make pkg-config cmake ninja-build gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev libusb-1.0-0-dev
 ```
-3. Clone this repo locally. 
-1. Copy `events_example.toml` and rename it to `events.toml`. Do the same for `settings_example.toml` to `settings.toml` and `layout_example.toml` to `layout.toml`.
-1. Change the `router_path` value in the settings to the absolute path of the `zephyr.exe` executable. The absolute path should look similar to this: `/home/user/airport-router/build/zephyr/zephyr.exe`.
-1. Run `cmake -B build -S . -G Ninja`.
+
+4. Build the pinned applications for Zephyr `native_sim`.
+
+```sh
+cd external/quercus_applets
+./quercus_sdk/qbuild sim
+cd ../..
+```
+
+5. Copy the example input files.
+
+```sh
+cp events_example.toml events.toml
+cp settings_example.toml settings.toml
+cp layout_example.toml layout.toml
+```
+
+6. Set `application_path` in `settings.toml`. You can also set `binary` for one module in `layout.toml`.
+
+7. Configure the build.
+
+```sh
+cmake -B build -S . -G Ninja
+```
 
 ## Usage
+
 #### Running
 
-Run the project with the `Run` button when using the C/C++ VSCode extension, or use the following command in the project folder: 
+Build and start the interactive simulator.
 
 ```sh
 cmake --build build -j && ./build/simulation
 ```
 
-This will start all modules and run the current events in the `events.toml` file until infinity. Settings can be changed by pressing the buttons at the bottom. Closing the GUI stops the simulation and all modules. Changes to the `events.toml`, `layout.toml`, or `settings.toml` files will only apply after restarting the simulation by closing the GUI and re-running the project as described above.
+The simulator reads `settings.toml`, `layout.toml`, and `events.toml`. It starts one application process for each active module. The GUI shows the world state and lets you pause the run, set its speed, and change the scale. Close the GUI to stop the run and all child processes.
+
+Use `--no-gui` for a run without a window. Use `--timeout <sec>` to stop after a simulated-time limit. Use `--tick-batch <n>` to grant up to `n` child ticks per barrier. The default batch is 1.
+
+A larger tick batch trades timing accuracy for speed. With a batch of N, the simulator cannot observe or answer an application action until the batch boundary, so N ms becomes the smallest effective response step. A batch of 10 runs about seven times faster than a batch of 1. The result varies with the CPU, layout, scenario, and application.
+
+Run a finite scenario and its LTLf properties with the headless runner.
+
+```sh
+./build/simulation-scenario scenarios/hardware_test.toml
+```
+
+Use `./build/simulation --help` and `./build/simulation-scenario --help` for all options. The scenario runner returns 0 when all properties hold, 1 when a property fails or the run cannot finish, and 2 when its input is invalid.
+
+The installable VS Code extension in `editors/vscode-ltlf` provides syntax highlighting and live parser and type-check diagnostics for `.spec` files. See its README for installation and rebuild instructions.
 
 #### Testing
-To run the tests, change the target to `tests` when using the C/C++ VSCode extension and click run, or use the following command in the project folder:
+
+Build and run the normal test suite.
 
 ```sh
 cmake --build build -j && ./build/tests
 ```
 
+Build the pinned applets first, and set `RUN_SLOW_TESTS=1`, to run the full real-application scenario and speed-invariance tests.
+
+```sh
+RUN_SLOW_TESTS=1 ./build/tests
+```
+
 #### Test coverage
-To calculate test coverage, run the following commands:
+
+Generate an HTML coverage report with a Debug build.
 
 ```sh
 BROWSER=firefox
@@ -93,17 +148,18 @@ cmake -B build -S . -G Ninja
 $(echo $BROWSER) build/coverage_html/index.html
 ```
 
-Change `firefox` on the first line to your favorite browser. Last measured test coverage: 82.5% of lines and 89.8% of functions on 27-06-2026.
+Change `firefox` on the first line to the browser that you use.
 
 ## Support
-In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
+
+Create a GitLab issue if you find a problem. Use the provided issue format.
 
 ## Contributing
-If you make improvements to the simulation during the course, you are encouraged to contribute these changes to this repo. Any merge requests will be thoroughly reviewed before merging, so make sure you are willing to change your code before opening a merge request.
 
-All code must follow the format defined in `.clang-format`. Additionally, all changes (except for those to the visualization or `main.cpp`) should contain unit and integration tests. All tests must pass before merging your merge request. 
+Contributions are welcome. A merge request must pass the format check and the applicable tests.
 
-To help you get started, you are encouraged to read `docs/ARCHITECTURE.md` and `docs/IMPROVEMENTS.md`.
+All C++ code must follow `.clang-format`. Add unit or integration tests for changes outside the visualization and `main.cpp`. Read `docs/ARCHITECTURE.md` and `docs/PROTOCOL.md` before you change the engine or its application interface.
 
 ## License
+
 (c) Eindhoven University of Technology, Rens Verstappen, and contributors (2025-2026).
