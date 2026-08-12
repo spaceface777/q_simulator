@@ -1,0 +1,20 @@
+# ===== Scenario: hardware_test with a tub left on the reader =====
+# The applet's README says not to leave a tub on the RFID reader during startup because presence
+# is a failure. This scenario checks that the earlier diagnostics still run before that failure is
+# encoded and latched.
+#
+# Run it with:
+#   ./build/simulation-scenario -l layouts/one_module.toml \
+#       -b external/quercus_applets/out/hardware_test.exe \
+#       scenarios/hardware_test_tag_at_startup.toml
+
+[scenario]
+duration = "7s"
+properties = "hardware_test_tag_at_startup.spec"
+
+[tub.left_on_the_reader]
+time = 0.0
+id = 1
+module = 1
+uid = 0x01000000000000
+payload = [0xBADC0FFE]

@@ -1,0 +1,29 @@
+# ===== Scenario: an application that survives whatever fleet it is given =====
+# Checks that per-module calibration reaches the platform and that detector-driven routes complete
+# independently on two differently calibrated modules without predicted timing windows.
+#
+# Run it with:
+#   ./build/simulation-scenario -l layouts/default.toml \
+#       -b external/quercus_applets/out/module_movement.exe scenarios/per_module_variation.toml
+#
+# Every module draws its own belt curves, electrical figures, and servo pace from the physical
+# populations. Which module is faster is a property of the seed, so the properties require both
+# routes to progress without assuming an ordering between them.
+
+[scenario]
+duration = "30s"
+properties = "per_module_variation.spec"
+
+[tub.on_module_5]
+time = 0.0
+id = 5
+module = 5
+uid = 0x05000000000000
+payload = [0xC0FFEE05]
+
+[tub.on_module_12]
+time = 0.0
+id = 12
+module = 12
+uid = 0x0c000000000000
+payload = [0xC0FFEE12]

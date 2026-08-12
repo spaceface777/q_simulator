@@ -1,0 +1,37 @@
+# ===== Scenario: module_movement, the full demonstration route =====
+# Checks the `module_movement` applet against the route its own source drives, leg by leg.
+#
+# Run it with:
+#   ./build/simulation-scenario -l layouts/one_module.toml \
+#       -b external/quercus_applets/out/module_movement.exe scenarios/module_movement.toml
+#
+# The applet enables both emitters, subscribes to the RFID and both laser detectors, and waits
+# for a tag. A tag already at the reader at startup is turned into a synthetic start event, so
+# a tub placed at time zero starts the route rather than deadlocking it. It then repeats eight
+# legs forever, setting the LED at the start of each and waiting on the detector event for the
+# point it is heading for.
+#
+# The constants checked by the sibling property file are read from the applet, not guessed:
+#   LED_RED 0xff0000, LED_GREEN 0x00ff00, LED_BLUE 0x0000ff
+#   ARM_NEUTRAL 0, ARM_LEFT 60, ARM_RIGHT 120
+#   BELT_FORWARDS 100, BELT_BACKWARDS -100
+#
+# The leg boundaries are where the applet's detector events fire, which is when the tub enters
+# a beam rather than when it reaches an endpoint.
+#
+# The LTLf properties follow detector edges instead of predicting when each leg completes. That
+# keeps the route exact across the simulator's per-module physical variation without accumulating
+# progressively wider clock windows.
+
+[scenario]
+duration = "45s"
+properties = "module_movement.spec"
+
+# === Events ===
+
+[tub.the_only_tub]
+time = 0.0
+id = 1
+module = 1
+uid = 0x01000000000000
+payload = [0xC0FFEE01]
