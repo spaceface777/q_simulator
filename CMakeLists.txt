@@ -72,6 +72,7 @@ endif()
 
 add_library(core STATIC
     src/childproc/launcher.cpp
+    src/sim/runtime.cpp
     src/sim/pacing.cpp
     src/platform/platform.cpp
     src/childsync/mailbox.cpp
@@ -85,6 +86,12 @@ add_library(core STATIC
     src/trace/trace.cpp
     src/util.cpp 
     src/settings.cpp
+    src/event/events.cpp
+    src/ltl/lexer.cpp
+    src/ltl/parser.cpp
+    src/ltl/checker.cpp
+    src/ltl/monitor.cpp
+    src/ltl/observation.cpp
 )
 
 target_link_libraries(core PUBLIC
@@ -95,6 +102,18 @@ target_link_libraries(core PUBLIC
 target_include_directories(core PUBLIC "${QUERCUS_SDK_ROOT}/include")
 
 target_compile_options(core PRIVATE ${COMPILATION_FLAGS})
+
+# The headless scenario runner. Deliberately built here rather than under src/, because that
+# directory pulls in SDL3 and this target must not: a scenario run has nothing to draw, and
+# needing a window system to check an application's behaviour would put the whole mode out of
+# reach of CI and of anyone on a machine without X11.
+add_executable(simulation-scenario src/scenario/main.cpp)
+
+target_link_libraries(simulation-scenario PRIVATE core)
+
+target_compile_options(simulation-scenario PRIVATE ${COMPILATION_FLAGS})
+
+target_compile_definitions(simulation-scenario PRIVATE APP_VERSION="${PROJECT_VERSION}")
 
 # === Formatting ===
 file(GLOB_RECURSE FORMAT_FILES
