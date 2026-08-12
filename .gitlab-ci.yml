@@ -1,19 +1,18 @@
-image: ubuntu:24.04
+image: $CI_REGISTRY/2irr70-capstone-quercus-airport/quercus_dev_env/ci
 
 default:
   tags:
     - docker # use runner 2 since runner 1 has disk space problems
 
-before_script:
-  - apt-get update
-  - apt-get install -y --no-install-recommends git cmake build-essential ninja-build ca-certificates
-  - apt-get clean
-
 build:
   script:
+    - git submodule update --init --recursive
     - cp settings_example.toml settings.toml
     - cp layout_example.toml layout.toml
     - cp events_example.toml events.toml
+    - (cd external/quercus_applets && ./quercus_sdk/qbuild sim)
     - cmake -B build -S . -G Ninja -DTESTING_CONSOLE_BUILD=ON
-    - cmake --build build -j --target tests
-    - ./build/tests
+    - cmake --build build -j --target format-check
+    - cmake --build build -j --target all
+    - ./build/tests --gtest_shuffle --gtest_repeat=10
+    - RUN_SLOW_TESTS=1 ./build/tests
