@@ -108,6 +108,7 @@ namespace trace {
 			return;
 		}
 		file_ << entry.str() << "\n";
+		file_.flush();
 		written_++;
 	}
 
