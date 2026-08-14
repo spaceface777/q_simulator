@@ -6,154 +6,174 @@
 1. [Software Architecture Overview](#2-software-architecture-overview)
 1. [File Structure](#3-file-structure)
 1. [Events](#4-events)
-1. [Tubs](#5-tubs)
-1. [Modules](#6-modules)
-1. [TCP server](#7-tcp-server)
+1. [World](#5-world)
+1. [Applications](#6-applications)
+1. [Shared memory transport](#7-shared-memory-transport)
 1. [Visualization](#8-visualization)
 1. [Questions or feedback](#9-questions-or-feedback)
 
 ## 1. Project overview
 
-The simulation intends to simulate running multiple instances of the same module code on the real-world model, allowing for easier debugging and faster iteration. 
+The simulator runs the real Quercus applications against a deterministic model of the airport-baggage modules. Each application is a Zephyr `native_sim` child process. The simulator supplies the platform RPC service that the application uses on the hardware.
 
-A GUI is provided which shows the current state of all modules and actuators. Additionally, the GUI contains tools such as deterministic control over events such as tub or plane arrivals and data through the `events.toml` file, a (real-time) modifiable simulation speed (including pausing), a modifiable layout through the `layout.toml` file, and easy access to actuator values.
+The GUI shows all modules, tubs, sensors, and actuators. Input files define the module layout, application files, physical settings, network settings, master seed, and timed tub events. A headless runner checks finite scenarios against LTLf properties and returns a process status for CI.
 
+Simulated time advances in discrete 1 ms ticks. One master seed controls application seeds, physical calibration, start offsets, clock drift, skipped local ticks, network delay, network loss, and generated RFID data. The same inputs and seed produce the same trace.
 
 ## 2. Software architecture overview
 
+The process and component placement is:
+
+```text
+Simulation run
+|-- Simulation process
+|   |-- Front end (one per run)
+|   |   |-- Interactive main, or
+|   |   `-- Headless scenario runner
+|   |-- Lockstep runtime
+|   |   |-- Deterministic task queue
+|   |   |-- World state
+|   |   |-- Platform manager
+|   |   |   |-- Per-module platform state
+|   |   |   |-- Simulated module network
+|   |   |   `-- Simulated diagnostic network
+|   |   |-- Shared control mapping
+|   |   |-- Child state (one per active module)
+|   |   |   |-- Child process handle
+|   |   |   `-- Shared mailbox mapping
+|   |   |-- Property observer
+|   |   |-- LTLf monitors (one per property)
+|   |   `-- Trace writer
+|   `-- Visualization (interactive runs only)
+`-- native_sim child process (one per active module)
+    |-- Quercus application
+    `-- SDK lockstep adapter
+        |-- View of the shared control mapping
+        `-- View of that child's shared mailbox mapping
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ Simulation                                                               │
-│                                                                          │
-│           (updates)       ┌───────────────────┐     (starts m threads)   │
-│            ┌──────────────┤        main       ├────────────────┐         │
-│            │              └──────┬──────┬─────┘                │         │
-│            │                     │      │                      │         │
-│            │                     │      │                      │         │
-│            │  (starts as thread) │      │ (starts n threads)   │         │
-│            │                     │      │                      │         │
-│            │                     │      │                      │         │
-│  ┌─────────▼─────┐ ┌─────────────▼─┐ ┌──┴──────────┐ ┌─────────┴──────┐  │
-│  │ Visualization │ │   TCP Server  │ │     Tub     │ │     Module     │  │
-│  └───────────────┘ └─────────┬─────┘ └─────────────┘ └────────────┬───┘  │
-│                              │                                    │      │
-└──────────────────────────────┼────────────────────────────────────┼──────┘
-                               │                                    │
-                 (communicate) │                (starts as process) │
-                               │                                    │
-           ┌───────────────────┼────────────────────────────────────▼─────┐
-           │ Module            │                                          │
-           │                   │                                          │
-           │  ┌────────────────┴──┐               ┌────────────────────┐  │
-           │  │    TCP Client     ◀───────────────┤        main        │  │
-           │  └───────────────────┘               └────────────────────┘  │
-           │                                                              │
-           └──────────────────────────────────────────────────────────────┘
+
+The directed relationships are:
+
+```text
+Interactive main -- [constructs and drives] -> Lockstep runtime
+Interactive main -- [updates] -> Visualization
+Headless scenario runner -- [constructs and drives] -> Lockstep runtime
+
+Settings and layout -- [configure] -> Lockstep runtime
+Event schedule -- [loads timed world changes into] -> Lockstep runtime
+LTLf property file -- [loads property declarations into] -> Lockstep runtime
+
+Lockstep runtime -- [schedules ordered tick phases on] -> Deterministic task queue
+Lockstep runtime -- [owns and advances] -> World state
+Lockstep runtime -- [owns and calls] -> Platform manager
+Lockstep runtime -- [launches and supervises] -> native_sim child process
+Lockstep runtime -- [grants ticks through] -> Shared control mapping
+Lockstep runtime -- [writes responses and events to] -> Shared mailbox mapping
+Shared mailbox mapping -- [provides application requests to] -> Lockstep runtime
+
+Platform manager -- [reads and updates hardware state in] -> World state
+Platform manager -- [owns and advances] -> Simulated module network
+Platform manager -- [owns and advances] -> Simulated diagnostic network
+Lockstep runtime -- [dispatches decoded RPC requests to] -> Platform manager
+Platform manager -- [provides RPC responses and events to] -> Lockstep runtime
+
+Lockstep runtime -- [submits world and RPC facts to] -> Property observer
+Property observer -- [builds tick observations for] -> LTLf monitors
+Lockstep runtime -- [progresses and finishes] -> LTLf monitors
+Lockstep runtime -- [writes run metadata and tick records through] -> Trace writer
+
+Visualization -- [reads] -> World state
+Quercus application -- [calls platform RPC through] -> SDK lockstep adapter
+SDK lockstep adapter -- [waits for tick grants on] -> Shared control mapping
+SDK lockstep adapter -- [acknowledges completed grants on] -> Shared control mapping
+SDK lockstep adapter -- [reads responses and events from] -> Shared mailbox mapping
+SDK lockstep adapter -- [writes application requests to] -> Shared mailbox mapping
 ```
+
+At each barrier, the runtime selects the active applications and grants their next local tick. Each child reads inbound frames, runs its application code, writes outbound frames, and acknowledges the barrier. The simulator waits for all live children. It then applies RPC requests, network deliveries, world motion, sensor changes, events, trace output, and property observations in a fixed order.
+
+The default barrier grants one tick. A larger batch grants up to 16 ticks at one barrier. Each batch entry has separate inbound and outbound mailboxes. The simulator can observe and answer an application action only at the batch boundary, so a batch of N makes N ms the smallest effective response step. A batch of 10 runs about seven times faster than a batch of 1. The exact gain depends on the CPU, layout, scenario, and application.
 
 ## 3. File structure
 
 ```
 simulation/
 ├── src/
-│   ├── CMakeLists.txt            # Simulation build instructions
-│   ├── main.cpp                  # Entry point, event loop, module startup, and shutdown handling
-│   ├── defs.h                    # Shared definitions and constants
-│   ├── util.cpp/.h               # General utility helpers used across the simulation
-│   ├── settings.cpp/.h           # Settings file parsing and accessors
+│   ├── main.cpp                  # Interactive entry point and render loop
+│   ├── defs.h                    # Shared constants
+│   ├── settings.cpp/.h           # Settings and layout parsing
+│   ├── util.cpp/.h               # Common parsing and validation helpers
 │   │
-│   ├── event/                    # Event scheduling and dispatch
-│   │   ├── events.cpp            # Event parsing and timed event firing
-│   │   └── events.h              # Event model declarations
-│   │
-│   ├── message/                  # Message types and serialization helpers
-│   │   ├── message.cpp           # Message construction and encoding logic
-│   │   └── message.h             # Message type declarations
-│   │
-│   ├── module/                   # Module process lifecycle and registry
-│   │   └── module.cpp/.h         # Module process management and coordination
-│   │   └── types.h               # Data types used in tubs
-│   │
-│   ├── tcp/                      # TCP client/server transport layer
-│   │   ├── server.cpp/.h         # Server accept loop and connection tracking
-│   │   └── socket.h              # Shared socket wrapper and helpers
-│   │
-│   ├── tub/                      # Tub simulation and routing behavior
-│   │   └── tub.cpp/.h            # Tub state updates and movement logic
-│   │   └── types.h               # Data types used in tubs
-│   │
-│   ├── visualization/            # SDL-based simulation UI
-│   │   ├── buttons.cpp           # UI button handling and actions
-│   │   ├── buttons.h             # Button declarations
-│   │   └── visualization.cpp/.h  # Rendering loop and scene drawing
-│   │
-│   └── synchronization/          # Time coordination helpers
-│       └── virtual_clock.h       # Virtual simulation clock abstraction
+│   ├── childproc/                # native_sim process launch and cleanup
+│   ├── childsync/                # Shared mappings, futex barrier, and mailboxes
+│   ├── engine/                   # Deterministic tick task queue
+│   ├── event/                    # Timed world-event and scenario input
+│   ├── ltl/                      # LTLf lexer, parser, checker, monitor, and observer
+│   ├── module/                   # Module state and strongly typed values
+│   ├── net/                      # Deterministic network delay and loss
+│   ├── platform/                 # Hardware and network RPC services
+│   ├── rpc/                      # RPC frame encoding and validation
+│   ├── scenario/                 # Headless scenario entry point
+│   ├── seed/                     # Named random streams from the master seed
+│   ├── sim/                      # Lockstep runtime and speed reporting
+│   ├── synchronization/          # Interactive virtual clock
+│   ├── trace/                    # NDJSON trace writer
+│   ├── visualization/            # SDL3 controls and drawing
+│   └── world/                    # Physical state and calibrated behavior
 │
-├── test/                         # Unit and integration tests
-│   ├── CMakeLists.txt            # Test build instructions
-│   ├── test_settings.cpp         # Tests for src/settings.cpp
-│   │
-│   ├── event/                    # Event tests
-│   ├── message/                  # Message tests
-│   ├── module/                   # Module tests
-│   ├── synchronization/          # Synchronization tests
-│   ├── tcp/                      # TCP tests
-│   └── tub/                      # Tub tests
-│
-├── .clang-format                 # The code style guidelines
-├── .gitignore                    # Ignored Git files
-├── .gitlab-ci.yml                # GitLab CI runner details
-├── CMakeLists.txt                # General build instructions
-├── README.md                     # Project overview
-├── events_example.toml           # Example event schedule input
-├── layout_example.toml           # Example layout
-└── settings_example.toml         # Example simulation configuration input
+├── test/                         # Unit, integration, and scenario tests
+├── editors/vscode-ltlf/         # VS Code support for the LTLf property language
+├── external/                     # Pinned quercus_applets and quercus_sdk
+├── layouts/                      # Example layouts
+├── scenarios/                    # Scenario TOML files and LTLf property files
+├── CMakeLists.txt                # Application and test build
+├── events_example.toml           # Example timed world events
+├── layout_example.toml           # Example module graph and geometry
+└── settings_example.toml         # Example run and physical settings
 ```
 
 ## 4. Events
 
-Events are stored in the `events.toml` file and represent the real-world actions that you can perform with tubs. After parsing, events are stored in `main.cpp` as classes that have an id (which may be a module id or plane id), and a time of occurrence in seconds, additionally supporting specifying milliseconds. There are two types of events:
+The simulator reads timed input from `events.toml` or from a scenario TOML file. A tub event gives the tick, tub id, module id, optional position, optional removal time, seven-byte RFID UID, and up to 32 four-byte payload pages. Missing payload pages contain deterministic data from the master seed.
 
-- **Tub arrival**: This is the arrival of a tub into the system at a specific module or at a specific plane. Each tub arrival has fields which populate the minimum amount of information required for tub routing to work. These are: the origin module or plane id, the destination module or plane id, whether this tub is safe (used for things like security) and whether this tub needs to go to security. This necessary data takes up the first two rows of each RFID chip. The remaining 33 rows of RFID data can be manually specified.
-- **Plane arrival**: This is the arrival of a plane at a specific module and at a specific time. The only data this event has, other than the plane id, is the amount of time left until this plane departs.
+An event changes the physical world. It does not send a message to an application. The application observes a tub through the laser and RFID RPC services when the tub reaches those instruments.
 
-We process these two events as follows: at the start, we collect all events from `events.toml`. All tub arrival events are sent as a packet to all modules to populate the schedule of these modules. This allows users to run any `events.toml` without having to change the module code. 
+A finite scenario also has a `[scenario]` table. Its `duration` sets the inclusive end of the trace. Its `properties` value names the LTLf file. The runtime applies tick-zero events before it starts the child processes, and it applies later events in tick order.
 
-Then, every 16 milliseconds, we loop over all events and check whether an event should be fired. If an event should be fired, we run the event-specific code for announcing to the modules that an event has occurred. For tub arrivals, this means sending a packet to the modules which updates the values present at the RFID reader. For plane arrivals, this means sending a packet to all modules which indicates that a plane has arrived.
+## 5. World
 
-## 5. Tubs
+`world::State` owns every module and tub. It advances all tubs once per simulated tick in ascending tub-id order. Positions use integer micrometres. A remainder keeps sub-micrometre belt travel between ticks. This makes slow motion deterministic and prevents rounding from stopping a tub.
 
-Tubs are classes which keep track of tub data, additionally including a thread for each tub. This thread continuously update the position of the tub based on the state of the module the tub belongs to. 
+Each module has a calibrated big belt, small belt, servo, lasers, RFID reader, LED, and current-voltage model. A module receives one deterministic calibration from the physical population. The model derives belt travel, encoder values, sensor state, voltage, current, and power from the current commands and calibration.
 
-When a tub is within the range of a sensor, it sends a packet to the owning module that the tub is present. For lasers, this is done using the value `true`. For the RFID chip, it sends all RFID data. When the tub exits the RFID chip area, it sends a packet with empty RFID data. For exiting the lasers, `false` is sent.
+A tub moves on the big or small belt. The servo selects its path at the junction. The layout gives the left, middle, and right neighbor of each routing module. A hand-off occurs only when the destination endpoint can receive the tub. RFID writes update the tub in the world, so the new page remains present after the next sensor update.
 
-When a tub should transfer from one belt part to the other on the same module, the value of the servo is read. Based on this, the correct belt is chosen. For transferring to other modules, the connections found in `layout.toml` are checked. Only the tub's owning module variable is updated; modules do not keep track of the tubs they own.
+## 6. Applications
 
-## 6. Modules
+The runtime starts one `native_sim` child process for each active layout module. `application_path` supplies the common file. A module can use its own `binary` value. Module 255 is the optional tower and has no conveyor geometry.
 
-Modules are classes that keep track of data received from each module process. They are responsible for starting their respective module processes, which is the router code compiled for native_sim. This is done by creating a new thread, and using this thread to start the router code executable (called the module process) with `execlp`. Since we cannot pass command-line arguments to native_sim executables, we create a temp file before starting the module process and write the id of this module process in it. This gets read by the module process, and the file is deleted.
+The child receives its module id and inherited shared-memory descriptors in `QSIM_MODULE_ID`, `QSIM_CTRL_FD`, and `QSIM_MBOX_FD`. It validates the shared-memory ABI, maps its private mailbox segment, marks itself ready, and waits for the next barrier generation. The first heartbeat changes its lifecycle from activating to running.
 
-## 7. TCP server
+Each physical module has an independent start offset, fixed clock rate, and local tick-skip probability. The global world and network clock still advances on every simulator tick. A skipped local tick does not advance that application's uptime, code, RPC service delays, or rate-limit windows. A ready response or event waits for the module's next executed tick.
 
-The TCP server establishes and maintains connections between the simulation and every module process. All communication happens in packets specified in `docs/PROTOCOL.md`. We check whether there are new packets to process every 5 milliseconds. 
+## 7. Shared memory transport
 
-When a sensor needs to be updated due to a tub being present, the simulation sends a packet to the module process. When an actuator is updated by a module, a packet is sent to the simulation, and the correct value in the module class is updated.
+The simulator and SDK use the same `quercus/lockstep_shm.h` layout. One control mapping holds the ABI, barrier generation, completion state, per-module tick index, tick duration, batch size, active flags, and ready flags. Each child has a separate segment with inbound and outbound mailboxes for every tick in a batch.
 
-Communication between modules happens through the simulation. When module A wants to send something to module B, it sends a `[packet]` packet to the simulation, which then sends the packet to module B. 
+A mailbox is one 4096-byte page. It has four frame slots and 4088 data bytes. A frame can use at most 1024 bytes. The simulator validates every slot offset before it reads child data. It returns busy or no-memory status when a frame cannot fit.
+
+The barrier uses acquire and release operations and Linux futex waits. The parent writes mailboxes only while children are blocked. A child writes its outbound mailbox only while the parent is blocked. The final child increments the release word and wakes the parent.
+
+`docs/PROTOCOL.md` defines the RPC frame. Requests cross the next application handoff. Responses and events return on an executed local tick. Laser events have a configurable additional delay. RFID events use a configurable seeded delay distribution. Module packets, logs, and panic reports use the configured deterministic network delay and loss model.
 
 ## 8. Visualization
 
-The visualization takes the existing state of all tubs and modules and visualizes this in a 2D top-down view, using SDL3, and runs on the main thread. We update every 16 milliseconds, giving a target FPS of 62.5. We do not account for execution time, as this is at most 0.5 milliseconds, resulting in an average FPS of 61. 
+The SDL3 visualization reads the runtime world after each engine advance. It draws the configured module positions and angles, current actuator values, sensor state, tubs, trace status, simulation time, and effective speed in a 2D top-down view.
 
-The `layout.toml` file contains the position of all modules and angle of all modules, which are used to render each module. For each module, we use specific offsets at specific angles to render all elements properly. Every update, we check the current state of each module, and based on it, update the visualization parameters, such as the servo angle, belt speed, etc. For tubs, we use these specific offsets for each module to render their location correctly. Rendering tubs consists of getting the (x, y)-location of the module, and, based on the belt of the tub, rendering the circle. 
+The interactive loop targets 60 frames per second. It reserves 2 ms of each frame for input and drawing and gives the remaining time to child progress. The simulation clock shown in the GUI is the engine tick that the applications experienced.
 
-Scaling works by using a wrapper function for all constant offsets in a module. All offsets were chosen with a module size of 180x180 pixels in mind, which is a scaling of 1.0. Each offset is multiplied by the current scaling, which reduces or increases size.
-
-All buttons snap to a specific corner of the screen and are specified by an offset. These check for click events every 16 milliseconds, and, if one has occurred, performs the correct action. The pause button keeps track of the previous value, allowing pausing and playing. The current simulation speed, time and scaling are also buttons, but these have no functionality. 
-
-For tracking time with simulation speed, we use a virtual clock which ticks every 16 milliseconds. Each tick increments the time based on the value of the simulation speed setting. Since we do not allow simulation speed updates between ticks, this clock remains accurate.
+The controls can pause the run, change the requested simulation speed, and change the view scale. The default scale comes from `settings.toml`. Closing the window stops the runtime and all child processes.
 
 ## 9. Questions or feedback
 
-In case you encounter any problems, create an issue on GitLab. Please use the provided issue format.
+Create a GitLab issue if you find a problem. Use the provided issue format.

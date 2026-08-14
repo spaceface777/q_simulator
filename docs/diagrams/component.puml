@@ -1,26 +1,30 @@
 @startuml High-level component diagram
 
-package "Router process" {
-    [Router]
-    [TCP Client]
-    
-    [Router] <--> [TCP Client]
+package "native_sim application process" {
+    [Application]
+    [Lockstep adapter]
+
+    [Application] <--> [Lockstep adapter] : SDK RPC
 }
 
 package "Simulation process" {
-    [TCP Server]
-    [Tub]
-    [Module]
-    [main]
+    [Runtime]
+    [Shared barrier]
+    [RPC platform]
+    [Network]
+    [World]
+    [LTLf monitor]
+    [Visualization]
 
-    [TCP Server] <--> [TCP Client] : receives/sends
-    [TCP Server] --> [Module] : update values 
-    [main] --> [Tub] : creates
-    [main] --> [Module] : creates
-    [main] --> [TCP Server] : creates
-    [Module] --> [Router process] : starts
-    [Tub] --> [Module] : gets stats
-    [Module] --> [Tub] : on move owner
+    [Runtime] <--> [Shared barrier] : grants and collects ticks
+    [Runtime] --> [RPC platform] : dispatches frames
+    [RPC platform] <--> [World] : reads and updates hardware
+    [RPC platform] <--> [Network] : sends and receives packets
+    [Runtime] --> [World] : advances one tick
+    [Runtime] --> [LTLf monitor] : submits observations
+    [Runtime] --> [Visualization] : exposes current state
+    [Shared barrier] <--> [Lockstep adapter] : shared control
+    [RPC platform] <--> [Lockstep adapter] : shared mailboxes
 }
 
 @enduml

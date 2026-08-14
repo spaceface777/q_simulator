@@ -4,58 +4,67 @@ package Simulation {
 hide empty members
 class mainS as "main" {}
 
-class "TCP Server" {
- void send(int, Packet)
- void run()
+class "sim::Runtime" {
+ void start()
+ void advance(microseconds, double, microseconds)
+ void load(events::Schedule)
+ void load_properties(ltl::File, uint64_t)
  void stop()
- int size()
+ uint64_t tick()
 }
 
-class Module {
- pid pid()
- void run(string)
+class "world::State" {
+ void add_module(ModuleId)
+ void place(uint8_t, ModuleId, Position, RfidUid, RfidPayload)
+ void remove(uint8_t)
+ void advance_tick()
+ const Module* module(ModuleId)
+}
 
- int id()
- bool is_running()
- int big_belt_speed()
- int small_belt_speed()
- int led_color()
- bool is_left_laser_active()
- bool is_right_laser_active()
- void set_left_laser_active(bool)
- void set_right_laser_active(bool)
- void send(Packet)
-} 
+class "platform::Manager" {
+ optional<Frame> handle_request(ModuleId, Frame, uint64_t)
+ void advance(uint64_t)
+ vector<Frame> take_outbound(ModuleId, size_t)
+}
 
-class Tub {
- int id()
- int module()
- int target_module()
- ModuleLocation target_module_location()
- double module_location_progress()
- void run()
-} 
+class "childsync::SharedControl" {
+ Control& get()
+}
+
+class "childsync::ChildSegment" {
+ Segment& get()
+}
+
+class "ltl::Monitor" {
+ void step(AtomEvaluator, AtomValueEvaluator, DomainEnumerator)
+ void finish()
+ Verdict verdict()
+}
 
 class Visualization {
- void update()
+ void update(const world::State&, const VirtualClock&)
 }
 
 }
 
-package Router {
+package "native_sim application" {
  hide empty members
- class mainR as "main" {  }
- class "TCP Client" {
-  void setup_connection()
-  void send(Packet)
+ class app as "application main" {}
+ class adapter as "lockstep adapter" {
+  void wait_for_tick()
+  void exchange_mailboxes()
  }
 }
 
-mainS "1" o-- "TCP Server" : > starts as thread
-mainS "1..n" o-- Module : > starts n threads
-mainS "0..m" o-- Tub : > starts m threads
-mainS "1" *-- Visualization : > updates periodically
-
-Module -- Router : > starts as process
-mainR "1" *-- "TCP Client"
+mainS "1" *-- "sim::Runtime"
+mainS "1" *-- Visualization
+"sim::Runtime" "1" *-- "world::State"
+"sim::Runtime" "1" *-- "platform::Manager"
+"sim::Runtime" "1" *-- "childsync::SharedControl"
+"sim::Runtime" "1..n" *-- "childsync::ChildSegment"
+"sim::Runtime" "0..n" *-- "ltl::Monitor"
+"sim::Runtime" --> app : starts as process
+"childsync::SharedControl" <--> adapter : shared barrier
+"childsync::ChildSegment" <--> adapter : shared mailboxes
+app "1" *-- adapter
 @enduml
