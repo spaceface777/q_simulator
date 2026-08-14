@@ -1,0 +1,21 @@
+# ===== Scenario: hardware_test with a blocked beam =====
+# The diagnostic's job is to notice a module that is not fit to test. This scenario blocks the
+# left beam from startup and checks that the laser failure is detected, encoded, and latched.
+#
+# Run it with:
+#   ./build/simulation-scenario -l layouts/one_module.toml \
+#       -b external/quercus_applets/out/hardware_test.exe scenarios/hardware_test_blocked_beam.toml
+
+[scenario]
+duration = "6s"
+properties = "hardware_test_blocked_beam.spec"
+
+# A tub in the left beam. Nothing drives a belt after the failure, so it stays exactly where it
+# is put and the beam remains blocked for the whole diagnostic.
+[tub.standing_in_the_left_beam]
+time = 0.0
+id = 1
+module = 1
+position = "left_laser"
+uid = 0x01000000000000
+payload = []

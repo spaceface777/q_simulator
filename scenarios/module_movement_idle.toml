@@ -1,0 +1,38 @@
+# ===== Scenario: module_movement, waiting for a tag =====
+# Checks the half of the applet the full-route scenario cannot reach: what it does before a tag
+# ever arrives.
+#
+# Run it with:
+#   ./build/simulation-scenario -l layouts/one_module.toml \
+#       -b external/quercus_applets/out/module_movement.exe scenarios/module_movement_idle.toml
+#
+# The applet subscribes to three detector events but starts on only one of them. `wait_for_event`
+# discards every event id other than the one it is waiting for, so a laser going dark must not
+# start the route. That discard is easy to write and easy to get wrong, and an applet that
+# started on any event at all would pass the whole of module_movement.toml unchanged: it is
+# handed a tag at time zero there, so the wrong trigger and the right one fire together.
+
+[scenario]
+duration = "15s"
+properties = "module_movement_idle.spec"
+
+# === Events ===
+
+# A tub in the left beam, well after the applet has subscribed, so this really is a live event
+# and not something that happened before anyone was listening. It leaves again at seven seconds.
+[tub.in_the_left_beam]
+time = 4.0
+id = 2
+module = 1
+position = "left_laser"
+removed = 7.0
+uid = 0x02000000000000
+payload = []
+
+# The tag that is actually supposed to start the route.
+[tub.the_tag]
+time = 9.0
+id = 1
+module = 1
+uid = 0x01000000000000
+payload = [0xC0FFEE02]
