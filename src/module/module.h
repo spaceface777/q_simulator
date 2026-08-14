@@ -1,179 +1,193 @@
 #ifndef MODULE_H
 #define MODULE_H
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
-#include <filesystem>
-#include <memory>
-#include <pthread.h>
-#include <thread>
 #include <vector>
 
-#include "../message/message.h"
-#include "../tub/tub.h"
+#include "../defs.h"
 #include "types.h"
 
-namespace module
-{
+namespace module {
 
-class Module
-{
-  private:
-    pid_t pid_;
-    ModuleId id_;
-    bool running_ = false;       // whether the module process spawned by this module is running
-    bool init_finished_ = false; // whether the module process is ready to receive packets
+	// The simulated hardware of one module: actuator settings and the sensor readings that follow.
+	class Module {
+	private:
+		ModuleId id_;
 
-    BeltSpeed big_speed_;
-    BeltSpeed small_speed_;
-    ServoAngle servo_degrees_;
-    LedColor led_color_;
-    bool left_laser_active_ = false;
-    bool right_laser_active_ = false;
-    bool rfid_active_ = false;
+		BeltSpeed  big_speed_;
+		BeltSpeed  small_speed_;
+		ServoAngle servo_degrees_;
+		LedColor   led_color_;
 
-  public:
-    Module(uint8_t id) { id_ = ModuleId{id}; }
+		// Where the servo arm physically is; servo_degrees_ above is only the commanded angle.
+		double  servo_from_degrees_  = 0.0;
+		int64_t servo_travel_ticks_  = 0;
+		int64_t servo_elapsed_ticks_ = 0;
 
-    /**
-     * @return The pid of this module.
-     */
-    pid_t pid() const noexcept { return pid_; }
+		uint64_t servo_movements_     = 0;
+		bool     left_laser_blocked_  = false;
+		bool     right_laser_blocked_ = false;
+		bool     rfid_active_         = false;
 
-    /**
-     * @return The id of this module.
-     */
-    ModuleId id() const noexcept { return id_; }
+		// "enabled" is application-set power state; "active" is the world's beam-broken state.
+		bool left_laser_enabled_  = false;
+		bool right_laser_enabled_ = false;
 
-    /**
-     * @return Whether this module's executable is running.
-     */
-    bool is_running() const noexcept { return running_; }
+		RfidUid     rfid_uid_{};
+		RfidPayload rfid_data_{};
 
-    /**
-     * @return The speed of the big belt.
-     */
-    BeltSpeed big_belt_speed() const noexcept { return big_speed_; }
+		// Belt travel, not tub travel, and distance, not displacement: it only ever counts up.
+		int64_t big_travel_um_      = 0;
+		int64_t small_travel_um_    = 0;
+		int64_t big_travel_carry_   = 0;
+		int64_t small_travel_carry_ = 0;
 
-    /**
-     * @return The speed of the small belt.
-     */
-    BeltSpeed small_belt_speed() const noexcept { return small_speed_; }
+	public:
+		Module(uint8_t id) { id_ = ModuleId{id}; }
 
-    /**
-     * @return The angle of the servo.
-     */
-    ServoAngle servo_angle() const noexcept { return servo_degrees_; }
+		ModuleId id() const noexcept { return id_; }
 
-    /**
-     * @return The color of the led.
-     */
-    LedColor led_color() const noexcept { return led_color_; }
+		BeltSpeed big_belt_speed() const noexcept { return big_speed_; }
 
-    /**
-     * Sets the speed of the big belt.
-     * @param speed The new speed for the big belt.
-     */
-    void set_big_belt_speed(BeltSpeed speed) noexcept { big_speed_ = speed; }
+		BeltSpeed small_belt_speed() const noexcept { return small_speed_; }
 
-    /**
-     * Sets the speed of the small belt.
-     * @param speed The new speed for the small belt.
-     */
-    void set_small_belt_speed(BeltSpeed speed) noexcept { small_speed_ = speed; }
+		ServoAngle servo_angle() const noexcept { return servo_degrees_; }
 
-    /**
-     * Sets the angle of the servo.
-     * @param degrees The new angle for the servo.
-     */
-    void set_servo_angle(ServoAngle degrees) noexcept { servo_degrees_ = degrees; }
+		LedColor led_color() const noexcept { return led_color_; }
 
-    /**
-     * Sets the color of the led.
-     * @param color The new color for the led.
-     */
-    void set_led_color(LedColor color) noexcept { led_color_ = color; }
+		// Micrometres, since the run started.
+		int64_t big_belt_travel_um() const noexcept { return big_travel_um_; }
 
-    /**
-     * @return Whether the left laser is active.
-     */
-    bool is_left_laser_active() const noexcept { return left_laser_active_; }
+		int64_t small_belt_travel_um() const noexcept { return small_travel_um_; }
 
-    /**
-     * Sets the state of the left laser.
-     * @param active Whether it is active.
-     */
-    void set_left_laser_active(bool active) noexcept { left_laser_active_ = active; }
+		// Only magnitude is kept: the encoder counts turning, not direction.
+		void advance_belt_travel(int64_t big_step_um, int64_t small_step_um) noexcept {
+			big_travel_um_ += big_step_um < 0 ? -big_step_um : big_step_um;
+			small_travel_um_ += small_step_um < 0 ? -small_step_um : small_step_um;
+		}
 
-    /**
-     * @return Whether the right laser is active.
-     */
-    bool is_right_laser_active() const noexcept { return right_laser_active_; }
+		// Carried between ticks so a slow belt accumulates travel exactly instead of rounding to zero.
+		int64_t& big_belt_travel_carry() noexcept { return big_travel_carry_; }
 
-    /**
-     * Sets the state of the right laser.
-     * @param active Whether it is active.
-     */
-    void set_right_laser_active(bool active) noexcept { right_laser_active_ = active; }
+		int64_t& small_belt_travel_carry() noexcept { return small_travel_carry_; }
 
-    /**
-     * @return Whether the RFID reader is active.
-     */
-    bool is_rfid_active() const noexcept { return rfid_active_; }
+		void set_big_belt_speed(BeltSpeed speed) noexcept { big_speed_ = speed; }
 
-    /**
-     * Sets the state of the RFID reader.
-     * @param active Whether it is active.
-     */
-    void set_rfid_active(bool active) noexcept { rfid_active_ = active; }
+		void set_small_belt_speed(BeltSpeed speed) noexcept { small_speed_ = speed; }
 
-    /**
-     * @return Whether this module has finished initialization.
-     */
-    bool is_initialization_finished() const noexcept { return init_finished_; }
+		// Instant, with no travel. For test setup; use command_servo_angle to model a real command.
+		void set_servo_angle(ServoAngle degrees) noexcept {
+			servo_degrees_       = degrees;
+			servo_from_degrees_  = degrees.raw();
+			servo_travel_ticks_  = 0;
+			servo_elapsed_ticks_ = 0;
+		}
 
-    /**
-     * Sets the initialization state of the module process.
-     * @param active Whether this module's module process has finished initialization.
-     */
-    void set_initialization_finished(bool finished) noexcept { init_finished_ = finished; }
+		// Starts from the arm's actual position, so a mid-movement command redirects it, not resets it.
+		void command_servo_angle(ServoAngle degrees, int64_t travel_ticks) noexcept {
+			const double current = servo_actual_angle().raw();
+			servo_degrees_       = degrees;
+			servo_movements_++;
 
-    /**
-     * Run this module as the executable found at path.
-     *
-     * @param path The file to execute.
-     */
-    void run(std::string path);
+			if (travel_ticks <= 0) {
+				servo_from_degrees_  = degrees.raw();
+				servo_travel_ticks_  = 0;
+				servo_elapsed_ticks_ = 0;
+				return;
+			}
 
-    /**
-     * Sends a message to this module.
-     *
-     * @param message The message to send.
-     */
-    void send(const message::Message &message);
-};
+			servo_from_degrees_  = current;
+			servo_travel_ticks_  = travel_ticks;
+			servo_elapsed_ticks_ = 0;
+		}
 
-/**
- * Adds a module.
- * @param ptr A unique_ptr to the module.
- */
-void add_module(std::unique_ptr<Module> ptr);
+		// Interpolated along current travel; equal to the commanded angle when not moving.
+		[[nodiscard]] ServoAngle servo_actual_angle() const noexcept {
+			if (servo_travel_ticks_ <= 0 || servo_elapsed_ticks_ >= servo_travel_ticks_) {
+				return servo_degrees_;
+			}
+			const double progress =
+				static_cast<double>(servo_elapsed_ticks_) / static_cast<double>(servo_travel_ticks_);
+			return ServoAngle{servo_from_degrees_ + progress * (servo_degrees_.raw() - servo_from_degrees_)};
+		}
 
-/**
- * Gets an optional module from its id.
- * @param id The id.
- * @returns The module instance from the id.
- */
-std::optional<std::shared_ptr<Module>> get_module(ModuleId id);
+		[[nodiscard]] bool is_servo_moving() const noexcept {
+			return servo_travel_ticks_ > 0 && servo_elapsed_ticks_ < servo_travel_ticks_;
+		}
 
-/**
- * @returns All modules.
- */
-std::vector<std::shared_ptr<Module>> get_modules();
+		[[nodiscard]] uint64_t servo_movement_count() const noexcept { return servo_movements_; }
 
-/**
- * Clears all modules.
- */
-void clear();
+		void advance_servo_travel() noexcept {
+			if (servo_travel_ticks_ <= 0) {
+				return;
+			}
+			if (servo_elapsed_ticks_ < servo_travel_ticks_) {
+				servo_elapsed_ticks_++;
+			}
+			if (servo_elapsed_ticks_ >= servo_travel_ticks_) {
+				servo_from_degrees_  = servo_degrees_.raw();
+				servo_travel_ticks_  = 0;
+				servo_elapsed_ticks_ = 0;
+			}
+		}
+
+		void set_led_color(LedColor color) noexcept { led_color_ = color; }
+
+		bool is_left_laser_blocked() const noexcept { return left_laser_blocked_; }
+
+		void set_left_laser_blocked(bool blocked) noexcept { left_laser_blocked_ = blocked; }
+
+		bool is_right_laser_blocked() const noexcept { return right_laser_blocked_; }
+
+		void set_right_laser_blocked(bool blocked) noexcept { right_laser_blocked_ = blocked; }
+
+		bool is_rfid_active() const noexcept { return rfid_active_; }
+
+		void set_rfid_active(bool active) noexcept { rfid_active_ = active; }
+
+		bool is_left_laser_enabled() const noexcept { return left_laser_enabled_; }
+
+		bool is_right_laser_enabled() const noexcept { return right_laser_enabled_; }
+
+		void set_left_laser_enabled(bool enabled) noexcept { left_laser_enabled_ = enabled; }
+
+		void set_right_laser_enabled(bool enabled) noexcept { right_laser_enabled_ = enabled; }
+
+		// An unpowered laser never reports a clear beam.
+		[[nodiscard]] bool is_laser_clear(bool left) const noexcept {
+			if (left) {
+				return left_laser_enabled_ && !left_laser_blocked_;
+			}
+			return right_laser_enabled_ && !right_laser_blocked_;
+		}
+
+		[[nodiscard]] const RfidUid& rfid_uid() const noexcept { return rfid_uid_; }
+
+		[[nodiscard]] RfidPage rfid_page(std::size_t page) const { return rfid_data_.at(page); }
+
+		void set_rfid_tag(const RfidUid& uid, const RfidPayload& data) {
+			rfid_uid_    = uid;
+			rfid_data_   = data;
+			rfid_active_ = true;
+		}
+
+		// Returns false if there is no tag or the page index is out of range.
+		bool write_rfid_page(std::size_t page, const RfidPage& value) {
+			if (!rfid_active_ || page >= RFID_PAYLOAD_PAGE_COUNT) {
+				return false;
+			}
+			rfid_data_[page] = value;
+			return true;
+		}
+
+		void clear_rfid_tag() {
+			rfid_uid_    = {};
+			rfid_data_   = {};
+			rfid_active_ = false;
+		}
+	};
 
 } // namespace module
 

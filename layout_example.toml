@@ -108,3 +108,14 @@ active = true
 neighbors = [0, 17, 15]
 pos = [4, 0]
 angle = 90
+
+# === Tower ===
+# The tower/ATC module is optional and is the only module id outside the routing range. It is
+# not a conveyor, so it has no position, angle or neighbours; it takes part only in the
+# logical network. Give it its own application with "binary", since it runs the tower
+# application rather than a routing one. Flight data reaches the other modules the same way it
+# does on the physical system: the tower owns its schedule and broadcasts it.
+#
+# [module.255]
+# active = true
+# binary = "/home/user/quercus_applets/build/atc_tower/zephyr/zephyr.exe"

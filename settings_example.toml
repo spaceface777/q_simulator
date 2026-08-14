@@ -3,12 +3,118 @@
 # For example layouts, check the layouts folder in the Simulation repo.
 
 # === General ===
-# The path to the router Zephyr executable.
-router_path = "/home/user/airport-router/build/zephyr/zephyr.exe"
+# The path to the Core 1 application built for Zephyr native_sim. Used for every module that
+# does not override it with a per-module "binary" in layout.toml.
+application_path = "/home/user/quercus_applets/build/module_movement/zephyr/zephyr.exe"
 
 # The speed at which the simulation will be run.
 # Must be above 0.
 simulation_speed = 1.0
+
+# The master seed handed to every application at launch. Reproducing a run starts with
+# reproducing its seed.
+seed = 1
+
+# === Hardware event latency ===
+# Hardware events already cross the next 1 ms application handoff. These are added delays before
+# that handoff. RFID samples are deterministic for a run seed, rounded to whole ms, and clamped at 0.
+laser_event_extra_delay_ms = 3
+rfid_event_extra_delay_mean_ms = 35.0
+rfid_event_extra_delay_sd_ms = 5.0
+
+# === Network ===
+# The physical_nominal_v0.1 profile: every accepted packet leg independently draws a loss
+# outcome and, if delivered, a one-way delay from a fixed distribution fitted to the hardware.
+# Which outcome a packet gets is decided by the seed, so a run behaves exactly the same way
+# every time.
+
+# Per-leg drop probability, out of 1,000,000. 0 disables loss.
+network_packet_loss_ppm = 1700
+
+# Per-leg probability, out of 1,000,000, that a delivered packet's delay is
+# network_very_late_delay_ms instead of the ordinary distribution. 0 disables it.
+network_very_late_ppm = 15
+network_very_late_delay_ms = 1100
+
+# -1 (the default) uses the profile's delay distribution. A value from 0 upward instead gives
+# every packet leg that exact delay in ms, which is useful for a deterministic test setup.
+network_fixed_delay_ms = -1
+
+# Core 1 images are deployed over Wi-Fi, so their local uptimes begin at independently sampled
+# global times. Samples are deterministic per seed/module and negative normal draws clamp to zero.
+module_start_offset_mean_ms = 300.0
+module_start_offset_sd_ms = 100.0
+
+# Standard deviation of each module oscillator's fixed rate error. Local Zephyr uptime advances at
+# this rate; the simulator's physical and network clock remains the shared ground truth.
+module_clock_drift_sd_ppm = 100.0
+
+# Each module samples one fixed probability that its local clock misses a global millisecond.
+# 1000 ppm = 0.1%; the default per-module distribution is N(0.1%, 0.01%), clamped to [0, 100%].
+# A missed tick remains visible to the physical world and LTL monitor, but local uptime, timers,
+# code execution, RPC service delays, and rate-limit windows on that module do not advance. Scenario
+# events, physical motion, network transit, external supervision, and metric LTLf intervals remain
+# on the shared global clock. A ready event or response waits for the module's next executed tick.
+module_tick_skip_mean_ppm = 1000.0
+module_tick_skip_sd_ppm = 100.0
+
+# Logs and panic reports follow the same path through Core 0 as any other packet, plus one more
+# hop: the hub Pi forwards them on rather than delivering them itself. This is that hop's delay,
+# added on top of the ordinary per-leg delay and loss every packet already gets.
+network_log_extra_delay_ms = 2
+
+# === Calibration ===
+# Only the figures docs/physical_calibration_2026-08-06.md marks as assumptions appear here. The
+# measured per-module distributions - idle current and voltage, laser and LED draw, supply sag,
+# and the belt speed curves of the five modules hardware_bench timed - are part of the model and
+# not settings: changing one of those means the bench found something different.
+#
+# Per-module calibration is always on: every run gets a fleet of modules that differ from each
+# other, and there is no way to ask for a platform of identical ones because there is no such
+# platform. Which module is the slow one is a property of the seed above and not of the module,
+# so an application cannot learn that module 7 is quick and hardcode a timeout for it.
+
+# The fraction of unmeasured modules given a weak big-belt motor: one that is modestly slower at
+# full command and strongly attenuated below about half command, where it may crawl or stall.
+# This is a population prior describing how many modules on a shelf are stiff, not a failure rate
+# measured from the five benchmarked ones. The report suggests 0.25 to 0.30.
+weak_motor_rate = 0.25
+
+# How fast the small belt runs relative to the big belt on the same module.
+#
+# PROVISIONAL, and the weakest number in the model. No small-belt travel time has ever been
+# measured; the only small-belt figure that exists is electrical, and the report says explicitly
+# not to infer transport speed from current. Replacing this with a measurement is the highest
+# priority follow-up it names.
+small_to_big_belt_speed_ratio = 1.0
+
+# Hardware positions are independent, untruncated normal draws per module. Laser fractions are
+# of the total big-belt length (2L); RFID fractions are of the total small-belt length (L).
+right_laser_position_mean = 0.1
+right_laser_position_sd = 0.02
+left_laser_position_mean = 0.9
+left_laser_position_sd = 0.02
+rfid_position_mean = 0.6
+rfid_position_sd = 0.1
+
+# === Servo timing ===
+# ENTIRELY PROVISIONAL. Neither calibration_bench run produced a usable servo measurement, and
+# the report's conclusion is that CV current cannot observe servo movement on this hardware at
+# all. These must be replaced by an optical, encoder, or otherwise mechanical experiment.
+
+# The fleet mean time for a complete 180 degree sweep, in milliseconds.
+servo_full_sweep_ms = 500.0
+
+# How much each module's own servo persistently departs from that mean, drawn once when the fleet
+# is created. This particular servo is a little faster or slower than the others for as long as
+# the run lasts, the way a real one is. Always centred on zero: a fleet whose servos were all
+# slow would just be a fleet with a different sweep time.
+servo_module_offset_sd_ms = 50.0
+
+# How much one servo varies between movements, per full sweep, redrawn every time it is
+# commanded. A different claim from the offset above: the same arm does not take exactly the same
+# time twice. Set to 0 for a servo that does.
+servo_movement_jitter_sd_ms = 50.0
 
 # The scale of the simulation overview.
 # Must be between 0.0 and 5.0.

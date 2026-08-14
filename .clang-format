@@ -1,41 +1,46 @@
----
 Language: Cpp
 BasedOnStyle: LLVM
 
 IndentWidth: 4
 TabWidth: 4
-UseTab: Never
+UseTab: ForContinuationAndIndentation
 
-# Braces
-BreakBeforeBraces: Allman
-AllowShortBlocksOnASingleLine: Never
+BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: Inline
-AllowShortIfStatementsOnASingleLine: Never
-AllowShortLoopsOnASingleLine: false
+SeparateDefinitionBlocks: Always
 
-# Pointers
-PointerAlignment: Right
-
+# Columns
 ColumnLimit: 120
 
-SpaceBeforeParens: ControlStatements
-SpaceInEmptyParentheses: false
-SpacesInAngles: false
-SpaceAfterCStyleCast: false
+# Alignment
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignConsecutiveMacros: true
+AlignEscapedNewlinesLeft: true
+AlignOperands: true
+AlignTrailingComments: true
 
-# Includes
-SortIncludes: CaseSensitive
-IncludeBlocks: Regroup
-IncludeCategories:
-  - Regex: '^<.*'
-    Priority: 1
-  - Regex: '^".*"'
-    Priority: 2
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCaseColons: false
 
-AlignConsecutiveAssignments: None
-AlignConsecutiveDeclarations: None
-AlignEscapedNewlines: Left
-AlignOperands: Align
+# Namespaces
+NamespaceIndentation: All
 FixNamespaceComments: true
-NamespaceIndentation: None
----
+
+# Access modifiers
+EmptyLineAfterAccessModifier: Leave
+EmptyLineBeforeAccessModifier: LogicalBlock
+IndentAccessModifiers: false
+AccessModifierOffset: -4
+
+# Multi-clause control logic
+IndentCaseLabels: false
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+
+# Pointers
+PointerAlignment: Left

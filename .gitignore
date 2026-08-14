@@ -18,3 +18,5 @@ events.toml
 layout.toml
 channel0_0
 *.exe
+.DS_Store
+trace.ndjson

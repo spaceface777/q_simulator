@@ -1,227 +1,204 @@
-#include <chrono>
+#include <gtest/gtest.h>
+
 #include <filesystem>
 #include <fstream>
-#include <gtest/gtest.h>
-#include <list>
-#include <memory>
 #include <random>
-#include <toml++/toml.hpp>
+#include <string>
 
 #include "../../src/event/events.h"
-#include "../../src/module/types.h"
-#include "../../src/synchronization/virtual_clock.h"
 
 namespace fs = std::filesystem;
 
-// Mock clock for controlled testing of fire_events
-class MockClock : public virtual_clock::ISimulationClock
-{
-  private:
-    std::chrono::milliseconds time_{0};
-    double speed_{1.0};
+namespace {
 
-  public:
-    void set_time_ms(int64_t ms) { time_ = std::chrono::milliseconds(ms); }
-    void tick() noexcept override {}
-    std::chrono::milliseconds get_virtual_time() const noexcept override { return time_; }
-    double simulation_speed() const noexcept override { return speed_; }
-    void set_simulation_speed(double speed) override { speed_ = speed; }
-};
+	const std::string ZERO_PAYLOAD = R"(payload = [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0
+])";
 
-// Fixture for TOML file parsing tests
-class EventsFileTest : public ::testing::Test
-{
-  protected:
-    fs::path temp_file_path;
+	std::string tub(double time = 1.5, int id = 3, std::string extra = {}) {
+		return "time = " + std::to_string(time) + "\nid = " + std::to_string(id) +
+			   "\nmodule = 1\nuid = 0x11223344556677\n" + ZERO_PAYLOAD + "\n" + extra;
+	}
 
-    void SetUp() override
-    {
-        auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-        std::mt19937 rng(static_cast<unsigned int>(now));
-        std::uniform_int_distribution<int> dist(100000, 999999);
+	class EventsTest : public ::testing::Test {
+	protected:
+		fs::path path;
 
-        temp_file_path = fs::temp_directory_path() / ("test_events_" + std::to_string(dist(rng)) + ".toml");
-    }
+		void SetUp() override {
+			std::random_device                 device;
+			std::mt19937                       generator(device());
+			std::uniform_int_distribution<int> distribution(1, 1000000);
+			path = fs::temp_directory_path() / ("events_" + std::to_string(distribution(generator)) + ".toml");
+		}
 
-    void TearDown() override
-    {
-        if (fs::exists(temp_file_path))
-        {
-            fs::remove(temp_file_path);
-        }
-    }
+		void TearDown() override { fs::remove(path); }
 
-    void write_events_toml(const std::string &content)
-    {
-        std::ofstream outfile(temp_file_path);
-        outfile << content;
-        outfile.close();
-    }
-};
+		void write(const std::string& contents) {
+			std::ofstream file(path);
+			file << contents;
+		}
+	};
 
-class TestEvent : public events::Event
-{
-  public:
-    mutable bool fired = false;
+} // namespace
 
-    TestEvent(double time, unsigned int id)
-    {
-        time_ = time;
-        id_ = id;
-    }
-
-    void fire() const override { fired = true; }
-};
-
-TEST(EventTest, BaseEventGettersAndEquality)
-{
-    TestEvent e1(2.5, 101);
-    TestEvent e2(5.0, 101);
-    TestEvent e3(2.5, 102);
-
-    EXPECT_DOUBLE_EQ(2.5, e1.time());
-    EXPECT_EQ(101u, e1.id());
-
-    EXPECT_TRUE(e1 == e2);
-    EXPECT_FALSE(e1 == e3);
-}
-
-TEST(PlaneEventTest, Getters)
-{
-    std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> dummy_rfid{};
-    dummy_rfid[0] = {1, 2, 3, 4};
-
-    events::PlaneEvent plane(10.5, 42, module::ModuleId(3), 120, dummy_rfid);
-
-    EXPECT_DOUBLE_EQ(10.5, plane.time());
-    EXPECT_EQ(42, plane.id());
-    EXPECT_EQ(3, plane.module().raw());
-    EXPECT_EQ(120, plane.leaves_in());
-    EXPECT_EQ(1, plane.rfid()[0][0]);
-    EXPECT_EQ(4, plane.rfid()[0][3]);
-}
-
-TEST(TubEventTest, Getters)
-{
-    events::TubData origin{events::LocationType::MODULE, module::ModuleId(1)};
-    events::TubData dest{events::LocationType::PLANE, module::ModuleId(2)};
-    std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> dummy_rfid{};
-
-    events::TubEvent tub(5.0, 7, origin, dest, true, false, dummy_rfid);
-
-    EXPECT_DOUBLE_EQ(5.0, tub.time());
-    EXPECT_EQ(7u, tub.id());
-    EXPECT_EQ(events::LocationType::MODULE, tub.origin().type);
-    EXPECT_EQ(1, tub.origin().id.raw());
-    EXPECT_EQ(events::LocationType::PLANE, tub.destination().type);
-    EXPECT_EQ(2, tub.destination().id.raw());
-    EXPECT_TRUE(tub.safe());
-    EXPECT_FALSE(tub.needs_security());
-}
-
-TEST(FireEventsTest, FiresAndRemovesDueEvents)
-{
-    MockClock clock;
-    std::list<std::unique_ptr<events::Event>> event_list;
-
-    auto e1 = std::make_unique<TestEvent>(1.0, 1);
-    auto e2 = std::make_unique<TestEvent>(3.0, 2);
-    auto e3 = std::make_unique<TestEvent>(5.0, 3);
-
-    TestEvent *ptr1 = e1.get();
-    TestEvent *ptr2 = e2.get();
-    TestEvent *ptr3 = e3.get();
-
-    event_list.push_back(std::move(e1));
-    event_list.push_back(std::move(e2));
-    event_list.push_back(std::move(e3));
-
-    clock.set_time_ms(2000);
-    events::fire_events(clock, event_list);
-
-    EXPECT_TRUE(ptr1->fired);
-    EXPECT_FALSE(ptr2->fired);
-    EXPECT_FALSE(ptr3->fired);
-    EXPECT_EQ(2u, event_list.size());
-
-    clock.set_time_ms(5000);
-    events::fire_events(clock, event_list);
-
-    EXPECT_TRUE(ptr2->fired);
-    EXPECT_TRUE(ptr3->fired);
-    EXPECT_TRUE(event_list.empty());
-}
-
-TEST_F(EventsFileTest, ParseValidEvents)
-{
-    std::string valid_toml = R"(
-[tub.event1]
+TEST_F(EventsTest, ParsesIntegerUidAndMixedPageRepresentations) {
+	std::string contents = R"(
+[tub.first]
 time = 1.5
-id = 100
-safe = true
-needs_security = false
-origin = ["module", 1]
-destination = ["plane", 2]
-rfid = [[1, 2, 3, 4]]
-
-[tub.event2]
-time = 1.5746
-id = 1
-safe = true
-needs_security = false
-origin = ["plane", 2]
-destination = ["module", 2]
-rfid = []
-
-[plane.event2]
-time = 4.0
-id = 200
-module = 3
-leaves_in = 300
-rfid = [[5, 6, 7, 8]]
+id = 3
+module = 12
+uid = 0x11223344556677
+payload = [
+    0x11223344, [0x55, 0x66, 0x77, 0x88],
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+]
 )";
+	write(contents);
 
-    write_events_toml(valid_toml);
-
-    std::list<std::unique_ptr<events::Event>> parsed_events;
-    EXPECT_NO_THROW(events::parse_events(temp_file_path, parsed_events));
-    EXPECT_EQ(3, parsed_events.size());
+	const events::Schedule schedule = events::parse_events(path);
+	ASSERT_EQ(schedule.tubs.size(), 1u);
+	const events::TubArrival& parsed = schedule.tubs[0];
+	EXPECT_EQ(parsed.tick, 1500u);
+	EXPECT_EQ(parsed.id, 3);
+	EXPECT_EQ(parsed.module.raw(), 12);
+	EXPECT_EQ(parsed.uid, (RfidUid{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77}));
+	EXPECT_EQ(parsed.payload[0], (RfidPage{0x11, 0x22, 0x33, 0x44}));
+	EXPECT_EQ(parsed.payload[1], (RfidPage{0x55, 0x66, 0x77, 0x88}));
+	EXPECT_EQ(schedule.last_tick(), 1500u);
 }
 
-TEST_F(EventsFileTest, ParseMissingFileThrows)
-{
-    std::list<std::unique_ptr<events::Event>> parsed_events;
-    EXPECT_THROW(events::parse_events(temp_file_path, parsed_events), std::invalid_argument);
+TEST_F(EventsTest, ParsesArrayUid) {
+	std::string contents = tub();
+	contents.replace(contents.find("uid = 0x11223344556677"), 22, "uid = [1, 2, 3, 4, 5, 6, 7]");
+	write("[tub.first]\n" + contents);
+	const events::Schedule schedule = events::parse_events(path);
+	ASSERT_EQ(schedule.tubs.size(), 1u);
+	EXPECT_EQ(schedule.tubs[0].uid, (RfidUid{1, 2, 3, 4, 5, 6, 7}));
 }
 
-TEST_F(EventsFileTest, ParseInvalidTubMissingFieldsThrows)
-{
-    std::string invalid_toml = R"(
-[tub.bad_event]
-time = 1.0
-id = 1
-# missing origin and destination
-)";
-
-    write_events_toml(invalid_toml);
-
-    std::list<std::unique_ptr<events::Event>> parsed_events;
-    EXPECT_THROW(events::parse_events(temp_file_path, parsed_events), std::invalid_argument);
+TEST_F(EventsTest, OrdersBySchedulingRatherThanFileOrder) {
+	write("[tub.later]\n" + tub(2.0, 9) + "\n[tub.earlier]\n" + tub(0.1, 4));
+	const events::Schedule schedule = events::parse_events(path);
+	ASSERT_EQ(schedule.tubs.size(), 2u);
+	EXPECT_EQ(schedule.tubs[0].id, 4);
+	EXPECT_EQ(schedule.tubs[1].id, 9);
 }
 
-TEST_F(EventsFileTest, ParseInvalidRfidDimensionsThrows)
-{
-    std::string invalid_toml = R"(
-[plane.bad_rfid]
-time = 2.0
-id = 5
-module = 1
-leaves_in = 60
-rfid = [[1, 2, 3]] # invalid array
-)";
+TEST_F(EventsTest, RejectsReusingATubIdAfterRemoval) {
+	write("[tub.first]\n" + tub(0.0, 7, "removed = 1.0\n") + "\n[tub.second]\n" + tub(2.0, 7));
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
 
-    write_events_toml(invalid_toml);
+TEST_F(EventsTest, PlacesAtReaderUnlessToldOtherwise) {
+	write("[tub.default]\n" + tub(0.0, 1) + "\n[tub.beam]\n" + tub(1.0, 2, "position = \"left_laser\"\n"));
+	const events::Schedule schedule = events::parse_events(path);
+	ASSERT_EQ(schedule.tubs.size(), 2u);
+	EXPECT_EQ(schedule.tubs[0].position, world::Position::ENTRY);
+	EXPECT_EQ(schedule.tubs[1].position, world::Position::LEFT_LASER);
+}
 
-    std::list<std::unique_ptr<events::Event>> parsed_events;
-    EXPECT_THROW(events::parse_events(temp_file_path, parsed_events), std::invalid_argument);
+TEST_F(EventsTest, ReadsRemovalAndExtendsLastTick) {
+	write("[tub.first]\n" + tub(1.0, 3, "removed = 4.5\n"));
+	const events::Schedule schedule = events::parse_events(path);
+	ASSERT_TRUE(schedule.tubs[0].removed_tick.has_value());
+	EXPECT_EQ(*schedule.tubs[0].removed_tick, 4500u);
+	EXPECT_EQ(schedule.last_tick(), 4500u);
+}
+
+TEST_F(EventsTest, RejectsRemovedBeforeArrival) {
+	write("[tub.first]\n" + tub(5.0, 3, "removed = 2.0\n"));
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
+
+TEST_F(EventsTest, RejectsMissingOrWrongLengthUid) {
+	write("[tub.first]\ntime = 0\nid = 1\nmodule = 1\n" + ZERO_PAYLOAD);
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	write("[tub.first]\n" + tub().replace(tub().find("0x11223344556677"), 16, "[1, 2, 3]"));
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
+
+TEST_F(EventsTest, RejectsOutOfRangeUidAndUidByte) {
+	write("[tub.first]\n" + tub().replace(tub().find("0x11223344556677"), 16, "0x100000000000000"));
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	write("[tub.first]\n" + tub().replace(tub().find("0x11223344556677"), 16, "[1, 2, 3, 4, 5, 6, 256]"));
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
+
+TEST_F(EventsTest, FillsOmittedTrailingPagesDeterministicallyFromSeed) {
+	write("[tub.first]\ntime = 0\nid = 1\nmodule = 1\nuid = 1\npayload = [0x11223344]\n");
+	const events::Schedule first      = events::parse_events(path, 42);
+	const events::Schedule repeated   = events::parse_events(path, 42);
+	const events::Schedule other_seed = events::parse_events(path, 43);
+	EXPECT_EQ(first.tubs[0].payload[0], (RfidPage{0x11, 0x22, 0x33, 0x44}));
+	EXPECT_EQ(first.tubs[0].payload, repeated.tubs[0].payload);
+	EXPECT_NE(first.tubs[0].payload[1], other_seed.tubs[0].payload[1]);
+}
+
+TEST_F(EventsTest, RejectsMoreThanThirtyTwoPayloadPages) {
+	write("[tub.first]\ntime = 0\nid = 1\nmodule = 1\nuid = 1\npayload = ["
+		  "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]\n");
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
+
+TEST_F(EventsTest, RejectsMalformedOrOutOfRangePayloadPages) {
+	std::string malformed = tub();
+	malformed.replace(malformed.find("payload = [\n    0"), 17, "payload = [\n    [1, 2, 3]");
+	write("[tub.first]\n" + malformed);
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+
+	std::string oversized = tub();
+	oversized.replace(oversized.find("payload = [\n    0"), 17, "payload = [\n    0x100000000");
+	write("[tub.first]\n" + oversized);
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
+
+TEST_F(EventsTest, RejectsRemovedStructuredFieldsAndLegacyRfid) {
+	for (const std::string field : {"origin = [\"module\", 1]", "destination = [\"module\", 2]", "safe = true",
+									"needs_security = false", "rfid = []"}) {
+		write("[tub.first]\n" + tub(1.5, 3, field + "\n"));
+		EXPECT_THROW((void)events::parse_events(path), std::invalid_argument) << field;
+	}
+}
+
+TEST_F(EventsTest, RejectsUnknownStartingPositionAndInvalidIds) {
+	write("[tub.first]\n" + tub(1.5, 3, "position = \"under_the_belt\"\n"));
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	write("[tub.first]\n" + tub(1.5, 0));
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	std::string invalid_module = tub();
+	invalid_module.replace(invalid_module.find("module = 1"), 10, "module = 25");
+	write("[tub.first]\n" + invalid_module);
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
+
+TEST_F(EventsTest, AcceptsAScenarioWithNothingInIt) {
+	write("");
+	const events::Schedule schedule = events::parse_events(path);
+	EXPECT_TRUE(schedule.tubs.empty());
+	EXPECT_EQ(schedule.last_tick(), 0u);
+}
+
+TEST_F(EventsTest, ParsesPropertyConfigurationWithTheLtlDurationSyntax) {
+	write("[scenario]\nduration = \"1h2m3.004s\"\nproperties = \"route.spec\"\n");
+	const events::Schedule schedule = events::parse_events(path);
+	ASSERT_TRUE(schedule.properties.has_value());
+	EXPECT_EQ(schedule.properties->duration_tick, 3723004u);
+	EXPECT_EQ(schedule.properties->property_file, path.parent_path() / "route.spec");
+}
+
+TEST_F(EventsTest, RequiresValidPropertyConfiguration) {
+	write("[scenario]\nduration = 1.5\nproperties = \"route.spec\"\n");
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	write("[scenario]\nduration = \"3s\"\n");
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
+
+TEST_F(EventsTest, RejectsMissingFileAndRemovedAssertionFormat) {
+	EXPECT_THROW((void)events::parse_events(path.string() + ".missing"), std::exception);
+	write("[assert.old]\ncheck = \"arrived_at\"\n");
+	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
 }

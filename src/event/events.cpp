@@ -1,253 +1,198 @@
 #include "events.h"
 
-#include <iostream>
-#include <memory>
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <string>
 #include <toml++/toml.hpp>
+#include <unordered_set>
 
-#include "../defs.h"
-#include "../message/message.h"
-#include "../module/module.h"
-#include "../tub/tub.h"
+#include "../ltl/parser.h"
+#include "../seed/seed.h"
+#include "../util.h"
 
-namespace events
-{
+namespace events {
 
-void fire_events(virtual_clock::ISimulationClock &vclock, std::list<std::unique_ptr<Event>> &events)
-{
-    int64_t ms = vclock.get_virtual_time().count();
+	namespace {
 
-    events.remove_if(
-        [ms](const auto &event)
-        {
-            if ((ms / 1000.0) >= event->time())
-            {
-                event->fire();
-                return true;
-            }
-            return false;
-        });
-}
+		// Scenarios are written in seconds; the engine works in ticks.
+		constexpr double TICKS_PER_SECOND = 1000.0;
 
-void PlaneEvent::fire() const
-{
-    auto message = message::PlaneArrival(id_, module_, leaves_in_);
+		uint8_t parse_byte(const toml::node* node, const std::string& context) {
+			const std::optional<int64_t> value = node == nullptr ? std::nullopt : node->value<int64_t>();
+			if (!value || *value < 0 || *value > 0xFF) {
+				throw std::invalid_argument(context + " must be a byte between 0x00 and 0xff");
+			}
+			return static_cast<uint8_t>(*value);
+		}
 
-    for (const auto &module : module::get_modules())
-    {
-        if (!module)
-        {
-            continue;
-        }
+		template <std::size_t Size>
+		std::array<uint8_t, Size> parse_byte_array(const toml::array* array, const std::string& context) {
+			if (array == nullptr || array->size() != Size) {
+				throw std::invalid_argument(context + " must contain exactly " + std::to_string(Size) + " bytes");
+			}
+			std::array<uint8_t, Size> result{};
+			for (std::size_t index = 0; index < Size; index++) {
+				result[index] = parse_byte(array->get(index), context);
+			}
+			return result;
+		}
 
-        module->send(message);
-    }
+		RfidUid parse_uid(const toml::node* node) {
+			if (node == nullptr) throw std::invalid_argument("Tub event missing its uid");
+			if (const toml::array* bytes = node->as_array()) {
+				return parse_byte_array<RFID_UID_SIZE_BYTES>(bytes, "uid");
+			}
+			const std::optional<int64_t> value = node->value<int64_t>();
+			if (!value || *value < 0 || static_cast<uint64_t>(*value) > 0x00FFFFFFFFFFFFFFULL) {
+				throw std::invalid_argument("uid must be a non-negative 7-byte integer or a 7-byte array");
+			}
+			RfidUid  result{};
+			uint64_t remaining = static_cast<uint64_t>(*value);
+			for (std::size_t index = RFID_UID_SIZE_BYTES; index-- > 0;) {
+				result[index] = static_cast<uint8_t>(remaining & 0xFFU);
+				remaining >>= 8U;
+			}
+			return result;
+		}
 
-    std::cout << "Fired plane event at " << std::to_string(time_) << "s" << std::endl;
-}
+		RfidPage parse_page(const toml::node& node, std::size_t index) {
+			const std::string context = "payload page " + std::to_string(index);
+			if (const toml::array* bytes = node.as_array()) {
+				return parse_byte_array<RFID_PAGE_SIZE_BYTES>(bytes, context);
+			}
+			const std::optional<int64_t> value = node.value<int64_t>();
+			if (!value || *value < 0 || static_cast<uint64_t>(*value) > 0xFFFFFFFFULL) {
+				throw std::invalid_argument(context + " must be a non-negative 4-byte integer or a 4-byte array");
+			}
+			RfidPage result{};
+			uint64_t remaining = static_cast<uint64_t>(*value);
+			for (std::size_t byte = RFID_PAGE_SIZE_BYTES; byte-- > 0;) {
+				result[byte] = static_cast<uint8_t>(remaining & 0xFFU);
+				remaining >>= 8U;
+			}
+			return result;
+		}
 
-void TubEvent::fire() const
-{
-    // const auto message = message::TubArrival(id_, origin_.id);
-    // const auto module = module::get_module(origin_.id);
-    // if (!module)
-    // {
-    //     return;
-    // }
-    // util::require(module.has_value(), "No module with id " + std::to_string(origin_.id));
-    // (*module)->send(message);
+		RfidPayload parse_payload(const toml::array* pages, uint64_t master_seed, uint8_t tub_id) {
+			if (pages == nullptr) throw std::invalid_argument("Tub event missing its payload array");
+			if (pages->size() > RFID_PAYLOAD_PAGE_COUNT) {
+				throw std::invalid_argument("payload contains more than " + std::to_string(RFID_PAYLOAD_PAGE_COUNT) +
+											" pages");
+			}
+			RfidPayload result{};
+			for (std::size_t index = 0; index < pages->size(); index++) {
+				result[index] = parse_page(*pages->get(index), index);
+			}
+			for (std::size_t index = pages->size(); index < RFID_PAYLOAD_PAGE_COUNT; index++) {
+				seed::SplitMix64 stream(seed::derive(master_seed, "tub/" + std::to_string(tub_id) +
+																	  "/rfid-payload/page/" + std::to_string(index)));
+				const uint64_t   random = stream.next();
+				for (std::size_t byte = 0; byte < RFID_PAGE_SIZE_BYTES; byte++) {
+					result[index][byte] = static_cast<uint8_t>(random >> (8U * (RFID_PAGE_SIZE_BYTES - 1 - byte)));
+				}
+			}
+			return result;
+		}
 
-    auto tub_ptr = std::make_unique<tub::Tub>(tub::TubId{static_cast<uint8_t>(id_)}, origin_.id, ModuleLocation::MIDDLE,
-                                              destination_.id, ModuleLocation::MIDDLE, rfid_);
-    tub_ptr->run();
-    tub::add_tub(std::move(tub_ptr));
+	} // namespace
 
-    std::cout << "Fired tub event at " << std::to_string(time_) << "s" << std::endl;
-}
+	uint64_t Schedule::last_tick() const noexcept {
+		uint64_t last = 0;
+		for (const TubArrival& tub : tubs) {
+			last = std::max(last, tub.removed_tick.value_or(tub.tick));
+		}
+		return last;
+	}
 
-static std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT>
-parse_rfid(toml::v3::array *rfid_arr)
-{
-    if (!rfid_arr)
-    {
-        throw std::invalid_argument("Tub event missing rfid array");
-    }
-    if (rfid_arr->size() > RFID_CONTENT_BLOCK_COUNT)
-    {
-        throw std::invalid_argument("rfid contains " + std::to_string(rfid_arr->size()) +
-                                    " blocks, which is more than the 36 allowed");
-    }
+	Schedule parse_events(const fs::path& file, uint64_t master_seed) {
+		util::require(fs::exists(file), "No events.toml found in the same folder as the simulation executable");
 
-    std::vector<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>> parsed_rfid;
-    parsed_rfid.reserve(RFID_CONTENT_BLOCK_COUNT);
-    for (auto &&node : *rfid_arr)
-    {
-        if (auto *inner_arr = node.as_array())
-        {
-            std::array<int8_t, RFID_BLOCK_SIZE_BYTES> row = {0, 0, 0, 0};
-            if (inner_arr->size() != 4)
-            {
-                throw std::invalid_argument("Invalid array in rfid data");
-            }
+		const toml::table table = toml::parse_file(file.string());
+		Schedule          schedule;
 
-            for (size_t i = 0; i < RFID_BLOCK_SIZE_BYTES; ++i)
-            {
-                row[i] = inner_arr->get(i)->as_integer()->get();
-            }
+		util::require(table.get("assert") == nullptr,
+					  "[assert.*] is no longer supported; declare [scenario].properties with an LTLf .spec file");
 
-            parsed_rfid.push_back(row);
-        }
-        else
-        {
-            throw std::invalid_argument("Invalid array in rfid data");
-        }
-    }
+		if (const toml::node* node = table.get("scenario"); node != nullptr) {
+			const toml::table* scenario = node->as_table();
+			util::require(scenario != nullptr, "scenario must be a TOML table");
 
-    while (parsed_rfid.size() < RFID_CONTENT_BLOCK_COUNT)
-    {
-        parsed_rfid.push_back({0, 0, 0, 0});
-    }
+			const std::optional<std::string> duration   = (*scenario)["duration"].value<std::string>();
+			const std::optional<std::string> properties = (*scenario)["properties"].value<std::string>();
+			util::require(duration.has_value(), "[scenario].duration must be a quoted, unit-bearing duration");
+			util::require(properties.has_value() && !properties->empty(),
+						  "[scenario].properties must name an LTLf .spec file");
 
-    std::array<std::array<int8_t, RFID_BLOCK_SIZE_BYTES>, RFID_CONTENT_BLOCK_COUNT> rfid_fixed_array;
-    std::copy(parsed_rfid.begin(), parsed_rfid.end(), rfid_fixed_array.begin());
-    return rfid_fixed_array;
-}
+			PropertyConfiguration configuration;
+			configuration.duration_tick = ltl::parse_duration(*duration, file.string() + ":[scenario].duration");
+			configuration.property_file = fs::path(*properties);
+			if (configuration.property_file.is_relative()) {
+				configuration.property_file = file.parent_path() / configuration.property_file;
+			}
+			configuration.property_file = configuration.property_file.lexically_normal();
+			schedule.properties         = std::move(configuration);
+		}
 
-void parse_events(fs::path file, std::list<std::unique_ptr<Event>> &events)
-{
-    util::require(fs::exists(file), "No events.toml found in same folder as simulation executable");
+		const toml::node* group = table.get("tub");
+		if (group == nullptr || !group->is_table()) {
+			return schedule;
+		}
 
-    toml::table table;
-    try
-    {
-        table = toml::parse_file(file.string());
-    }
-    catch (const toml::parse_error &err)
-    {
-        throw err;
-    }
+		std::unordered_set<uint8_t> tub_ids;
+		for (auto&& [key, value] : *group->as_table()) {
+			(void)key;
+			if (!value.is_table()) {
+				continue;
+			}
+			const toml::table&                           entry          = *value.as_table();
+			static const std::unordered_set<std::string> allowed_fields = {"time",    "id",  "module", "position",
+																		   "removed", "uid", "payload"};
+			for (auto&& [field, ignored] : entry) {
+				(void)ignored;
+				util::require(allowed_fields.count(std::string(field.str())) != 0,
+							  "Unknown tub field: " + std::string(field.str()));
+			}
 
-    for (auto &&[key, event] : table)
-    {
-        std::string group = std::string(key.str());
+			const double  time      = entry["time"].value_or(-1.0);
+			const int64_t id        = entry["id"].value_or(static_cast<int64_t>(-1));
+			const int64_t module_id = entry["module"].value_or(static_cast<int64_t>(-1));
+			util::require(id >= 1 && id <= 255, "Tub ids must be between 1 and 255");
+			util::require(module_id >= 1 && module_id < MAX_MODULES,
+						  "Tub modules must be between 1 and " + std::to_string(MAX_MODULES - 1));
+			util::require(tub_ids.insert(static_cast<uint8_t>(id)).second,
+						  "Tub id " + std::to_string(id) + " is reused; tub ids are single-use within a scenario");
+			util::require(time >= 0.0, "Tub event missing its time");
 
-        if (!event.is_table())
-            continue;
+			TubArrival tub;
+			tub.tick    = static_cast<uint64_t>(std::llround(time * TICKS_PER_SECOND));
+			tub.id      = static_cast<uint8_t>(id);
+			tub.module  = module::ModuleId{static_cast<uint8_t>(module_id)};
+			tub.uid     = parse_uid(entry.get("uid"));
+			tub.payload = parse_payload(entry["payload"].as_array(), master_seed, tub.id);
 
-        auto &tbl = *event.as_table();
+			if (const std::optional<std::string> position = entry["position"].value<std::string>()) {
+				const std::optional<world::Position> parsed = world::position_from_string(*position);
+				util::require(parsed.has_value(),
+							  "Tub " + std::to_string(id) + " has an unknown position: " + *position);
+				tub.position = *parsed;
+			}
 
-        if (group == "tub")
-        {
-            for (auto &&[event_key, event_value] : tbl)
-            {
-                if (!event_value.is_table())
-                    continue;
+			if (const std::optional<double> removed = entry["removed"].value<double>()) {
+				util::require(*removed > time, "Tub " + std::to_string(id) + " is removed before it arrives");
+				tub.removed_tick = static_cast<uint64_t>(std::llround(*removed * TICKS_PER_SECOND));
+			}
 
-                auto &event_tbl = *event_value.as_table();
+			schedule.tubs.push_back(tub);
+		}
 
-                double time = event_tbl["time"].value_or(-1.0);
-                int id = event_tbl["id"].value_or(-1);
-                util::require(id >= 1, "Tub ids must be above or equal to 1");
-                bool safe = event_tbl["safe"].value_or(false);
-                bool needs_security = event_tbl["needs_security"].value_or(false);
-                toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
+		// Ordered by tick, then by id, so that the schedule does not depend on the order the file
+		// happened to list its entries in.
+		std::sort(schedule.tubs.begin(), schedule.tubs.end(), [](const TubArrival& left, const TubArrival& right) {
+			return left.tick != right.tick ? left.tick < right.tick : left.id < right.id;
+		});
 
-                // Parse origin
-                events::TubData origin{LocationType::MODULE, module::ModuleId{}};
-                if (event_tbl.contains("origin") && event_tbl["origin"].is_array())
-                {
-                    auto &origin_arr = *event_tbl["origin"].as_array();
-                    if (origin_arr.size() >= 2)
-                    {
-                        std::string location_type = origin_arr[0].value_or("");
-                        uint8_t location_id = origin_arr[1].value_or(-1);
-
-                        if (location_type == "module")
-                        {
-                            origin.type = LocationType::MODULE;
-                        }
-                        else if (location_type == "plane")
-                        {
-                            origin.type = LocationType::PLANE;
-                        }
-                        else
-                        {
-                            throw std::invalid_argument("Invalid origin location type: " + location_type);
-                        }
-                        origin.id = module::ModuleId{location_id};
-                    }
-                }
-
-                // Parse destination
-                TubData destination{LocationType::MODULE, module::ModuleId{}};
-                if (event_tbl.contains("destination") && event_tbl["destination"].is_array())
-                {
-                    auto &dest_arr = *event_tbl["destination"].as_array();
-                    if (dest_arr.size() == 2)
-                    {
-                        std::string location_type = dest_arr[0].value_or("");
-                        uint8_t location_id = dest_arr[1].value_or(-1);
-
-                        if (location_type == "module")
-                        {
-                            destination.type = LocationType::MODULE;
-                        }
-                        else if (location_type == "plane")
-                        {
-                            destination.type = LocationType::PLANE;
-                        }
-                        else
-                        {
-                            throw std::invalid_argument("Invalid destination location type: " + location_type);
-                        }
-                        destination.id = module::ModuleId{location_id};
-                    }
-                }
-
-                if (time == -1.0 || id == -1 || origin.id == -1 || destination.id == -1)
-                {
-                    throw std::invalid_argument("Tub event missing required fields");
-                }
-
-                auto rfid = parse_rfid(rfid_arr);
-                rfid[0] = {(int8_t)origin.id.raw(), (int8_t)(origin.type == LocationType::MODULE ? 0 : 1),
-                           (int8_t)destination.id.raw(), (int8_t)(destination.type == LocationType::MODULE ? 0 : 1)};
-                rfid[1] = {safe, needs_security, 0, 0};
-
-                events.push_back(std::make_unique<TubEvent>(time, id, origin, destination, safe, needs_security, rfid));
-            }
-        }
-        else if (group == "plane")
-        {
-            for (auto &&[event_key, event_value] : tbl)
-            {
-                if (!event_value.is_table())
-                    continue;
-
-                auto &event_tbl = *event_value.as_table();
-
-                double time = event_tbl["time"].value_or(-1.0);
-                int id = event_tbl["id"].value_or(-1);
-                util::require(id >= 1, "Plane ids must be above or equal to 1");
-                int module = event_tbl["module"].value_or(-1);
-                int leaves_in = event_tbl["leaves_in"].value_or(-1);
-                toml::v3::array *rfid_arr = event_tbl["rfid"].as_array();
-
-                if (time == -1.0 || id == -1 || module == -1 || leaves_in == -1)
-                {
-                    throw std::invalid_argument("Plane event missing required fields");
-                }
-
-                auto rfid = parse_rfid(rfid_arr);
-                rfid[0] = {static_cast<int8_t>(module), 0, 0, 0};
-                rfid[1] = {static_cast<int8_t>(leaves_in & 0xFF), static_cast<int8_t>((leaves_in >> 8) & 0xFF),
-                           static_cast<int8_t>((leaves_in >> 16) & 0xFF),
-                           static_cast<int8_t>((leaves_in >> 24) & 0xFF)};
-
-                events.push_back(std::make_unique<PlaneEvent>(time, id, module::ModuleId{static_cast<uint8_t>(module)},
-                                                              leaves_in, rfid));
-            }
-        }
-    }
-}
+		return schedule;
+	}
 
 } // namespace events
