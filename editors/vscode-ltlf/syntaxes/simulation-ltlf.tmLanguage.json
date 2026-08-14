@@ -1,0 +1,115 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Simulation LTLf",
+  "scopeName": "source.simulation-ltlf",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    {
+      "match": "\\b(let)(\\s+)([a-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.alias.simulation-ltlf" },
+        "3": { "name": "entity.name.variable.simulation-ltlf" }
+      }
+    },
+    {
+      "match": "\\b(prop)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.property.simulation-ltlf" },
+        "3": { "name": "entity.name.function.property.simulation-ltlf" }
+      }
+    },
+    {
+      "match": "(?<![A-Za-z0-9_)])\\.([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "name": "constant.other.enum.simulation-ltlf"
+    },
+    {
+      "match": "\\b(?:always|eventually|next|until|G|F|X|U)\\b",
+      "name": "keyword.operator.temporal.simulation-ltlf"
+    },
+    {
+      "match": "(?:\\\\[AE]|#)|\\b(?:forall|exists|count)\\b",
+      "name": "keyword.control.quantifier.simulation-ltlf"
+    },
+    {
+      "match": "\\b(?:in|where|at|during|sequence)\\b",
+      "name": "keyword.control.simulation-ltlf"
+    },
+    {
+      "match": "\\b(?:Module|Tub)\\b",
+      "name": "support.type.simulation-ltlf"
+    },
+    {
+      "match": "\\b(?:true|false)\\b",
+      "name": "constant.language.boolean.simulation-ltlf"
+    },
+    {
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()",
+      "name": "support.function.simulation-ltlf"
+    },
+    {
+      "match": "0[xX][0-9A-Fa-f]{6}\\b",
+      "name": "constant.other.color.rgb.simulation-ltlf"
+    },
+    {
+      "match": "(?<![A-Za-z0-9_])(?:\\d+\\.\\d+|\\d+)",
+      "name": "constant.numeric.simulation-ltlf"
+    },
+    {
+      "match": "(?<=\\d)(?:ms|h|m|s)\\b",
+      "name": "keyword.other.unit.duration.simulation-ltlf"
+    },
+    {
+      "match": "&&|\\|\\||->|==|!=|<=|>=|<|>|!",
+      "name": "keyword.operator.logical.simulation-ltlf"
+    },
+    {
+      "match": "=",
+      "name": "keyword.operator.assignment.simulation-ltlf"
+    },
+    {
+      "match": "[{}()\\[\\],.:;]",
+      "name": "punctuation.separator.simulation-ltlf"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "begin": "//",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.simulation-ltlf" }
+          },
+          "end": "$",
+          "name": "comment.line.double-slash.simulation-ltlf"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "begin": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.simulation-ltlf" }
+          },
+          "end": "\"|$",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.simulation-ltlf" }
+          },
+          "applyEndPatternLast": true,
+          "name": "string.quoted.double.bytes.simulation-ltlf",
+          "patterns": [
+            {
+              "match": "\\\\(?:[\"\\\\nrt]|x[0-9A-Fa-f]{2})",
+              "name": "constant.character.escape.simulation-ltlf"
+            },
+            {
+              "match": "\\\\.",
+              "name": "invalid.illegal.escape.simulation-ltlf"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

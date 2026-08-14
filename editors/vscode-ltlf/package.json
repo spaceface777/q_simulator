@@ -1,0 +1,68 @@
+{
+  "name": "simulation-ltlf",
+  "displayName": "Simulation LTLf",
+  "description": "Syntax highlighting and authoritative parser/type-check diagnostics for the simulation project's LTLf DSL.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.tue.nl/2irr70-capstone-quercus-airport/simulation"
+  },
+  "files": [
+    "extension.js",
+    "language-configuration.json",
+    "scripts",
+    "syntaxes",
+    "wasm/validator.js",
+    "wasm/validator.wasm",
+    "README.md"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:simulation-ltlf"
+  ],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "simulation-ltlf",
+        "aliases": [
+          "Simulation LTLf",
+          "LTLf"
+        ],
+        "extensions": [
+          ".spec"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "simulation-ltlf",
+        "scopeName": "source.simulation-ltlf",
+        "path": "./syntaxes/simulation-ltlf.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Simulation LTLf",
+      "properties": {
+        "ltlf.moduleIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "default": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 255],
+          "description": "Module IDs considered present while type-checking. Set this to match the selected layout for exact module-existence diagnostics."
+        }
+      }
+    }
+  }
+}
