@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <map>
 #include <memory>
 #include <optional>
@@ -30,9 +31,9 @@ namespace sim {
 	inline constexpr std::chrono::microseconds TICK_DURATION{1000};
 	inline constexpr uint32_t                  MAX_TICK_BATCH = static_cast<uint32_t>(childsync::MAX_BATCH_TICKS);
 
-	// A request is answered on a later tick, so an application cannot assume an instant reply.
-	inline constexpr uint64_t RPC_RX_DELAY_TICKS = 1;
-	inline constexpr uint64_t RPC_TX_DELAY_TICKS = 1;
+	// These delays count ticks executed by the requesting module, not global simulation ticks.
+	inline constexpr uint64_t RPC_RX_DELAY_LOCAL_TICKS = 1;
+	inline constexpr uint64_t RPC_TX_DELAY_LOCAL_TICKS = 1;
 
 	// How long the parent blocks in one futex wait before re-checking how far behind the tick is
 	// and whether a child has died. A healthy tick is released by the last child and never waits
@@ -61,17 +62,33 @@ namespace sim {
 
 	class Runtime {
 	private:
+		struct PendingRpcRequest {
+			uint64_t    due_local_tick = 0;
+			rpc::Frame  frame;
+			std::string label;
+			uint64_t    observation_id = 0;
+		};
+
+		struct PendingRpcResponse {
+			uint64_t   due_local_tick = 0;
+			rpc::Frame frame;
+		};
+
 		struct Child {
 			module::ModuleId                       id;
 			childproc::Handle                      process;
 			std::optional<childsync::ChildSegment> segment;
 			uint64_t                               start_tick      = 0;
 			int64_t                                clock_rate_ppm  = 1'000'000;
-			uint64_t                               local_tick      = 0;
 			int64_t                                clock_remainder = 0;
 			uint32_t                               tick_skip_ppm   = 0;
 			uint64_t                               tick_skip_rng   = 0;
+			uint16_t                               grant_mask      = 0;
+			uint16_t                               skipped_mask    = 0;
 			bool                                   tick_granted    = false;
+			std::deque<rpc::Frame>                 staged_outbound;
+			std::deque<PendingRpcRequest>          pending_requests;
+			std::deque<PendingRpcResponse>         pending_responses;
 		};
 
 		uint64_t                      seed_;
@@ -80,14 +97,12 @@ namespace sim {
 		uint32_t                      tick_batch_;
 		std::vector<module::ModuleId> active_modules_;
 		std::vector<Child>            children_;
-		bool                          module_tick_skips_enabled_ = false;
 
 		// The barrier words every child shares. Created before the first launch.
 		std::optional<childsync::SharedControl> control_;
 
 		// Advances once per barrier: once per strict tick or once per batched window.
-		uint32_t generation_          = 0;
-		uint32_t current_grant_ticks_ = 1;
+		uint32_t generation_ = 0;
 
 		// Reused across mailbox messages so decoding a frame does not allocate every tick.
 		rpc::FrameReader reader_;
@@ -96,9 +111,12 @@ namespace sim {
 		world::State                     world_;
 		std::optional<platform::Manager> platform_;
 		engine::Queue                    queue_;
-		uint64_t                         tick_      = 0;
-		int64_t                          budget_us_ = 0;
-		bool                             running_   = false;
+		// These are the simulator's only authoritative clocks. Shared-memory values and trace
+		// fields are outbound snapshots; neither is ever read back to reconstruct time.
+		uint64_t                                global_tick_ = 0;
+		std::array<uint64_t, MODULE_TABLE_SIZE> module_ticks_{};
+		int64_t                                 budget_us_ = 0;
+		bool                                    running_   = false;
 
 		// Smoothed simulated-over-real time: one slow frame is normal, a sustained shortfall is not.
 		double effective_speed_      = 0.0;
@@ -136,7 +154,9 @@ namespace sim {
 		void trace_observation(const ltl::Observation& observation);
 
 		// Throws if the child wrote something undecodable into its mailbox.
-		void drain(Child& child, uint64_t source_tick, uint32_t batch_index = 0);
+		void drain(Child& child, uint64_t source_global_tick, uint64_t source_local_tick, uint32_t batch_index = 0);
+
+		void release_local_rpc(Child& child, uint64_t global_tick, uint64_t local_tick);
 
 		void grant_tick(uint32_t batch_ticks);
 
@@ -179,7 +199,9 @@ namespace sim {
 
 		void stop();
 
-		[[nodiscard]] uint64_t tick() const noexcept { return tick_; }
+		[[nodiscard]] uint64_t tick() const noexcept { return global_tick_; }
+
+		[[nodiscard]] uint64_t module_tick(module::ModuleId id) const noexcept { return module_ticks_[id.raw()]; }
 
 		// Once true, the run grants no further ticks, so the world stays in the state that failed.
 		[[nodiscard]] bool failed() const noexcept;

@@ -96,8 +96,8 @@ namespace {
 		// Advances a full rate-limit window per call, so tests exercise commands, not the limiter.
 		rpc::Frame call(uint8_t cmd, std::vector<uint8_t> payload = {}, uint8_t id = MODULE) {
 			tick_ += platform::RATE_LIMIT_WINDOW_TICKS;
-			const std::optional<rpc::Frame> response =
-				manager->handle_request(module::ModuleId{id}, request(cmd, std::move(payload)), tick_);
+			const std::optional<rpc::Frame> response = manager->handle_request(
+				module::ModuleId{id}, request(cmd, std::move(payload)), platform::ModuleTime{tick_, tick_});
 			EXPECT_TRUE(response.has_value());
 			return response.value_or(rpc::Frame{});
 		}

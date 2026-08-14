@@ -108,10 +108,11 @@ int main() {
 	const unsigned subscribe_mask  = env_number("FAKE_CHILD_SUBSCRIBE", 0); // Mask to subscribe to on the first tick.
 	const unsigned exit_after =
 		env_number("FAKE_CHILD_EXIT_AFTER", 0); // Simulates a crash after N ticks. 0 runs forever.
-	const unsigned    query_tick       = env_number("FAKE_CHILD_QUERY_TICK", UINT_MAX);
-	const bool        reply_to_message = env_number("FAKE_CHILD_REPLY_TO_MESSAGE", 0) != 0 && id == 1;
-	const char*       record_path      = ::getenv("FAKE_CHILD_RECORD"); // File to append observed commands to.
-	const std::string mutant           = ::getenv("FAKE_CHILD_MUTANT") == nullptr ? "" : ::getenv("FAKE_CHILD_MUTANT");
+	const unsigned    query_tick        = env_number("FAKE_CHILD_QUERY_TICK", UINT_MAX);
+	const bool        reply_to_message  = env_number("FAKE_CHILD_REPLY_TO_MESSAGE", 0) != 0 && id == 1;
+	const char*       record_path       = ::getenv("FAKE_CHILD_RECORD"); // File to append observed commands to.
+	const char*       grant_record_path = ::getenv("FAKE_CHILD_GRANT_RECORD");
+	const std::string mutant            = ::getenv("FAKE_CHILD_MUTANT") == nullptr ? "" : ::getenv("FAKE_CHILD_MUTANT");
 
 	uint16_t call_id   = 0x8000;
 	unsigned ticks     = 0;
@@ -131,11 +132,16 @@ int main() {
 		}
 		last_seen = childsync::load_acquire(control.generation);
 
-		if (control.active[id] != 0) {
-			const uint32_t batch_ticks = control.batch_ticks;
-			if (batch_ticks == 0 || batch_ticks > childsync::MAX_BATCH_TICKS) return 3;
+		const uint32_t batch_ticks = control.batch_ticks;
+		if (batch_ticks == 0 || batch_ticks > childsync::MAX_BATCH_TICKS) return 3;
+		const uint16_t active_mask = control.active_mask[id];
+		if (grant_record_path != nullptr && id == 1) {
+			std::ofstream file(grant_record_path, std::ios::app);
+			file << batch_ticks << ":" << active_mask << "\n";
+		}
 
-			for (uint32_t batch_index = 0; batch_index < batch_ticks; batch_index++) {
+		for (uint32_t batch_index = 0; batch_index < batch_ticks; batch_index++) {
+			if ((active_mask & static_cast<uint16_t>(1U << batch_index)) != 0) {
 				bool corrupt          = false;
 				bool message_received = false;
 				for (const rpc::Frame& frame : take_inbound(pages.to_child[batch_index], corrupt)) {

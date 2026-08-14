@@ -24,6 +24,7 @@ namespace {
 		static constexpr uint8_t SECOND = 2;
 
 		void SetUp() override {
+			settings::install_test_defaults();
 			for (uint8_t id = 1; id < MAX_MODULES; id++) {
 				settings::set_module_settings(module::ModuleId{id}, settings::ModuleSettings{});
 			}
@@ -36,6 +37,11 @@ namespace {
 			settings::set_setting("network_very_late_ppm", 0);
 			settings::set_setting("network_very_late_delay_ms", 1100);
 			settings::set_setting("network_log_extra_delay_ms", 0);
+			settings::set_setting("module_start_offset_mean_ms", 0.0);
+			settings::set_setting("module_start_offset_sd_ms", 0.0);
+			settings::set_setting("module_clock_drift_sd_ppm", 0.0);
+			settings::set_setting("module_tick_skip_mean_ppm", 0.0);
+			settings::set_setting("module_tick_skip_sd_ppm", 0.0);
 
 			settings::ModuleSettings first{};
 			first.active = true;

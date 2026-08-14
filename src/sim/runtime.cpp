@@ -1,6 +1,7 @@
 #include "runtime.h"
 
 #include <algorithm>
+#include <bit>
 #include <climits>
 #include <cmath>
 #include <cstdio>
@@ -77,8 +78,6 @@ namespace sim {
 		: seed_(seed), connect_timeout_(connect_timeout), activation_timeout_(activation_timeout),
 		  tick_batch_(tick_batch), active_modules_(settings::get_active_modules()), queue_(seed) {
 		if (active_modules_.empty()) throw std::runtime_error("No active modules in layout.toml");
-		module_tick_skips_enabled_ = settings::get_setting<double>("module_tick_skip_mean_ppm") > 0.0 ||
-									 settings::get_setting<double>("module_tick_skip_sd_ppm") > 0.0;
 		for (const module::ModuleId id : active_modules_) world_.add_module(id);
 		property_observer_.emplace(active_modules_, world_);
 	}
@@ -182,7 +181,7 @@ namespace sim {
 			}
 			step(1);
 			if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) break;
-			if (last_tick && tick_ > *last_tick) break;
+			if (last_tick && global_tick_ > *last_tick) break;
 		}
 	}
 
@@ -202,9 +201,8 @@ namespace sim {
 			entry.field(input, trace::digest_file(input));
 		}
 		entry.field("modules", static_cast<uint64_t>(active_modules_.size()));
-		if (tick_batch_ > 1) {
-			entry.field("tick_batch", static_cast<uint64_t>(tick_batch_));
-		}
+		entry.field("tick_batch_requested", static_cast<uint64_t>(tick_batch_))
+			.field("tick_batch_effective", static_cast<uint64_t>(tick_batch_));
 		trace_.write(entry);
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
@@ -277,7 +275,7 @@ namespace sim {
 	}
 
 	void Runtime::load(const events::Schedule& schedule) {
-		if (running_ || tick_ != 0) {
+		if (running_ || global_tick_ != 0) {
 			throw std::logic_error("Scenario events must be loaded before applications launch");
 		}
 
@@ -311,7 +309,8 @@ namespace sim {
 	}
 
 	void Runtime::load_properties(ltl::File properties, uint64_t duration_tick, const std::string& filename) {
-		if (running_ || tick_ != 0) throw std::logic_error("LTL properties must be loaded before applications launch");
+		if (running_ || global_tick_ != 0)
+			throw std::logic_error("LTL properties must be loaded before applications launch");
 		if (properties_) throw std::logic_error("LTL properties have already been loaded");
 
 		std::vector<uint16_t> module_ids;
@@ -335,7 +334,7 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::FALSE) return true;
+			if (global_tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::FALSE) return true;
 		}
 		return false;
 	}
@@ -345,7 +344,7 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (tick_ <= from_tick || property_monitors_[index].verdict() == ltl::Verdict::PENDING) pending++;
+			if (global_tick_ <= from_tick || property_monitors_[index].verdict() == ltl::Verdict::PENDING) pending++;
 		}
 		return pending;
 	}
@@ -355,7 +354,8 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::UNRESOLVED) unresolved++;
+			if (global_tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::UNRESOLVED)
+				unresolved++;
 		}
 		return unresolved;
 	}
@@ -365,7 +365,7 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::FALSE) failed++;
+			if (global_tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::FALSE) failed++;
 		}
 		return failed;
 	}
@@ -377,7 +377,7 @@ namespace sim {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
 			const ltl::Verdict              verdict =
-				tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
+				global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
 			const ltl::Monitor& monitor = property_monitors_[index];
 			results.push_back(PropertyResult{declaration.name, property_filename_, declaration.span.begin, verdict,
 											 property_decisive_ticks_[index], monitor.failure(), monitor.activations(),
@@ -406,7 +406,7 @@ namespace sim {
 
 		const Clock::time_point started     = Clock::now();
 		const Clock::time_point limit       = started + deadline;
-		const uint64_t          tick_before = tick_;
+		const uint64_t          tick_before = global_tick_;
 
 		for (int64_t index = 0; index < granted;) {
 			const uint32_t batch    = tick_batch_;
@@ -416,19 +416,19 @@ namespace sim {
 			// A decisive property result ends the run inside the tick that produced it, state intact.
 			if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) {
 				budget_us_ = 0;
-				report_pacing(elapsed, speed, tick_ - tick_before);
+				report_pacing(elapsed, speed, global_tick_ - tick_before);
 				return;
 			}
 
 			if (Clock::now() > limit) {
 				// Behind schedule: drop the rest of the budget instead of granting it as a burst later.
 				budget_us_ = 0;
-				report_pacing(elapsed, speed, tick_ - tick_before);
+				report_pacing(elapsed, speed, global_tick_ - tick_before);
 				return;
 			}
 		}
 
-		report_pacing(elapsed, speed, tick_ - tick_before);
+		report_pacing(elapsed, speed, global_tick_ - tick_before);
 	}
 
 	void Runtime::report_pacing(std::chrono::microseconds elapsed, double speed, uint64_t ticks_advanced) {
@@ -481,7 +481,8 @@ namespace sim {
 		const bool sustained_shortfall = pacing_window_count_ == PACING_WINDOW_FRAMES &&
 										 pacing_actual_sum_ < (pacing_target_sum_ * WARNING_THRESHOLD);
 		if (sustained_shortfall && !pacing_warning_) {
-			std::cerr << "Tick " << tick_ << ": simulation has remained at least 5% below the selected speed over the "
+			std::cerr << "Tick " << global_tick_
+					  << ": simulation has remained at least 5% below the selected speed over the "
 					  << "last " << PACING_WINDOW_FRAMES << " frames; this workload may not be sustainable"
 					  << std::endl;
 		}
@@ -489,47 +490,36 @@ namespace sim {
 	}
 
 	uint32_t Runtime::step(uint32_t batch_ticks) {
-		// A per-generation active bit cannot represent a skipped relative tick inside a batch. When
-		// clock skips are enabled, retain exact semantics by executing the requested window strictly.
-		if (batch_ticks > 1 && module_tick_skips_enabled_) {
-			uint32_t completed = 0;
-			while (completed < batch_ticks) {
-				completed += step(1);
-				if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) break;
-			}
-			return completed;
-		}
-		if (batch_ticks == 1) {
-			platform_->prepare_tick(tick_);
-			grant_tick(1);
-			collect_acknowledgements();
-			for (Child& child : children_) {
-				drain(child, tick_);
-			}
-			schedule_tick_tasks();
-			queue_.run_tick(tick_);
-			tick_++;
-			return 1;
-		}
-
 		// A batch advances application-local time first, then replays the parent one tick at a time.
 		// Parent-produced frames therefore become visible only on a later batch; this is the explicit
 		// relaxed-timing mode selected by --tick-batch.
-		platform_->prepare_tick(tick_);
 		grant_tick(batch_ticks);
 		collect_acknowledgements();
 
 		uint32_t completed = 0;
 		for (uint32_t batch_index = 0; batch_index < batch_ticks; batch_index++) {
 			for (Child& child : children_) {
-				drain(child, tick_, batch_index);
+				const uint16_t slot = static_cast<uint16_t>(1U << batch_index);
+				child.tick_granted  = (child.grant_mask & slot) != 0;
+				if ((child.skipped_mask & slot) != 0 && trace_.enabled()) {
+					trace_.write(trace::Entry("module_tick_skipped")
+									 .field("tick", global_tick_)
+									 .field("module", static_cast<uint64_t>(child.id.raw()))
+									 .field("local_tick", module_ticks_[child.id.raw()]));
+				}
+				if (child.tick_granted) {
+					const uint64_t local_tick = module_ticks_[child.id.raw()];
+					drain(child, global_tick_, local_tick, batch_index);
+					release_local_rpc(child, global_tick_, local_tick);
+					module_ticks_[child.id.raw()]++;
+				}
 			}
 			if (batch_index != 0) {
-				platform_->prepare_tick(tick_);
+				platform_->prepare_tick(global_tick_);
 			}
 			schedule_tick_tasks(batch_index);
-			queue_.run_tick(tick_);
-			tick_++;
+			queue_.run_tick(global_tick_);
+			global_tick_++;
 			completed++;
 			if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) {
 				break;
@@ -541,46 +531,52 @@ namespace sim {
 	void Runtime::grant_tick(uint32_t batch_ticks) {
 		childsync::Control& control = control_->get();
 
-		current_grant_ticks_ = batch_ticks;
-		control.batch_ticks  = batch_ticks;
+		control.batch_ticks = batch_ticks;
 
 		for (Child& child : children_) {
-			// A paused application is withheld its tick rather than suspended by the OS. It still
-			// answers the barrier, so the participant count never changes mid-run.
-			const bool started             = tick_ >= child.start_tick;
-			const bool eligible            = started && !platform_->is_paused(child.id, tick_);
-			const bool skipped             = eligible && child.tick_skip_ppm != 0 &&
-											 (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
-			const bool active              = eligible && !skipped;
-			child.tick_granted             = active;
-			control.active[child.id.raw()] = active ? 1 : 0;
-			if (skipped && trace_.enabled()) {
-				trace_.write(trace::Entry("module_tick_skipped")
-								 .field("tick", tick_)
-								 .field("module", static_cast<uint64_t>(child.id.raw()))
-								 .field("local_tick", child.local_tick));
-			}
-			if (active) {
-				control.tick_index[child.id.raw()] = child.local_tick;
-				if (batch_ticks == 1) {
-					child.clock_remainder += TICK_DURATION.count() * child.clock_rate_ppm;
-					const int64_t delta = child.clock_remainder / 1'000'000;
-					child.clock_remainder %= 1'000'000;
-					control.delta_us[child.id.raw()] = static_cast<uint32_t>(std::max<int64_t>(1, delta));
-				} else {
-					control.delta_us[child.id.raw()] = static_cast<uint32_t>(
-						std::max<int64_t>(1, static_cast<int64_t>(std::llround(TICK_DURATION.count() *
-																			   child.clock_rate_ppm / 1'000'000.0))));
-				}
-				child.local_tick += batch_ticks;
-			}
+			child.grant_mask   = 0;
+			child.skipped_mask = 0;
 			for (uint32_t index = 0; index < batch_ticks; index++) {
-				childsync::mailbox_clear(child.segment->get().to_parent[index]);
+				const uint16_t slot      = static_cast<uint16_t>(1U << index);
+				const uint64_t slot_tick = global_tick_ + index;
+				const bool     started   = slot_tick >= child.start_tick;
+				const bool     eligible  = started && !platform_->is_paused(child.id, slot_tick);
+				const bool     skipped   = eligible && child.tick_skip_ppm != 0 &&
+										   (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
+				if (skipped) child.skipped_mask |= slot;
+				if (!eligible || skipped) continue;
+
+				child.grant_mask |= slot;
+				child.clock_remainder += TICK_DURATION.count() * child.clock_rate_ppm;
+				const int64_t delta = child.clock_remainder / 1'000'000;
+				child.clock_remainder %= 1'000'000;
+				control.delta_us[child.id.raw()][index] = static_cast<uint32_t>(std::max<int64_t>(1, delta));
 			}
-			for (uint32_t index = batch_ticks; index < MAX_TICK_BATCH; index++) {
+			control.active_mask[child.id.raw()] = child.grant_mask;
+
+			for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
+				childsync::mailbox_clear(child.segment->get().to_parent[index]);
 				childsync::mailbox_clear(child.segment->get().to_child[index]);
 			}
+
+			if (child.grant_mask != 0) {
+				const uint32_t      first_active = std::countr_zero(child.grant_mask);
+				childsync::Mailbox& mailbox      = child.segment->get().to_child[first_active];
+				while (!child.staged_outbound.empty()) {
+					const rpc::Frame&          frame = child.staged_outbound.front();
+					const std::vector<uint8_t> bytes = rpc::encode(frame);
+					if (childsync::mailbox_append(mailbox, bytes.data(), bytes.size()) != childsync::MailboxStatus::OK)
+						break;
+
+					child.staged_outbound.pop_front();
+				}
+			}
 		}
+
+		// Frames that become due at this tick are intentionally prepared after the next window's
+		// inbound pages have been packed. As in strict mode, they become visible on the following
+		// child handoff rather than racing the application at the same logical tick.
+		platform_->prepare_tick(global_tick_);
 
 		childsync::store_relaxed(control.done_count, 0);
 
@@ -614,7 +610,7 @@ namespace sim {
 		}
 	}
 
-	void Runtime::drain(Child& child, uint64_t source_tick, uint32_t batch_index) {
+	void Runtime::drain(Child& child, uint64_t source_global_tick, uint64_t source_local_tick, uint32_t batch_index) {
 		childsync::Mailbox& mailbox = child.segment->get().to_parent[batch_index];
 
 		// The child shares the page, so its offsets are checked before they are used to index it.
@@ -641,9 +637,9 @@ namespace sim {
 			uint64_t observation_id = 0;
 			if (trace_.enabled() || !property_monitors_.empty()) {
 				observation_id = next_rpc_observation_id_++;
-				pending_rpc_requests_[source_tick].push_back(
-					ltl::RpcRequest{observation_id, source_tick, child.id.raw(), frame.cmd, frame.call_id, frame.flags,
-									(frame.flags & RPC_FLAG_NON_CON) == 0, frame.payload});
+				pending_rpc_requests_[source_global_tick].push_back(
+					ltl::RpcRequest{observation_id, source_global_tick, child.id.raw(), frame.cmd, frame.call_id,
+									frame.flags, (frame.flags & RPC_FLAG_NON_CON) == 0, frame.payload});
 			}
 
 			// Requests become tasks so their order is decided by the seed, not by mailbox order.
@@ -654,25 +650,39 @@ namespace sim {
 			std::snprintf(prefix, sizeof(prefix), "rpc/%02u/%u/", id.raw(), static_cast<unsigned>(index));
 			const std::string label = prefix + std::to_string(frame.call_id) + "/" + std::to_string(frame.cmd);
 
+			child.pending_requests.push_back(PendingRpcRequest{source_local_tick + RPC_RX_DELAY_LOCAL_TICKS,
+															   std::move(frame), std::move(label), observation_id});
+		}
+	}
+
+	void Runtime::release_local_rpc(Child& child, uint64_t global_tick, uint64_t local_tick) {
+		while (!child.pending_responses.empty() && child.pending_responses.front().due_local_tick <= local_tick) {
+			platform_->enqueue(child.id, std::move(child.pending_responses.front().frame));
+			child.pending_responses.pop_front();
+		}
+
+		while (!child.pending_requests.empty() && child.pending_requests.front().due_local_tick <= local_tick) {
+			PendingRpcRequest pending = std::move(child.pending_requests.front());
+			child.pending_requests.pop_front();
+			Child* const child_ptr = &child;
+			std::string  label     = std::move(pending.label);
 			queue_.schedule(
-				source_tick + RPC_RX_DELAY_TICKS, engine::Priority::CHILD_INTAKE, label,
-				[this, id, frame, label, observation_id](engine::TaskContext& context) {
-					std::optional<rpc::Frame> response = platform_->handle_request(id, frame, context.tick());
-					if (!response) {
-						return;
-					}
+				global_tick, engine::Priority::CHILD_INTAKE, std::move(label),
+				[this, child_ptr, local_tick, pending = std::move(pending)](engine::TaskContext& context) mutable {
+					std::optional<rpc::Frame> response = platform_->handle_request(
+						child_ptr->id, pending.frame, platform::ModuleTime{context.tick(), local_tick});
+					if (!response) return;
 
 					rpc::Frame answer             = std::move(response.value());
-					answer.observation_request_id = observation_id;
-					context.schedule_future(
-						context.tick() + RPC_TX_DELAY_TICKS, engine::Priority::PLATFORM_OUTBOUND, label + "/response",
-						[this, id, answer](engine::TaskContext&) { platform_->enqueue(id, answer); });
+					answer.observation_request_id = pending.observation_id;
+					child_ptr->pending_responses.push_back(
+						PendingRpcResponse{local_tick + RPC_TX_DELAY_LOCAL_TICKS, std::move(answer)});
 				});
 		}
 	}
 
 	void Runtime::schedule_tick_tasks(uint32_t batch_index) {
-		const uint64_t tick = tick_;
+		const uint64_t tick = global_tick_;
 
 		queue_.schedule(tick, engine::Priority::WORLD_ADVANCE, "world",
 						[this](engine::TaskContext&) { world_.advance_tick(); });
@@ -792,39 +802,23 @@ namespace sim {
 			tick, engine::Priority::PLATFORM_OUTBOUND, "outbound", [this, tick, batch_index](engine::TaskContext&) {
 				platform_->advance(tick);
 				for (Child& child : children_) {
-					// A skipped child's existing page was not drained. Preserve it and the platform
-					// backlog until that child receives a runnable local tick.
-					if (!child.tick_granted) continue;
-					childsync::Mailbox& mailbox = child.segment->get().to_child[batch_index];
-					childsync::mailbox_clear(mailbox);
-
-					// Frames go out before the next tick. What does not fit stays queued for the next
-					// one, which is the same limit the application would meet on real hardware.
-					for (const rpc::Frame& frame : platform_->take_outbound(child.id, childsync::MAILBOX_CAPACITY)) {
-						const std::vector<uint8_t> bytes = rpc::encode(frame);
-						if (childsync::mailbox_append(mailbox, bytes.data(), bytes.size()) !=
-							childsync::MailboxStatus::OK) {
-							throw std::runtime_error("Overfilled the mailbox of module " +
-													 std::to_string(child.id.raw()));
-						}
-
+					// A child has already executed the entire granted window. At its final global
+					// boundary, stage what became ready during the replay; the next grant puts it in
+					// the first slot that child will actually execute. If a whole window is skipped,
+					// keep the already-observed delivery staged so `next` waits for its next real step.
+					if (batch_index + 1U != tick_batch_ || !child.staged_outbound.empty()) continue;
+					for (rpc::Frame& frame : platform_->take_outbound(child.id, childsync::MAILBOX_CAPACITY)) {
 						if (trace_.enabled() || !property_monitors_.empty()) {
-							const uint64_t handoff_tick = tick + current_grant_ticks_ - 1;
-							if (frame.type == MT_RESP) {
-								// A trace may be enabled after startup while responses to pre-trace requests
-								// are still in flight. There is no captured request to correlate those with.
-								if (frame.observation_request_id == 0) {
-									continue;
-								}
-								pending_rpc_responses_[handoff_tick].push_back(ltl::RpcResponse{
-									frame.observation_request_id, frame.observation_request_id, handoff_tick,
-									child.id.raw(), frame.cmd, frame.call_id, frame.status, frame.payload});
+							if (frame.type == MT_RESP && frame.observation_request_id != 0) {
+								pending_rpc_responses_[tick].push_back(ltl::RpcResponse{
+									frame.observation_request_id, frame.observation_request_id, tick, child.id.raw(),
+									frame.cmd, frame.call_id, frame.status, frame.payload});
 							} else if (frame.type == MT_EVENT) {
-								pending_rpc_events_[handoff_tick].push_back(ltl::RpcEvent{next_rpc_observation_id_++,
-																						  handoff_tick, child.id.raw(),
-																						  frame.cmd, frame.payload});
+								pending_rpc_events_[tick].push_back(ltl::RpcEvent{
+									next_rpc_observation_id_++, tick, child.id.raw(), frame.cmd, frame.payload});
 							}
 						}
+						child.staged_outbound.push_back(std::move(frame));
 					}
 				}
 			});
@@ -837,7 +831,7 @@ namespace sim {
 
 		running_ = false;
 		if (trace_.enabled()) {
-			trace_.write(trace::Entry("run_complete").field("tick", tick_));
+			trace_.write(trace::Entry("run_complete").field("tick", global_tick_));
 			trace_.flush();
 		}
 		for (Child& child : children_) {

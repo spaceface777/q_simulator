@@ -278,7 +278,7 @@ namespace platform {
 		network_map_ = stream.str();
 	}
 
-	bool Manager::charge(module::ModuleId id, uint8_t cmd, uint64_t tick) {
+	bool Manager::charge(module::ModuleId id, uint8_t cmd, ModuleTime time) {
 		Runtime& runtime = *find(id);
 		bool     allowed = true;
 
@@ -291,8 +291,9 @@ namespace platform {
 			}
 
 			std::deque<uint64_t>& samples = runtime.bucket_samples[index];
-			samples.push_back(tick);
-			const uint64_t oldest = tick >= (RATE_LIMIT_WINDOW_TICKS - 1) ? tick - (RATE_LIMIT_WINDOW_TICKS - 1) : 0;
+			samples.push_back(time.local_tick);
+			const uint64_t oldest =
+				time.local_tick >= (RATE_LIMIT_WINDOW_TICKS - 1) ? time.local_tick - (RATE_LIMIT_WINDOW_TICKS - 1) : 0;
 			while (!samples.empty() && samples.front() < oldest) {
 				samples.pop_front();
 			}
@@ -301,21 +302,21 @@ namespace platform {
 
 			// Escalation mirrors the platform: refuse, warn, pause, then stop.
 			if (count >= threshold(limit, 120) &&
-				(!runtime.bucket_has_warned[index] || runtime.bucket_warned_tick[index] != tick)) {
+				(!runtime.bucket_has_warned[index] || runtime.bucket_warned_tick[index] != time.local_tick)) {
 				runtime.bucket_has_warned[index]  = true;
-				runtime.bucket_warned_tick[index] = tick;
-				diagnostics_.push_back(Diagnostic{tick, id, bucket, "warning", count, limit});
+				runtime.bucket_warned_tick[index] = time.local_tick;
+				diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "warning", count, limit});
 			}
-			if (count >= threshold(limit, 150) && runtime.paused_until_tick <= tick) {
-				runtime.paused_until_tick = tick + PAUSE_DURATION_TICKS;
-				runtime.lifecycle         = Lifecycle::PAUSED;
-				diagnostics_.push_back(Diagnostic{tick, id, bucket, "pause", count, limit});
+			if (count >= threshold(limit, 150) && runtime.paused_until_global_tick <= time.global_tick) {
+				runtime.paused_until_global_tick = time.global_tick + PAUSE_DURATION_TICKS;
+				runtime.lifecycle                = Lifecycle::PAUSED;
+				diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "pause", count, limit});
 			}
 			if (count >= threshold(limit, 200)) {
 				runtime.lifecycle   = Lifecycle::STOPPED;
 				runtime.stop_reason = to_string(bucket) + " bucket exceeded its stop threshold (" +
 									  std::to_string(count) + "/" + std::to_string(limit) + ")";
-				diagnostics_.push_back(Diagnostic{tick, id, bucket, "stop", count, limit});
+				diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "stop", count, limit});
 				return false;
 			}
 			if (count >= limit) {
@@ -329,7 +330,7 @@ namespace platform {
 	void Manager::prepare_tick(uint64_t tick) {
 		for (const module::ModuleId id : modules_) {
 			Runtime& runtime = *find(id);
-			if (runtime.lifecycle == Lifecycle::PAUSED && tick >= runtime.paused_until_tick) {
+			if (runtime.lifecycle == Lifecycle::PAUSED && tick >= runtime.paused_until_global_tick) {
 				runtime.lifecycle = runtime.heartbeat_seen ? Lifecycle::RUNNING : Lifecycle::ACTIVATING;
 				diagnostics_.push_back(Diagnostic{tick, id, Bucket::GLOBAL, "resume", 0, 0});
 			}
@@ -357,7 +358,7 @@ namespace platform {
 				continue;
 			}
 
-			const uint64_t silence = tick - runtime.last_heartbeat_tick;
+			const uint64_t silence = tick - runtime.last_heartbeat_global_tick;
 			if (silence > HEARTBEAT_FAILURE_TICKS) {
 				throw std::runtime_error("Module " + std::to_string(id.raw()) + " stopped sending heartbeats");
 			}
@@ -374,7 +375,7 @@ namespace platform {
 		return taken;
 	}
 
-	std::optional<rpc::Frame> Manager::handle_request(module::ModuleId id, const rpc::Frame& request, uint64_t tick) {
+	std::optional<rpc::Frame> Manager::handle_request(module::ModuleId id, const rpc::Frame& request, ModuleTime time) {
 		Runtime* runtime_ptr = find(id);
 		if (runtime_ptr == nullptr) {
 			return {};
@@ -383,15 +384,15 @@ namespace platform {
 
 		// Recorded before dispatch, so a heartbeat counts even if its command is later refused.
 		if (request.cmd == CMD_HEARTBEAT) {
-			runtime.heartbeat_seen      = true;
-			runtime.last_heartbeat_tick = tick;
-			runtime.heartbeat_warned    = false;
+			runtime.heartbeat_seen             = true;
+			runtime.last_heartbeat_global_tick = time.global_tick;
+			runtime.heartbeat_warned           = false;
 			if (runtime.lifecycle == Lifecycle::ACTIVATING) {
 				runtime.lifecycle = Lifecycle::RUNNING;
 			}
 		}
 
-		if (!charge(id, request.cmd, tick)) {
+		if (!charge(id, request.cmd, time)) {
 			// Over its limit: refuse rather than queue, matching what hardware would do.
 			if ((request.flags & RPC_FLAG_NON_CON) != 0) {
 				return {};
@@ -404,10 +405,10 @@ namespace platform {
 			return response;
 		}
 		if (request.cmd == CMD_LOG) {
-			log_network_.send(tick, id, {id}, tag_diagnostic(DIAGNOSTIC_KIND_LOG, request.payload));
+			log_network_.send(time.global_tick, id, {id}, tag_diagnostic(DIAGNOSTIC_KIND_LOG, request.payload));
 		}
 		if (request.cmd == CMD_PANIC_REPORT) {
-			log_network_.send(tick, id, {id}, tag_diagnostic(DIAGNOSTIC_KIND_PANIC, request.payload));
+			log_network_.send(time.global_tick, id, {id}, tag_diagnostic(DIAGNOSTIC_KIND_PANIC, request.payload));
 		}
 
 		if (request.cmd == CMD_SUBSCRIBE_TO_EVENT || request.cmd == CMD_UNSUBSCRIBE_FROM_EVENT) {
@@ -453,7 +454,7 @@ namespace platform {
 			return response;
 		}
 
-		rpc::Frame response = dispatch(id, request, tick);
+		rpc::Frame response = dispatch(id, request, time.global_tick);
 		if ((request.flags & RPC_FLAG_NON_CON) != 0) {
 			return {};
 		}
@@ -804,7 +805,8 @@ namespace platform {
 
 	bool Manager::is_paused(module::ModuleId id, uint64_t tick) const {
 		const Runtime* runtime = find(id);
-		return runtime != nullptr && runtime->lifecycle == Lifecycle::PAUSED && tick < runtime->paused_until_tick;
+		return runtime != nullptr && runtime->lifecycle == Lifecycle::PAUSED &&
+			   tick < runtime->paused_until_global_tick;
 	}
 
 	bool Manager::is_activated(module::ModuleId id) const {

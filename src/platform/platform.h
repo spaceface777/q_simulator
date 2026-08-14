@@ -44,13 +44,14 @@ namespace platform {
 	// holding four messages, so the byte budget can bite before the frame count does.
 	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = childsync::MAX_FRAMES_PER_TICK;
 
-	// The window rate limits are measured over. Capacities are quoted per simulated second.
+	// Rate limits are application-facing, so this window counts module-local executed ticks.
 	inline constexpr uint64_t RATE_LIMIT_WINDOW_TICKS = 1000;
 
-	// How long a paused application is withheld its ticks.
+	// Forced pauses and heartbeat supervision belong to the external platform and use global time.
+	// A pause cannot use module-local time because the paused module is deliberately granted no ticks.
 	inline constexpr uint64_t PAUSE_DURATION_TICKS = 1000;
 
-	// Heartbeat supervision, in ticks of simulated time.
+	// Heartbeat supervision, in global physical ticks.
 	inline constexpr uint64_t ACTIVATION_DEADLINE_TICKS = 10000;
 	inline constexpr uint64_t HEARTBEAT_WARNING_TICKS   = 500;
 	inline constexpr uint64_t HEARTBEAT_FAILURE_TICKS   = 2000;
@@ -83,6 +84,13 @@ namespace platform {
 		int              limit = 0;
 	};
 
+	// A request crosses two clock domains: physical/network effects use the shared global tick,
+	// while per-application service delays and rate limits use only ticks that module executed.
+	struct ModuleTime {
+		uint64_t global_tick = 0;
+		uint64_t local_tick  = 0;
+	};
+
 	// The bucket's name, for diagnostics and traces.
 	[[nodiscard]] std::string to_string(Bucket bucket);
 
@@ -91,22 +99,22 @@ namespace platform {
 
 	// Per-application state the platform owns. None of it lives in the child.
 	struct Runtime {
-		bool                     present           = false;
-		uint32_t                 subscriptions     = 0;
-		bool                     heartbeat_seen    = false;
-		Lifecycle                lifecycle         = Lifecycle::ACTIVATING;
-		uint64_t                 paused_until_tick = 0;
+		bool                     present                  = false;
+		uint32_t                 subscriptions            = 0;
+		bool                     heartbeat_seen           = false;
+		Lifecycle                lifecycle                = Lifecycle::ACTIVATING;
+		uint64_t                 paused_until_global_tick = 0;
 		std::vector<std::string> logs;
 		std::vector<std::string> panics;
 
-		// One sliding window of request ticks per bucket, and the tick each bucket last warned
+		// One sliding window of module-local request ticks per bucket, and the local tick last warned
 		// at, so that a sustained overload warns once rather than every request.
 		std::array<std::deque<uint64_t>, static_cast<std::size_t>(Bucket::COUNT)> bucket_samples;
 		std::array<uint64_t, static_cast<std::size_t>(Bucket::COUNT)>             bucket_warned_tick{};
 		std::array<bool, static_cast<std::size_t>(Bucket::COUNT)>                 bucket_has_warned{};
 
-		uint64_t    last_heartbeat_tick = 0;
-		bool        heartbeat_warned    = false;
+		uint64_t    last_heartbeat_global_tick = 0;
+		bool        heartbeat_warned           = false;
 		std::string stop_reason;
 
 		// Edge detection state. Events report transitions, so the platform remembers what the
@@ -137,9 +145,9 @@ namespace platform {
 
 		std::vector<Diagnostic> diagnostics_;
 
-		[[nodiscard]] rpc::Frame dispatch(module::ModuleId id, const rpc::Frame& request, uint64_t tick);
+		[[nodiscard]] rpc::Frame dispatch(module::ModuleId id, const rpc::Frame& request, uint64_t global_tick);
 
-		[[nodiscard]] bool charge(module::ModuleId id, uint8_t cmd, uint64_t tick);
+		[[nodiscard]] bool charge(module::ModuleId id, uint8_t cmd, ModuleTime time);
 
 		void publish(module::ModuleId id, uint32_t event, std::vector<uint8_t> payload);
 
@@ -156,7 +164,7 @@ namespace platform {
 
 		// Returns the response to send, or nothing when the request was non-confirmable.
 		[[nodiscard]] std::optional<rpc::Frame> handle_request(module::ModuleId id, const rpc::Frame& request,
-															   uint64_t tick = 0);
+															   ModuleTime time = {});
 
 		void prepare_tick(uint64_t tick);
 

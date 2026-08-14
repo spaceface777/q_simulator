@@ -24,11 +24,11 @@ namespace {
 			}
 			last_seen = childsync::load_acquire(control.generation);
 
-			if (control.active[id] != 0) {
-				// Prove the tick fields and the inbound mailbox landed before the wake.
+			if (control.active_mask[id] != 0) {
+				// Prove the grant fields and the inbound mailbox landed before the wake.
 				std::size_t    length  = 0;
 				const uint8_t* inbound = childsync::mailbox_read(segment.to_child[0], 0, length);
-				if (inbound == nullptr || length != 1 || inbound[0] != static_cast<uint8_t>(control.tick_index[id])) {
+				if (inbound == nullptr || length != 1) {
 					::_exit(2);
 				}
 
@@ -80,8 +80,7 @@ namespace {
 
 		for (uint32_t tick = 1; tick <= TICKS; tick++) {
 			for (uint8_t id = 0; id < CHILDREN; id++) {
-				control.tick_index[id] = tick;
-				control.active[id]     = 1;
+				control.active_mask[id] = 1;
 				childsync::mailbox_clear(segments[id].get().to_child[0]);
 				const uint8_t stamp = static_cast<uint8_t>(tick);
 				ASSERT_EQ(childsync::mailbox_append(segments[id].get().to_child[0], &stamp, 1),
@@ -130,12 +129,11 @@ namespace {
 
 		uint32_t granted = 0;
 		for (uint32_t generation = 1; generation <= GENERATIONS; generation++) {
-			const bool paused = (generation % 3) == 0;
-			control.active[0] = paused ? 0 : 1;
+			const bool paused      = (generation % 3) == 0;
+			control.active_mask[0] = paused ? 0 : 1;
 
 			if (!paused) {
 				granted++;
-				control.tick_index[0] = granted;
 				childsync::mailbox_clear(segment.get().to_child[0]);
 				const uint8_t stamp = static_cast<uint8_t>(granted);
 				ASSERT_EQ(childsync::mailbox_append(segment.get().to_child[0], &stamp, 1),

@@ -40,12 +40,14 @@ namespace {
 			}
 		}
 
-		int16_t call(uint8_t cmd, uint64_t tick) {
+		int16_t call(uint8_t cmd, uint64_t tick) { return call(cmd, platform::ModuleTime{tick, tick}); }
+
+		int16_t call(uint8_t cmd, platform::ModuleTime time) {
 			rpc::Frame frame;
 			frame.type                               = MT_REQ;
 			frame.cmd                                = cmd;
 			frame.call_id                            = 1;
-			const std::optional<rpc::Frame> response = manager->handle_request(module::ModuleId{MODULE}, frame, tick);
+			const std::optional<rpc::Frame> response = manager->handle_request(module::ModuleId{MODULE}, frame, time);
 			return response ? response->status : platform::STATUS_OK;
 		}
 
@@ -91,6 +93,16 @@ TEST_F(OverloadTest, TheWindowSlidesSoASustainedRateBelowTheLimitIsNeverRefused)
 		EXPECT_EQ(call(CMD_LASER_LEFT_GET, 1 + (index * spacing)), platform::STATUS_OK)
 			<< "refused at request " << index;
 	}
+}
+
+TEST_F(OverloadTest, GlobalTimeDoesNotAgeRequestsOutOfAModuleLocalRateWindow) {
+	const int limit = platform::capacity_of(platform::Bucket::LASER);
+
+	for (int index = 0; index < limit - 1; index++) {
+		EXPECT_EQ(call(CMD_LASER_LEFT_GET, platform::ModuleTime{static_cast<uint64_t>(index) * 10'000, 1}),
+				  platform::STATUS_OK);
+	}
+	EXPECT_EQ(call(CMD_LASER_LEFT_GET, platform::ModuleTime{1'000'000, 1}), platform::STATUS_TRY_AGAIN);
 }
 
 TEST_F(OverloadTest, EscalatesFromWarningToPauseToStop) {
@@ -167,10 +179,11 @@ TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {
 	}
 
 	rpc::Frame frame;
-	frame.type                               = MT_REQ;
-	frame.cmd                                = CMD_SERVO_ANGLE_SET;
-	frame.payload                            = {0, 0, 0x34, 0x43}; // 180 degrees
-	const std::optional<rpc::Frame> response = manager->handle_request(module::ModuleId{MODULE}, frame, 1);
+	frame.type    = MT_REQ;
+	frame.cmd     = CMD_SERVO_ANGLE_SET;
+	frame.payload = {0, 0, 0x34, 0x43}; // 180 degrees
+	const std::optional<rpc::Frame> response =
+		manager->handle_request(module::ModuleId{MODULE}, frame, platform::ModuleTime{1, 1});
 
 	ASSERT_TRUE(response.has_value());
 	ASSERT_EQ(response->status, platform::STATUS_TRY_AGAIN);

@@ -45,7 +45,9 @@ module_clock_drift_sd_ppm = 100.0
 # Each module samples one fixed probability that its local clock misses a global millisecond.
 # 1000 ppm = 0.1%; the default per-module distribution is N(0.1%, 0.01%), clamped to [0, 100%].
 # A missed tick remains visible to the physical world and LTL monitor, but local uptime, timers,
-# and code execution on that module do not advance.
+# code execution, RPC service delays, and rate-limit windows on that module do not advance. Scenario
+# events, physical motion, network transit, external supervision, and metric LTLf intervals remain
+# on the shared global clock. A ready event or response waits for the module's next executed tick.
 module_tick_skip_mean_ppm = 1000.0
 module_tick_skip_sd_ppm = 100.0
 

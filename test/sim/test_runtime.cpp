@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -57,6 +58,7 @@ namespace {
 			::unsetenv("FAKE_CHILD_EXIT_AFTER");
 			::unsetenv("FAKE_CHILD_QUERY_TICK");
 			::unsetenv("FAKE_CHILD_RECORD");
+			::unsetenv("FAKE_CHILD_GRANT_RECORD");
 			::unsetenv("FAKE_CHILD_MUTANT");
 			::unsetenv("FAKE_CHILD_REPLY_TO_MESSAGE");
 		}
@@ -143,6 +145,8 @@ prop global_time_still_reaches_the_end at 3ms = true;
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start(3));
 	EXPECT_EQ(runtime.tick(), 4u);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{FIRST}), 0u);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{SECOND}), 0u);
 	EXPECT_FALSE(runtime.platform().is_activated(module::ModuleId{FIRST}));
 	const auto results = runtime.property_results();
 	ASSERT_EQ(results.size(), 2u);
@@ -217,11 +221,179 @@ TEST_F(RuntimeTest, ReplaysEveryTickOfABatch) {
 	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 3);
 	ASSERT_NO_THROW(runtime.start());
 
-	const uint64_t started = runtime.tick();
+	const uint64_t started        = runtime.tick();
+	const uint64_t first_started  = runtime.module_tick(module::ModuleId{FIRST});
+	const uint64_t second_started = runtime.module_tick(module::ModuleId{SECOND});
 	runtime.advance(std::chrono::milliseconds(300), 1.0, std::chrono::seconds(5));
 	EXPECT_EQ(runtime.tick() - started, 300u);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{FIRST}) - first_started, 300u);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{SECOND}) - second_started, 300u);
 
 	runtime.stop();
+}
+
+TEST_F(RuntimeTest, GrantsMultipleTicksInOneBarrierWhenClockSkipsAreDisabled) {
+	const fs::path record = fs::temp_directory_path() / ("quercus_batch_grants_" + std::to_string(::getpid()));
+	fs::remove(record);
+	::setenv("FAKE_CHILD_GRANT_RECORD", record.c_str(), 1);
+
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 3);
+	ASSERT_NO_THROW(runtime.start());
+	fs::remove(record);
+	runtime.advance(std::chrono::milliseconds(3), 1.0, std::chrono::seconds(5));
+	runtime.stop();
+
+	std::ifstream file(record);
+	std::string   grant;
+	ASSERT_TRUE(std::getline(file, grant));
+	EXPECT_EQ(grant, "3:7");
+	EXPECT_FALSE(std::getline(file, grant));
+	fs::remove(record);
+}
+
+TEST_F(RuntimeTest, UsesRequestedBatchWhenClockSkipsAreEnabled) {
+	settings::set_setting("module_tick_skip_mean_ppm", 500'000.0);
+	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
+	const fs::path trace_path =
+		fs::temp_directory_path() / ("quercus_effective_batch_" + std::to_string(::getpid()) + ".ndjson");
+	const fs::path grant_path = fs::temp_directory_path() / ("quercus_skip_batch_grants_" + std::to_string(::getpid()));
+	fs::remove(trace_path);
+	fs::remove(grant_path);
+	::setenv("FAKE_CHILD_GRANT_RECORD", grant_path.c_str(), 1);
+
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 5);
+	runtime.trace_to(trace_path.string(), {});
+	testing::internal::CaptureStderr();
+	ASSERT_NO_THROW(runtime.start());
+	const std::string warning = testing::internal::GetCapturedStderr();
+	fs::remove(grant_path);
+	runtime.advance(std::chrono::milliseconds(5), 1.0, std::chrono::seconds(5));
+	runtime.stop();
+
+	std::ifstream      input(trace_path);
+	std::ostringstream trace;
+	trace << input.rdbuf();
+	fs::remove(trace_path);
+	EXPECT_EQ(warning.find("effective tick batch is 1"), std::string::npos);
+	EXPECT_NE(trace.str().find("\"tick_batch_requested\":5,\"tick_batch_effective\":5"), std::string::npos);
+	EXPECT_NE(trace.str().find("\"type\":\"module_tick_skipped\""), std::string::npos);
+
+	std::ifstream grant_input(grant_path);
+	std::string   grant;
+	ASSERT_TRUE(std::getline(grant_input, grant));
+	EXPECT_EQ(grant.substr(0, 2), "5:");
+	EXPECT_NE(grant, "5:31");
+	fs::remove(grant_path);
+}
+
+TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossBatchSizes) {
+	settings::set_setting("module_tick_skip_mean_ppm", 300'000.0);
+	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
+	settings::set_setting("module_clock_drift_sd_ppm", 137.0);
+	::setenv("FAKE_CHILD_HEARTBEAT_EVERY", "4294967295", 1);
+
+	const auto execute = [](uint32_t batch) {
+		const fs::path path = fs::temp_directory_path() / ("quercus_skip_trace_" + std::to_string(::getpid()) + "_" +
+														   std::to_string(batch) + ".ndjson");
+		fs::remove(path);
+		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch);
+		runtime.start();
+		// Begin after activation so the comparison isolates skipped-tick batching from the documented
+		// batch-boundary delay of responses to startup heartbeats.
+		runtime.trace_to(path.string(), {});
+		const uint64_t before = runtime.tick();
+		runtime.advance(std::chrono::milliseconds(300), 1.0, std::chrono::seconds(10));
+		EXPECT_EQ(runtime.tick() - before, 300u);
+		runtime.stop();
+
+		std::ifstream      input(path);
+		std::ostringstream trace;
+		trace << input.rdbuf();
+		fs::remove(path);
+		const std::string complete  = trace.str();
+		const std::size_t first_end = complete.find('\n');
+		EXPECT_NE(first_end, std::string::npos);
+		return first_end == std::string::npos ? std::string{} : complete.substr(first_end + 1);
+	};
+
+	const std::string strict   = execute(1);
+	const std::string batch_5  = execute(5);
+	const std::string batch_15 = execute(15);
+	EXPECT_FALSE(strict.empty());
+	EXPECT_EQ(batch_5, strict);
+	EXPECT_EQ(batch_15, strict);
+}
+
+TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
+	settings::set_setting("module_tick_skip_mean_ppm", 900'000.0);
+	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
+	::setenv("FAKE_CHILD_QUERY_TICK", "2", 1);
+
+	const fs::path trace_path =
+		fs::temp_directory_path() / ("quercus_local_rpc_delay_" + std::to_string(::getpid()) + ".ndjson");
+	fs::remove(trace_path);
+	sim::Runtime runtime(7);
+	runtime.trace_to(trace_path.string(), {});
+	ASSERT_NO_THROW(runtime.start());
+	runtime.advance(std::chrono::milliseconds(1000), 1.0, std::chrono::seconds(10));
+	runtime.stop();
+
+	std::ifstream           trace(trace_path);
+	std::string             line;
+	std::optional<uint64_t> request_tick;
+	std::optional<uint64_t> response_tick;
+	const auto              read_tick = [](const std::string& record) {
+		const std::string marker = "\"tick\":";
+		const std::size_t begin  = record.find(marker);
+		return std::stoull(record.substr(begin + marker.size()));
+	};
+	while (std::getline(trace, line)) {
+		if (line.find("\"type\":\"rpc_request\"") != std::string::npos &&
+			line.find("\"module\":1,\"cmd\":" + std::to_string(CMD_LASER_LEFT_GET)) != std::string::npos) {
+			request_tick = read_tick(line);
+		}
+		if (line.find("\"type\":\"rpc_response\"") != std::string::npos &&
+			line.find("\"module\":1,\"cmd\":" + std::to_string(CMD_LASER_LEFT_GET)) != std::string::npos) {
+			response_tick = read_tick(line);
+		}
+	}
+	fs::remove(trace_path);
+	ASSERT_TRUE(request_tick.has_value());
+	ASSERT_TRUE(response_tick.has_value());
+	EXPECT_GT(*response_tick, *request_tick + sim::RPC_RX_DELAY_LOCAL_TICKS + sim::RPC_TX_DELAY_LOCAL_TICKS)
+		<< "90% skipped module ticks must stretch local RPC service delays in global time";
+}
+
+TEST_F(RuntimeTest, LargerBatchesReduceLockstepRuntimeByAtLeastTwentyPercentEach) {
+	settings::set_setting("module_tick_skip_mean_ppm", 1000.0);
+	settings::set_setting("module_tick_skip_sd_ppm", 100.0);
+	settings::set_setting("module_clock_drift_sd_ppm", 100.0);
+	::setenv("FAKE_CHILD_HEARTBEAT_EVERY", "100", 1);
+
+	const auto measure = [](uint32_t batch) {
+		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch);
+		runtime.start();
+		runtime.advance(std::chrono::milliseconds(300), 1.0, std::chrono::seconds(10));
+		const uint64_t before_tick = runtime.tick();
+		const auto     before_time = std::chrono::steady_clock::now();
+		runtime.advance(std::chrono::milliseconds(6000), 1.0, std::chrono::seconds(30));
+		const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - before_time).count();
+		EXPECT_EQ(runtime.tick() - before_tick, 6000u);
+		runtime.stop();
+		return elapsed;
+	};
+	const auto fastest_of_three = [&measure](uint32_t batch) {
+		return std::min({measure(batch), measure(batch), measure(batch)});
+	};
+
+	const double strict   = fastest_of_three(1);
+	const double batch_5  = fastest_of_three(5);
+	const double batch_15 = fastest_of_three(15);
+	RecordProperty("batch_1_seconds", strict);
+	RecordProperty("batch_5_seconds", batch_5);
+	RecordProperty("batch_15_seconds", batch_15);
+	EXPECT_LT(batch_5, strict * 0.8) << "1x=" << strict << "s, 5x=" << batch_5 << "s";
+	EXPECT_LT(batch_15, batch_5 * 0.8) << "5x=" << batch_5 << "s, 15x=" << batch_15 << "s";
 }
 
 TEST_F(RuntimeTest, RetainsTheLastInboundSlotAcrossAdvanceCalls) {
@@ -675,15 +847,16 @@ prop every_delivered_response_is_correlated_and_successful =
 	fs::remove(trace_path);
 	const std::string records = trace.str();
 
-	// Slot two of [0..2] is the exact request tick. Its response is staged during the following
-	// replay and becomes observable at tick six, immediately before slot one is consumed at seven.
+	// The request is replayed at tick two. Its response becomes ready while the parent replays the
+	// rest of that child grant, is observed at the tick-four boundary, and is consumed on the child's
+	// first executable tick in the following window.
 	const std::string request =
 		"\"type\":\"rpc_request\",\"tick\":2,\"id\":3,\"module\":1,\"cmd\":" + std::to_string(CMD_LASER_LEFT_GET);
 	const std::string response =
-		"\"type\":\"rpc_response\",\"tick\":6,\"id\":3,\"request_id\":3,\"module\":1,\"cmd\":" +
+		"\"type\":\"rpc_response\",\"tick\":4,\"id\":3,\"request_id\":3,\"module\":1,\"cmd\":" +
 		std::to_string(CMD_LASER_LEFT_GET);
 	EXPECT_NE(records.find(request), std::string::npos);
-	EXPECT_NE(records.find(response), std::string::npos);
+	EXPECT_NE(records.find(response), std::string::npos) << records;
 }
 
 TEST_F(RuntimeTest, MessageDeliveryProducesThePayloadCheckedReplyOnExactlyTheNextTick) {
