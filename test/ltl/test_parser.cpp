@@ -402,6 +402,15 @@ prop edges = appeared(t) || disappeared(t) || entered(t, m.entry) || left(t, m.e
 )"));
 }
 
+TEST(LtlChecker, RejectsChangedOnRpcRecordMembers) {
+	const std::string error = error_from(R"(
+prop p = forall request in rpc_requests(module(1)):
+    changed(request.cmd);
+)");
+
+	EXPECT_NE(error.find("changed expects a module output field"), std::string::npos);
+}
+
 TEST(LtlChecker, RejectsDuplicateDeclarations) {
 	const std::string error = error_from("let item = tub(1); prop item = present(item);");
 

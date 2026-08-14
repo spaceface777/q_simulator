@@ -140,7 +140,9 @@ namespace ltl {
 						error(field.span, "changed expects a module output field");
 					}
 					const ValueType type = check(field);
-					if (type == ValueType::POSITION) error(field.span, "changed expects a module output field");
+					if (field.base->type != ValueType::MODULE || type == ValueType::POSITION) {
+						error(field.span, "changed expects a module output field");
+					}
 				} else {
 					error(value.span, "unknown function '" + value.text + "'");
 				}
