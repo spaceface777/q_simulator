@@ -7,8 +7,10 @@
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 
 #include "../module/module.h"
+#include "../seed/seed.h"
 #include "../settings.h"
 #include "../world/world.h"
 
@@ -215,6 +217,15 @@ namespace platform {
 			return neighbor ? neighbor->raw() : 0;
 		}
 
+		// Box-Muller over a dedicated deterministic seed stream. The simulator resolves hardware
+		// event latency to whole millisecond ticks, so the final sample is rounded at the boundary.
+		double standard_normal(seed::SplitMix64& stream) {
+			const double scale  = 1.0 / 9007199254740992.0;
+			const double first  = std::max(static_cast<double>(stream.next() >> 11) * scale, 1e-12);
+			const double second = static_cast<double>(stream.next() >> 11) * scale;
+			return std::sqrt(-2.0 * std::log(first)) * std::cos(2.0 * M_PI * second);
+		}
+
 	} // namespace
 
 	std::string to_string(Bucket bucket) {
@@ -271,7 +282,10 @@ namespace platform {
 	Manager::Manager(world::State& world)
 		: network_(static_cast<uint64_t>(settings::get_setting<int>("seed")), net::config_from_settings()),
 		  log_network_(static_cast<uint64_t>(settings::get_setting<int>("seed")), log_channel_config()),
-		  world_(&world) {
+		  master_seed_(static_cast<uint64_t>(settings::get_setting<int>("seed"))),
+		  laser_event_extra_delay_ms_(static_cast<uint64_t>(settings::get_setting<int>("laser_event_extra_delay_ms"))),
+		  rfid_event_delay_mean_ms_(settings::get_setting<double>("rfid_event_extra_delay_mean_ms")),
+		  rfid_event_delay_sd_ms_(settings::get_setting<double>("rfid_event_extra_delay_sd_ms")), world_(&world) {
 		for (const module::ModuleId id : settings::get_active_modules()) {
 			add_module(id);
 		}
@@ -502,6 +516,47 @@ namespace platform {
 		runtime->outbound.push_back(std::move(frame));
 	}
 
+	void Manager::schedule_hardware_event(uint64_t tick, module::ModuleId id, uint32_t event,
+										  std::vector<uint8_t> payload, uint64_t delay_ms) {
+		Runtime* runtime = find(id);
+		if (runtime == nullptr || (runtime->subscriptions & event) == 0) {
+			return;
+		}
+
+		rpc::Frame frame;
+		frame.type    = MT_EVENT;
+		frame.cmd     = static_cast<uint8_t>(event);
+		frame.payload = std::move(payload);
+		pending_hardware_events_.push_back(
+			PendingHardwareEvent{tick + delay_ms, next_hardware_event_ordinal_++, id, std::move(frame)});
+	}
+
+	uint64_t Manager::sample_rfid_event_delay_ms(module::ModuleId id) {
+		const auto       key  = std::make_pair(id.raw(), static_cast<uint32_t>(EVENT_RFID_DETECT));
+		const uint64_t   draw = hardware_event_draw_ordinals_[key]++;
+		seed::SplitMix64 stream(seed::derive(master_seed_, "hardware-event-delay/" + std::to_string(id.raw()) + "/" +
+															   std::to_string(EVENT_RFID_DETECT) + "/" +
+															   std::to_string(draw)));
+		const double     sampled = rfid_event_delay_mean_ms_ + rfid_event_delay_sd_ms_ * standard_normal(stream);
+		return static_cast<uint64_t>(std::max<int64_t>(0, std::llround(sampled)));
+	}
+
+	void Manager::deliver_hardware_events(uint64_t tick) {
+		std::stable_sort(pending_hardware_events_.begin(), pending_hardware_events_.end(),
+						 [](const PendingHardwareEvent& left, const PendingHardwareEvent& right) {
+							 return std::tie(left.due_tick, left.ordinal) < std::tie(right.due_tick, right.ordinal);
+						 });
+
+		auto first_pending = pending_hardware_events_.begin();
+		while (first_pending != pending_hardware_events_.end() && first_pending->due_tick <= tick) {
+			if (Runtime* runtime = find(first_pending->module)) {
+				runtime->outbound.push_back(std::move(first_pending->frame));
+			}
+			first_pending++;
+		}
+		pending_hardware_events_.erase(pending_hardware_events_.begin(), first_pending);
+	}
+
 	bool Manager::enqueue_packet(uint64_t tick, module::ModuleId sender, const rpc::Frame& request, bool broadcast) {
 		if (find(sender) == nullptr) {
 			return false;
@@ -543,8 +598,10 @@ namespace platform {
 			const bool left_clear  = module->is_laser_clear(true);
 			const bool right_clear = module->is_laser_clear(false);
 
-			if (!left_clear && runtime.last_left_clear) publish(id, EVENT_LASER_LEFT_DETECT, {});
-			if (!right_clear && runtime.last_right_clear) publish(id, EVENT_LASER_RIGHT_DETECT, {});
+			if (!left_clear && runtime.last_left_clear)
+				schedule_hardware_event(tick, id, EVENT_LASER_LEFT_DETECT, {}, laser_event_extra_delay_ms_);
+			if (!right_clear && runtime.last_right_clear)
+				schedule_hardware_event(tick, id, EVENT_LASER_RIGHT_DETECT, {}, laser_event_extra_delay_ms_);
 
 			runtime.last_left_clear  = left_clear;
 			runtime.last_right_clear = right_clear;
@@ -556,10 +613,12 @@ namespace platform {
 				runtime.last_rfid_uid = uid_payload;
 				// Only an arriving tag is worth an event; a departing one is observed by polling.
 				if (!uid_payload.empty()) {
-					publish(id, EVENT_RFID_DETECT, uid_payload);
+					schedule_hardware_event(tick, id, EVENT_RFID_DETECT, uid_payload, sample_rfid_event_delay_ms(id));
 				}
 			}
 		}
+
+		deliver_hardware_events(tick);
 
 		for (net::Delivery& delivery : network_.deliver_due(tick)) {
 			publish(delivery.recipient, EVENT_MESSAGE_RECEIVED, std::move(delivery.payload));

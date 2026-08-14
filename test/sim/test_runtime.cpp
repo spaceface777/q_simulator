@@ -58,6 +58,7 @@ namespace {
 			::unsetenv("FAKE_CHILD_EXIT_AFTER");
 			::unsetenv("FAKE_CHILD_QUERY_TICK");
 			::unsetenv("FAKE_CHILD_RECORD");
+			::unsetenv("FAKE_CHILD_RECORD_TICKS");
 			::unsetenv("FAKE_CHILD_GRANT_RECORD");
 			::unsetenv("FAKE_CHILD_MUTANT");
 			::unsetenv("FAKE_CHILD_REPLY_TO_MESSAGE");
@@ -512,6 +513,56 @@ prop never_delivers_duplicate_rfid_events_on_one_tick =
 		}
 	}
 	EXPECT_TRUE(saw_event);
+
+	fs::remove(record);
+}
+
+TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
+	const fs::path record = fs::temp_directory_path() / ("quercus_hardware_event_ticks_" + std::to_string(::getpid()));
+	fs::remove(record);
+	::setenv("FAKE_CHILD_SUBSCRIBE", std::to_string(EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT).c_str(), 1);
+	::setenv("FAKE_CHILD_RECORD", record.c_str(), 1);
+	::setenv("FAKE_CHILD_RECORD_TICKS", "1", 1);
+	settings::set_setting("laser_event_extra_delay_ms", 3);
+	settings::set_setting("rfid_event_extra_delay_mean_ms", 35.0);
+	settings::set_setting("rfid_event_extra_delay_sd_ms", 0.0);
+
+	events::Schedule   schedule;
+	events::TubArrival laser;
+	laser.tick     = 10;
+	laser.id       = 4;
+	laser.module   = module::ModuleId{FIRST};
+	laser.position = world::Position::LEFT_LASER;
+	schedule.tubs.push_back(laser);
+
+	events::TubArrival rfid;
+	rfid.tick   = 20;
+	rfid.id     = 5;
+	rfid.module = module::ModuleId{FIRST};
+	rfid.uid    = {1, 2, 3, 4, 5, 6, 7};
+	schedule.tubs.push_back(rfid);
+
+	sim::Runtime runtime(7);
+	runtime.load(schedule);
+	ASSERT_NO_THROW(runtime.start());
+	runtime.world().module(module::ModuleId{FIRST})->set_left_laser_enabled(true);
+	runtime.advance(std::chrono::milliseconds(64), 1.0, std::chrono::seconds(5));
+	runtime.stop();
+
+	std::ifstream file(record);
+	std::string   line;
+	bool          saw_laser_at_14 = false;
+	bool          saw_rfid_at_56  = false;
+	while (std::getline(file, line)) {
+		if (line == "14:" + std::to_string(MT_EVENT) + ":" + std::to_string(EVENT_LASER_LEFT_DETECT)) {
+			saw_laser_at_14 = true;
+		}
+		if (line == "56:" + std::to_string(MT_EVENT) + ":" + std::to_string(EVENT_RFID_DETECT)) {
+			saw_rfid_at_56 = true;
+		}
+	}
+	EXPECT_TRUE(saw_laser_at_14) << "3 ms laser latency plus the 1 ms handoff must total 4 ms";
+	EXPECT_TRUE(saw_rfid_at_56) << "35 ms RFID latency plus the 1 ms handoff must total 36 ms";
 
 	fs::remove(record);
 }

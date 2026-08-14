@@ -15,6 +15,13 @@ simulation_speed = 1.0
 # reproducing its seed.
 seed = 1
 
+# === Hardware event latency ===
+# Hardware events already cross the next 1 ms application handoff. These are added delays before
+# that handoff. RFID samples are deterministic for a run seed, rounded to whole ms, and clamped at 0.
+laser_event_extra_delay_ms = 3
+rfid_event_extra_delay_mean_ms = 35.0
+rfid_event_extra_delay_sd_ms = 5.0
+
 # === Network ===
 # The physical_nominal_v0.1 profile: every accepted packet leg independently draws a loss
 # outcome and, if delivered, a one-way delay from a fixed distribution fitted to the hardware.

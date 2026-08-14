@@ -26,11 +26,12 @@ namespace {
 		return static_cast<unsigned>(std::strtoul(value, nullptr, 0));
 	}
 
-	void record(const char* path, const rpc::Frame& frame) {
+	void record(const char* path, const rpc::Frame& frame, unsigned tick, bool include_tick) {
 		if (path == nullptr) {
 			return;
 		}
 		std::ofstream file(path, std::ios::app);
+		if (include_tick) file << tick << ":";
 		file << static_cast<unsigned>(frame.type) << ":" << static_cast<unsigned>(frame.cmd) << "\n";
 	}
 
@@ -111,6 +112,7 @@ int main() {
 	const unsigned    query_tick        = env_number("FAKE_CHILD_QUERY_TICK", UINT_MAX);
 	const bool        reply_to_message  = env_number("FAKE_CHILD_REPLY_TO_MESSAGE", 0) != 0 && id == 1;
 	const char*       record_path       = ::getenv("FAKE_CHILD_RECORD"); // File to append observed commands to.
+	const bool        record_ticks      = env_number("FAKE_CHILD_RECORD_TICKS", 0) != 0;
 	const char*       grant_record_path = ::getenv("FAKE_CHILD_GRANT_RECORD");
 	const std::string mutant            = ::getenv("FAKE_CHILD_MUTANT") == nullptr ? "" : ::getenv("FAKE_CHILD_MUTANT");
 
@@ -147,7 +149,7 @@ int main() {
 				for (const rpc::Frame& frame : take_inbound(pages.to_child[batch_index], corrupt)) {
 					// Anything inbound is queued for the application; here it is only recorded so
 					// that a test can assert what the child was told.
-					record(record_path, frame);
+					record(record_path, frame, ticks, record_ticks);
 					if (frame.type == MT_EVENT && frame.cmd == EVENT_MESSAGE_RECEIVED) message_received = true;
 				}
 				if (corrupt) return 3;

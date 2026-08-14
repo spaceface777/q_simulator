@@ -128,6 +128,13 @@ namespace platform {
 
 	class Manager {
 	private:
+		struct PendingHardwareEvent {
+			uint64_t         due_tick = 0;
+			uint64_t         ordinal  = 0;
+			module::ModuleId module;
+			rpc::Frame       frame;
+		};
+
 		// Keyed by module id rather than indexed by it, to avoid a fixed 256-entry table.
 		std::map<uint8_t, Runtime> runtimes_;
 
@@ -141,6 +148,14 @@ namespace platform {
 		// Logs and panic reports share this delivery model; each still draws its own outcome.
 		net::Model log_network_;
 
+		uint64_t                                         master_seed_                 = 0;
+		uint64_t                                         laser_event_extra_delay_ms_  = 0;
+		double                                           rfid_event_delay_mean_ms_    = 0.0;
+		double                                           rfid_event_delay_sd_ms_      = 0.0;
+		uint64_t                                         next_hardware_event_ordinal_ = 0;
+		std::map<std::pair<uint8_t, uint32_t>, uint64_t> hardware_event_draw_ordinals_;
+		std::vector<PendingHardwareEvent>                pending_hardware_events_;
+
 		world::State* world_ = nullptr;
 
 		std::vector<Diagnostic> diagnostics_;
@@ -150,6 +165,13 @@ namespace platform {
 		[[nodiscard]] bool charge(module::ModuleId id, uint8_t cmd, ModuleTime time);
 
 		void publish(module::ModuleId id, uint32_t event, std::vector<uint8_t> payload);
+
+		void schedule_hardware_event(uint64_t tick, module::ModuleId id, uint32_t event, std::vector<uint8_t> payload,
+									 uint64_t delay_ms);
+
+		[[nodiscard]] uint64_t sample_rfid_event_delay_ms(module::ModuleId id);
+
+		void deliver_hardware_events(uint64_t tick);
 
 		[[nodiscard]] bool enqueue_packet(uint64_t tick, module::ModuleId sender, const rpc::Frame& request,
 										  bool broadcast);

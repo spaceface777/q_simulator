@@ -150,6 +150,40 @@ scale = 1.0
 	EXPECT_DOUBLE_EQ(defaults.rfid_position_sd, settings::get_setting<double>("rfid_position_sd"));
 }
 
+TEST_F(SettingsTest, ParseSettingsUsesHardwareEventDelayDefaults) {
+	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	EXPECT_EQ(settings::get_setting<int>("laser_event_extra_delay_ms"), 3);
+	EXPECT_DOUBLE_EQ(settings::get_setting<double>("rfid_event_extra_delay_mean_ms"), 35.0);
+	EXPECT_DOUBLE_EQ(settings::get_setting<double>("rfid_event_extra_delay_sd_ms"), 5.0);
+}
+
+TEST_F(SettingsTest, ParseSettingsAcceptsHardwareEventDelayOverrides) {
+	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+				   R"(
+simulation_speed = 1.0
+scale = 1.0
+laser_event_extra_delay_ms = 8
+rfid_event_extra_delay_mean_ms = 42.5
+rfid_event_extra_delay_sd_ms = 1.25
+)");
+
+	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	EXPECT_EQ(settings::get_setting<int>("laser_event_extra_delay_ms"), 8);
+	EXPECT_DOUBLE_EQ(settings::get_setting<double>("rfid_event_extra_delay_mean_ms"), 42.5);
+	EXPECT_DOUBLE_EQ(settings::get_setting<double>("rfid_event_extra_delay_sd_ms"), 1.25);
+}
+
+TEST_F(SettingsTest, ParseSettingsRejectsNegativeHardwareEventDelay) {
+	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+				   R"(
+simulation_speed = 1.0
+scale = 1.0
+rfid_event_extra_delay_sd_ms = -1.0
+)");
+
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+}
+
 TEST_F(SettingsTest, ParseSettingsRejectsNegativeHardwarePositionStandardDeviation) {
 	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(

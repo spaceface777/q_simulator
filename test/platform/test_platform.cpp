@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -60,6 +62,9 @@ namespace {
 			settings::set_setting("network_very_late_ppm", 0);
 			settings::set_setting("network_very_late_delay_ms", 1100);
 			settings::set_setting("network_log_extra_delay_ms", 0);
+			settings::set_setting("laser_event_extra_delay_ms", 3);
+			settings::set_setting("rfid_event_extra_delay_mean_ms", 35.0);
+			settings::set_setting("rfid_event_extra_delay_sd_ms", 5.0);
 			settings::set_setting("seed", 1);
 
 			settings::ModuleSettings first{};
@@ -354,7 +359,7 @@ TEST_F(PlatformTest, PrintsApplicationDiagnosticsOnlyWhenTheirNetworkDeliveryArr
 					->handle_request(module::ModuleId{MODULE},
 									 request(CMD_LOG, {'f', 'i', 'r', 's', 't',  '\r', '\n', '\n', 's', 'e',
 													   'c', 'o', 'n', 'd', '\n', 't',  'h',  'i',  'r', 'd'}),
-									 sent_tick)
+									 platform::ModuleTime{sent_tick, sent_tick})
 					.has_value());
 
 	testing::internal::CaptureStdout();
@@ -371,7 +376,8 @@ TEST_F(PlatformTest, PrintsApplicationDiagnosticsOnlyWhenTheirNetworkDeliveryArr
 	const uint64_t panic_tick = 20;
 	ASSERT_TRUE(manager
 					->handle_request(module::ModuleId{TOWER_MODULE_ID},
-									 request(CMD_PANIC_REPORT, {'f', 'a', 't', 'a', 'l', '\n'}), panic_tick)
+									 request(CMD_PANIC_REPORT, {'f', 'a', 't', 'a', 'l', '\n'}),
+									 platform::ModuleTime{panic_tick, panic_tick})
 					.has_value());
 
 	testing::internal::CaptureStdout();
@@ -381,8 +387,10 @@ TEST_F(PlatformTest, PrintsApplicationDiagnosticsOnlyWhenTheirNetworkDeliveryArr
 	manager.reset();
 	settings::set_setting("network_packet_loss_ppm", 1'000'000);
 	manager = std::make_unique<platform::Manager>(world_);
-	ASSERT_TRUE(
-		manager->handle_request(module::ModuleId{MODULE}, request(CMD_LOG, {'d', 'r', 'o', 'p'}), 30).has_value());
+	ASSERT_TRUE(manager
+					->handle_request(module::ModuleId{MODULE}, request(CMD_LOG, {'d', 'r', 'o', 'p'}),
+									 platform::ModuleTime{30, 30})
+					.has_value());
 
 	testing::internal::CaptureStdout();
 	manager->advance(30 + net::Config{}.fixed_delay_ms + 1);
@@ -390,7 +398,7 @@ TEST_F(PlatformTest, PrintsApplicationDiagnosticsOnlyWhenTheirNetworkDeliveryArr
 	EXPECT_TRUE(manager->logs(module::ModuleId{MODULE}).empty());
 }
 
-TEST_F(PlatformTest, PublishesLaserEventsOnlyOnPositiveEdgeAndOnlyWhenSubscribed) {
+TEST_F(PlatformTest, PublishesLaserEventsAfterTheConfiguredExtraDelay) {
 	call(CMD_LASER_LEFT_SET, {1});
 
 	// Not subscribed yet, so the transition to a clear beam produces nothing.
@@ -405,33 +413,43 @@ TEST_F(PlatformTest, PublishesLaserEventsOnlyOnPositiveEdgeAndOnlyWhenSubscribed
 
 	hardware()->set_left_laser_blocked(true);
 	manager->advance(2);
+	EXPECT_TRUE(take_all().empty());
+	manager->advance(4);
+	EXPECT_TRUE(take_all().empty());
+	manager->advance(5);
 	std::vector<rpc::Frame> events = take_all();
 	ASSERT_EQ(events.size(), 1u);
 	EXPECT_EQ(events[0].type, MT_EVENT);
 	EXPECT_EQ(events[0].cmd, EVENT_LASER_LEFT_DETECT);
 
-	manager->advance(30);
-	EXPECT_TRUE(take_all().empty());
-
 	hardware()->set_left_laser_blocked(false);
-	manager->advance(4);
-	EXPECT_TRUE(take_all().empty());
-
-	manager->advance(30);
+	manager->advance(6);
 	EXPECT_TRUE(take_all().empty());
 
 	hardware()->set_left_laser_blocked(true);
-	manager->advance(30);
+	manager->advance(7);
+	EXPECT_TRUE(take_all().empty());
+	manager->advance(9);
+	EXPECT_TRUE(take_all().empty());
+	manager->advance(10);
 	ASSERT_EQ(take_all().size(), 1u);
 }
 
-TEST_F(PlatformTest, PublishesRfidDetectWithTheTagUid) {
+TEST_F(PlatformTest, PublishesRfidDetectAfterTheConfiguredSampledDelay) {
+	// Zero jitter makes the setting override's exact boundary directly observable.
+	settings::set_setting("rfid_event_extra_delay_mean_ms", 12.0);
+	settings::set_setting("rfid_event_extra_delay_sd_ms", 0.0);
+	manager = std::make_unique<platform::Manager>(world_);
 	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT});
 
 	RfidPayload data{};
 	hardware()->set_rfid_tag({1, 2, 3, 4, 5, 6, 7}, data);
 
 	manager->advance(0);
+	EXPECT_TRUE(take_all().empty());
+	manager->advance(11);
+	EXPECT_TRUE(take_all().empty());
+	manager->advance(12);
 	std::vector<rpc::Frame> events = take_all();
 	ASSERT_EQ(events.size(), 1u);
 	EXPECT_EQ(events[0].cmd, EVENT_RFID_DETECT);
@@ -439,8 +457,61 @@ TEST_F(PlatformTest, PublishesRfidDetectWithTheTagUid) {
 
 	// A tag leaving the reader is not an event; an application notices by asking.
 	hardware()->clear_rfid_tag();
-	manager->advance(1);
+	manager->advance(13);
 	EXPECT_TRUE(take_all().empty());
+}
+
+TEST_F(PlatformTest, ZeroConfiguredHardwareDelayPublishesInTheTriggerTick) {
+	settings::set_setting("laser_event_extra_delay_ms", 0);
+	manager = std::make_unique<platform::Manager>(world_);
+	call(CMD_LASER_LEFT_SET, {1});
+	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_LASER_LEFT_DETECT});
+	manager->advance(0);
+
+	hardware()->set_left_laser_blocked(true);
+	manager->advance(1);
+	const std::vector<rpc::Frame> events = take_all();
+	ASSERT_EQ(events.size(), 1u);
+	EXPECT_EQ(events[0].cmd, EVENT_LASER_LEFT_DETECT);
+}
+
+TEST_F(PlatformTest, RfidEventDelaySamplesTheConfiguredNormalDistribution) {
+	constexpr int SAMPLES = 1000;
+	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT});
+
+	std::map<int, uint64_t> triggered_at;
+	std::vector<double>     delays;
+	for (uint64_t tick = 0; tick < (2 * SAMPLES) + 100; tick++) {
+		if (tick < 2 * SAMPLES) {
+			if ((tick % 2) == 0) {
+				const int index = static_cast<int>(tick / 2);
+				RfidUid   uid{static_cast<uint8_t>(index >> 8), static_cast<uint8_t>(index), 0, 0, 0, 0, 1};
+				hardware()->set_rfid_tag(uid, {});
+				triggered_at.emplace(index, tick);
+			} else {
+				hardware()->clear_rfid_tag();
+			}
+		}
+
+		manager->advance(tick);
+		for (const rpc::Frame& event : take_all()) {
+			ASSERT_EQ(event.cmd, EVENT_RFID_DETECT);
+			ASSERT_EQ(event.payload.size(), 7u);
+			const int index = (static_cast<int>(event.payload[0]) << 8) | event.payload[1];
+			delays.push_back(static_cast<double>(tick - triggered_at.at(index)));
+		}
+	}
+
+	ASSERT_EQ(delays.size(), static_cast<std::size_t>(SAMPLES));
+	double mean = 0.0;
+	for (const double delay : delays) mean += delay;
+	mean /= static_cast<double>(delays.size());
+	double variance = 0.0;
+	for (const double delay : delays) variance += (delay - mean) * (delay - mean);
+	variance /= static_cast<double>(delays.size());
+
+	EXPECT_NEAR(mean, 35.0, 0.5);
+	EXPECT_NEAR(std::sqrt(variance), 5.0, 0.5);
 }
 
 TEST_F(PlatformTest, DeliversPacketsAsEventsAfterTheNetworkDelay) {

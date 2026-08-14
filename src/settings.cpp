@@ -186,6 +186,13 @@ namespace settings {
 		parse_optional_setting("network_very_late_delay_ms", 1100, [](int value) { return value >= 0; });
 		// -1 means: use the profile's delay distribution instead of a fixed delay.
 		parse_optional_setting("network_fixed_delay_ms", -1, [](int value) { return value >= -1 && value <= 10000; });
+		// Local hardware IRQ/RPC latency before the ordinary next-tick child handoff. RFID latency is
+		// sampled independently per arrival, rounded to whole milliseconds, and clamped at zero.
+		parse_optional_setting("laser_event_extra_delay_ms", 3, [](int value) { return value >= 0 && value <= 10000; });
+		parse_optional_setting("rfid_event_extra_delay_mean_ms", 35.0,
+							   [](double value) { return std::isfinite(value) && value >= 0.0 && value <= 10000.0; });
+		parse_optional_setting("rfid_event_extra_delay_sd_ms", 5.0,
+							   [](double value) { return std::isfinite(value) && value >= 0.0 && value <= 10000.0; });
 		// Wi-Fi deployment does not start every module at simulation tick zero. Each module samples
 		// an independent, deterministic non-negative delay. A zero standard deviation is useful for
 		// protocol unit scenarios without weakening the default physical model.
