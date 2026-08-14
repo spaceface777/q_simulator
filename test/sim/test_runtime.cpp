@@ -93,6 +93,34 @@ TEST_F(RuntimeTest, StartsApplicationsAndWaitsForThemToActivate) {
 	runtime.stop();
 }
 
+TEST_F(RuntimeTest, AppliesEarlyScenarioEventsWhileStartupSkewAdvancesTime) {
+	settings::set_setting("module_start_offset_mean_ms", 20.0);
+	settings::set_setting("module_start_offset_sd_ms", 0.0);
+
+	events::Schedule   schedule;
+	events::TubArrival tub;
+	tub.tick   = 1;
+	tub.id     = 4;
+	tub.module = module::ModuleId{FIRST};
+	schedule.tubs.push_back(tub);
+
+	sim::Runtime runtime(7);
+	runtime.load(schedule);
+	ASSERT_NO_THROW(runtime.start());
+	EXPECT_GT(runtime.tick(), tub.tick);
+	EXPECT_NE(runtime.world().tub(tub.id), nullptr);
+	runtime.stop();
+}
+
+TEST_F(RuntimeTest, RejectsScenariosLoadedAfterLogicalTimeStarts) {
+	sim::Runtime runtime(7);
+	ASSERT_NO_THROW(runtime.start());
+
+	events::Schedule schedule;
+	EXPECT_THROW(runtime.load(schedule), std::logic_error);
+	runtime.stop();
+}
+
 TEST_F(RuntimeTest, SkippedModuleTicksRemainVisibleToGlobalLtlTime) {
 	settings::set_setting("module_start_offset_mean_ms", 0.0);
 	settings::set_setting("module_start_offset_sd_ms", 0.0);
@@ -128,6 +156,34 @@ prop global_time_still_reaches_the_end at 3ms = true;
 	fs::remove(trace_path);
 	EXPECT_NE(trace.str().find("\"type\":\"module_tick_skipped\",\"tick\":0,\"module\":1"), std::string::npos);
 	EXPECT_NE(trace.str().find("\"type\":\"property_verdict\""), std::string::npos);
+}
+
+TEST_F(RuntimeTest, RecordsSampledModuleClockStateAndStartupActivity) {
+	settings::set_setting("module_start_offset_mean_ms", 4.0);
+	settings::set_setting("module_start_offset_sd_ms", 0.0);
+	settings::set_setting("module_clock_drift_sd_ppm", 0.0);
+	settings::set_setting("module_tick_skip_mean_ppm", 1'000'000.0);
+	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
+
+	const fs::path trace_path =
+		fs::temp_directory_path() / ("quercus_startup_trace_" + std::to_string(::getpid()) + ".ndjson");
+	fs::remove(trace_path);
+	sim::Runtime runtime(7);
+	runtime.trace_to(trace_path.string(), {});
+	ASSERT_NO_THROW(runtime.start(4));
+	runtime.stop();
+
+	std::ifstream      input(trace_path);
+	std::ostringstream trace;
+	trace << input.rdbuf();
+	fs::remove(trace_path);
+	EXPECT_NE(trace.str().find(
+				  "\"type\":\"module_clock\",\"module\":1,\"start_tick\":4,\"rate_ppm\":1000000,\"skip_ppm\":1000000"),
+			  std::string::npos);
+	EXPECT_NE(trace.str().find(
+				  "\"type\":\"module_clock\",\"module\":2,\"start_tick\":4,\"rate_ppm\":1000000,\"skip_ppm\":1000000"),
+			  std::string::npos);
+	EXPECT_NE(trace.str().find("\"type\":\"module_tick_skipped\",\"tick\":4,\"module\":1"), std::string::npos);
 }
 
 TEST_F(RuntimeTest, AdvancesSimulatedTimeInProportionToElapsedTime) {

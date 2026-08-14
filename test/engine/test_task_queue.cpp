@@ -161,3 +161,12 @@ TEST(TaskQueueTest, RunningATickWithNothingDueIsHarmless) {
 	EXPECT_NO_THROW(queue.run_tick(0));
 	EXPECT_TRUE(queue.empty());
 }
+
+TEST(TaskQueueTest, RejectsPastDueWorkInsteadOfBlockingLaterTasks) {
+	engine::Queue queue(1);
+	queue.schedule(1, engine::Priority::SCENARIO_EVENTS, "stale", [](engine::TaskContext&) {});
+	queue.schedule(3, engine::Priority::SCENARIO_EVENTS, "later", [](engine::TaskContext&) {});
+
+	EXPECT_THROW(queue.run_tick(2), std::logic_error);
+	EXPECT_EQ(queue.size(), 2u);
+}

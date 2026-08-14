@@ -277,6 +277,10 @@ namespace sim {
 	}
 
 	void Runtime::load(const events::Schedule& schedule) {
+		if (running_ || tick_ != 0) {
+			throw std::logic_error("Scenario events must be loaded before applications launch");
+		}
+
 		for (const events::TubArrival& tub : schedule.tubs) {
 			const uint8_t          id       = tub.id;
 			const module::ModuleId module   = tub.module;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 
 #include "../seed/seed.h"
 
@@ -56,8 +57,12 @@ namespace engine {
 	void Queue::run_tick(uint64_t tick) {
 		while (!buckets_.empty()) {
 			const TaskKey next = buckets_.begin()->first;
-			if (next.due_tick != tick) {
-				// Everything left is due later; the engine never schedules into the past.
+			if (next.due_tick < tick) {
+				throw std::logic_error("Task due at tick " + std::to_string(next.due_tick) + " cannot run at tick " +
+									   std::to_string(tick));
+			}
+			if (next.due_tick > tick) {
+				// Everything left is due later.
 				return;
 			}
 

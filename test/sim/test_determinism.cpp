@@ -69,10 +69,6 @@ namespace {
 			fs::remove(trace_path);
 
 			{
-				sim::Runtime runtime(seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, tick_batch);
-				runtime.start();
-				runtime.trace_to(trace_path.string(), {});
-
 				events::Schedule   schedule;
 				events::TubArrival tub;
 				tub.tick   = 0;
@@ -85,7 +81,11 @@ namespace {
 				later.id     = 2;
 				later.module = module::ModuleId{SECOND};
 				schedule.tubs.push_back(later);
+
+				sim::Runtime runtime(seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, tick_batch);
 				runtime.load(schedule);
+				runtime.trace_to(trace_path.string(), {});
+				runtime.start();
 
 				// Gives the run a trajectory: both belts running and a servo out of its dead zone.
 				for (const uint8_t id : {FIRST, SECOND}) {

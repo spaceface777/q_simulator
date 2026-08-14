@@ -145,10 +145,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
 	sim::Runtime runtime(master_seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, tick_batch);
 
 	try {
-		runtime.start();
+		runtime.load(schedule);
 		runtime.trace_to(settings::get_setting<std::string>("trace_path"),
 						 {"settings.toml", "layout.toml", "events.toml"});
-		runtime.load(schedule);
+		runtime.start();
 	} catch (const std::exception& ex) {
 		std::cerr << "Failed to start the simulation: " << ex.what() << std::endl;
 		return EXIT_FAILURE;
