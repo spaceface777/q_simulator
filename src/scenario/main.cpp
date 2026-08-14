@@ -244,7 +244,10 @@ int main(int argc, char const* argv[]) {
 			const uint64_t before        = runtime.tick();
 			const uint64_t ticks_left    = timeout_tick - before + 1;
 			const uint64_t slice_ticks   = static_cast<uint64_t>(SLICE.count() / sim::TICK_DURATION.count());
-			const uint64_t granted_ticks = std::min(ticks_left, slice_ticks);
+			uint64_t       granted_ticks = std::min(ticks_left, slice_ticks);
+			if (granted_ticks % options.tick_batch != 0) {
+				granted_ticks += options.tick_batch - (granted_ticks % options.tick_batch);
+			}
 			runtime.advance(std::chrono::microseconds(granted_ticks * sim::TICK_DURATION.count()), 1.0, CHILD_BUDGET);
 
 			// No progress means a wedged child; stop now or the run would spin without a timeout.

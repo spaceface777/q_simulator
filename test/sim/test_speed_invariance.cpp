@@ -130,9 +130,9 @@ namespace {
 		world::set_calibration_seed(seed);
 
 		sim::Runtime runtime(seed);
-		runtime.start();
-		runtime.trace_to(trace_path.string(), {});
 		runtime.load(schedule);
+		runtime.trace_to(trace_path.string(), {});
+		runtime.start();
 
 		constexpr std::chrono::milliseconds CHILD_BUDGET{5000};
 

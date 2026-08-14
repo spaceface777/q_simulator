@@ -282,6 +282,15 @@ TEST(LtlMonitor, StrongNextWithoutAModuleFollowsTheGlobalObservationTick) {
 			  (std::vector<ltl::Verdict>{ltl::Verdict::PENDING, ltl::Verdict::TRUE, ltl::Verdict::TRUE}));
 }
 
+TEST(LtlMonitor, MetricEventuallyKeepsAdvancingWhenItsModuleDoesNotStep) {
+	// Metric bounds describe shared physical time even when the atom names a module. The module's
+	// observable RFID input can change while its code and local clock are stopped.
+	const std::vector<Observation> trace   = {signals(false), signals(true)};
+	const std::vector<bool>        stepped = {true, false};
+	EXPECT_EQ(run_with_steps("eventually[1ms, 1ms] module(1).rfid_active", trace, stepped),
+			  (std::vector<ltl::Verdict>{ltl::Verdict::PENDING, ltl::Verdict::TRUE, ltl::Verdict::TRUE}));
+}
+
 TEST(LtlMonitor, StrongNextIsUnchangedWhenEveryObservationIsAStep) {
 	for (std::size_t length = 1; length <= 4; length++) {
 		const std::size_t combinations = std::size_t{1} << length;
