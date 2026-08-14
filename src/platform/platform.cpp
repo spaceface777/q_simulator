@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iostream>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
@@ -35,6 +36,33 @@ namespace platform {
 			tagged.push_back(kind);
 			tagged.insert(tagged.end(), payload.begin(), payload.end());
 			return tagged;
+		}
+
+		// Application logs arrive as already-formatted text. Prefix every physical output line at
+		// the delivery boundary so multiline records retain the same shape as the platform console.
+		void print_application_output(module::ModuleId id, const uint8_t* begin, const uint8_t* end) {
+			std::string source = id.raw() == TOWER_MODULE_ID ? "[ATC]" : "[Pico " + std::to_string(id.raw()) + "]";
+			source.resize(std::string_view{"[Pico 255]"}.size(), ' ');
+			const std::string prefix = source + " [application] ";
+
+			if (begin == end) {
+				std::cout << prefix << '\n';
+				std::cout.flush();
+				return;
+			}
+
+			const uint8_t* line = begin;
+			while (line != end) {
+				const uint8_t* newline = std::find(line, end, static_cast<uint8_t>('\n'));
+				std::cout << prefix;
+				const uint8_t* line_end = newline == end ? end : newline + 1;
+				std::cout.write(reinterpret_cast<const char*>(line), line_end - line);
+				if (newline == end) {
+					std::cout.put('\n');
+				}
+				line = line_end;
+			}
+			std::cout.flush();
 		}
 
 		// The commands the physical platform refuses on the tower, which owns no conveyor hardware.
@@ -548,6 +576,8 @@ namespace platform {
 			} else {
 				runtime->logs.emplace_back(delivery.payload.begin() + 1, delivery.payload.end());
 			}
+			print_application_output(delivery.recipient, delivery.payload.data() + 1,
+									 delivery.payload.data() + delivery.payload.size());
 		}
 	}
 

@@ -348,6 +348,48 @@ TEST_F(PlatformTest, RecordsApplicationDiagnostics) {
 	EXPECT_EQ(manager->panics(module::ModuleId{MODULE})[0], "bad");
 }
 
+TEST_F(PlatformTest, PrintsApplicationDiagnosticsOnlyWhenTheirNetworkDeliveryArrives) {
+	const uint64_t sent_tick = 10;
+	ASSERT_TRUE(manager
+					->handle_request(module::ModuleId{MODULE},
+									 request(CMD_LOG, {'f', 'i', 'r', 's', 't',  '\r', '\n', '\n', 's', 'e',
+													   'c', 'o', 'n', 'd', '\n', 't',  'h',  'i',  'r', 'd'}),
+									 sent_tick)
+					.has_value());
+
+	testing::internal::CaptureStdout();
+	manager->advance(sent_tick + net::Config{}.fixed_delay_ms - 1);
+	EXPECT_EQ(testing::internal::GetCapturedStdout(), "");
+
+	testing::internal::CaptureStdout();
+	manager->advance(sent_tick + net::Config{}.fixed_delay_ms);
+	EXPECT_EQ(testing::internal::GetCapturedStdout(), "[Pico 1]   [application] first\r\n"
+													  "[Pico 1]   [application] \n"
+													  "[Pico 1]   [application] second\n"
+													  "[Pico 1]   [application] third\n");
+
+	const uint64_t panic_tick = 20;
+	ASSERT_TRUE(manager
+					->handle_request(module::ModuleId{TOWER_MODULE_ID},
+									 request(CMD_PANIC_REPORT, {'f', 'a', 't', 'a', 'l', '\n'}), panic_tick)
+					.has_value());
+
+	testing::internal::CaptureStdout();
+	manager->advance(panic_tick + net::Config{}.fixed_delay_ms);
+	EXPECT_EQ(testing::internal::GetCapturedStdout(), "[ATC]      [application] fatal\n");
+
+	manager.reset();
+	settings::set_setting("network_packet_loss_ppm", 1'000'000);
+	manager = std::make_unique<platform::Manager>(world_);
+	ASSERT_TRUE(
+		manager->handle_request(module::ModuleId{MODULE}, request(CMD_LOG, {'d', 'r', 'o', 'p'}), 30).has_value());
+
+	testing::internal::CaptureStdout();
+	manager->advance(30 + net::Config{}.fixed_delay_ms + 1);
+	EXPECT_EQ(testing::internal::GetCapturedStdout(), "");
+	EXPECT_TRUE(manager->logs(module::ModuleId{MODULE}).empty());
+}
+
 TEST_F(PlatformTest, PublishesLaserEventsOnlyOnPositiveEdgeAndOnlyWhenSubscribed) {
 	call(CMD_LASER_LEFT_SET, {1});
 
