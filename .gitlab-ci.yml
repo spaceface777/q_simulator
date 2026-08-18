@@ -10,9 +10,9 @@ build:
     - cp settings_example.toml settings.toml
     - cp layout_example.toml layout.toml
     - cp events_example.toml events.toml
-    - (cd external/quercus_applets && ./quercus_sdk/qbuild sim)
     - cmake -B build -S . -G Ninja -DTESTING_CONSOLE_BUILD=ON
     - cmake --build build -j --target format-check
     - cmake --build build -j --target all
+    - (cd external/quercus_applets && ./quercus_sdk/qbuild sim)
     - ./build/tests --gtest_shuffle --gtest_repeat=10
     - RUN_SLOW_TESTS=1 ./build/tests
