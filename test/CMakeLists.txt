@@ -3,8 +3,9 @@ project(test)
 
 enable_testing()
 
-add_executable(tests 
-    test_settings.cpp 
+add_executable(tests
+    main.cpp
+    test_settings.cpp
     synchronization/test_vclock.cpp 
     event/test_events.cpp
     ltl/test_parser.cpp
@@ -34,8 +35,8 @@ add_executable(fake_child sim/fake_child.cpp)
 target_link_libraries(fake_child PRIVATE core)
 target_compile_options(fake_child PRIVATE ${COMPILATION_FLAGS})
 
-target_link_libraries(tests PRIVATE 
-    gtest gtest_main
+target_link_libraries(tests PRIVATE
+    gtest
     core)
 
 add_dependencies(tests fake_child)
