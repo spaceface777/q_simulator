@@ -50,6 +50,10 @@ namespace world {
 		// instead of rounding to a standstill.
 		int64_t carry = 0;
 
+		// Incremented whenever this tub reaches a junction. Transitional servo angles use it to draw
+		// one stable seeded routing threshold for the whole encounter rather than rerolling every tick.
+		uint64_t junction_encounter = 0;
+
 		RfidUid     uid{};
 		RfidPayload payload{};
 	};

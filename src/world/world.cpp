@@ -3,6 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "../seed/seed.h"
 #include "../settings.h"
 
 namespace world {
@@ -26,9 +27,55 @@ namespace world {
 			return std::round(value / lsb) * lsb;
 		}
 
-		// The servo range in which a tub is held on the junction rather than being sent anywhere.
-		bool is_servo_dead_zone(double angle) {
-			return angle >= 70.0 && angle <= 110.0;
+		enum class ServoRoute : uint8_t {
+			STRAIGHT,
+			RIGHT_DIVERSION,
+			BLOCK,
+			LEFT_DIVERSION,
+		};
+
+		double smootherstep(double position) {
+			return position * position * position * (position * ((6.0 * position) - 15.0) + 10.0);
+		}
+
+		// One uniform draw per tub/module/junction encounter. Reusing it while the tub waits makes a
+		// moving servo cross one stable sampled threshold instead of giving a held tub another chance
+		// to escape on every millisecond tick.
+		double junction_route_draw(const Tub& tub) {
+			const std::string label = "junction-route/" + std::to_string(tub.module.raw()) + "/" +
+									  std::to_string(tub.id) + "/" + std::to_string(tub.junction_encounter);
+			seed::SplitMix64  stream(seed::derive(active_calibration_seed(), label));
+			return static_cast<double>(stream.next() >> 11) * (1.0 / 9007199254740992.0);
+		}
+
+		ServoRoute blend_route(const Tub& tub, double angle, double lower_angle, double upper_angle,
+							   ServoRoute lower_route, ServoRoute upper_route) {
+			const double position          = (angle - lower_angle) / (upper_angle - lower_angle);
+			const double upper_probability = smootherstep(position);
+			return junction_route_draw(tub) < upper_probability ? upper_route : lower_route;
+		}
+
+		// Certain physical regions are separated by smooth seeded transition regions. The wider
+		// 0-20 and 160-180 neutral bands deliberately include the canonical 0-10 and 170-180 end-stop
+		// ranges plus their requested effectively-neutral margins.
+		ServoRoute servo_route_for(const Tub& tub, double angle) {
+			if (angle <= 20.0) return ServoRoute::STRAIGHT;
+			if (angle < 50.0) {
+				return blend_route(tub, angle, 20.0, 50.0, ServoRoute::STRAIGHT, ServoRoute::RIGHT_DIVERSION);
+			}
+			if (angle <= 70.0) return ServoRoute::RIGHT_DIVERSION;
+			if (angle < 80.0) {
+				return blend_route(tub, angle, 70.0, 80.0, ServoRoute::RIGHT_DIVERSION, ServoRoute::BLOCK);
+			}
+			if (angle <= 100.0) return ServoRoute::BLOCK;
+			if (angle < 110.0) {
+				return blend_route(tub, angle, 100.0, 110.0, ServoRoute::BLOCK, ServoRoute::LEFT_DIVERSION);
+			}
+			if (angle <= 130.0) return ServoRoute::LEFT_DIVERSION;
+			if (angle < 160.0) {
+				return blend_route(tub, angle, 130.0, 160.0, ServoRoute::LEFT_DIVERSION, ServoRoute::STRAIGHT);
+			}
+			return ServoRoute::STRAIGHT;
 		}
 
 		// The belt and physical endpoint offset used by inter-module hand-offs and endpoint occupancy.
@@ -356,37 +403,66 @@ namespace world {
 		}
 		const module::Module& module = *module_ptr;
 
-		const auto rest = [&tub, leg_length_um]() {
-			tub.belt        = Belt::BIG;
-			tub.position_um = leg_length_um;
+		const auto hold = [&tub, leg_length_um]() {
+			tub.position_um = tub.belt == Belt::BIG ? leg_length_um : 0;
 			tub.carry       = 0;
 		};
 
-		// The small belt running outward takes the tub off the junction towards the entry,
-		// whatever the big belt is doing.
-		if (module.small_belt_speed().raw() > 0) {
+		const auto move_on_big = [&tub, leg_length_um]() {
+			tub.belt        = Belt::BIG;
+			tub.position_um = leg_length_um;
+			tub.carry       = 0;
+			return true;
+		};
+
+		const auto move_on_small = [&tub]() {
 			tub.belt        = Belt::SMALL;
 			tub.position_um = 0;
 			tub.carry       = 0;
 			return true;
+		};
+
+		const double     big_speed   = module.big_belt_speed().raw();
+		const double     small_speed = module.small_belt_speed().raw();
+		const ServoRoute route       = servo_route_for(tub, module.servo_actual_angle().raw());
+
+		// Once a tub is on the small branch, running that belt outward carries it away from the
+		// junction regardless of where the servo moves afterwards.
+		if (tub.belt == Belt::SMALL && small_speed > 0.0) {
+			return move_on_small();
 		}
 
-		// Uses the arm's actual angle, not its target: while the servo crosses the dead zone it
-		// holds any tub on the junction.
-		if (is_servo_dead_zone(module.servo_actual_angle().raw())) {
-			rest();
+		if (tub.belt == Belt::BIG) {
+			if (route == ServoRoute::STRAIGHT) {
+				if (big_speed != 0.0) return move_on_big();
+				hold();
+				return false;
+			}
+
+			const bool from_right = big_speed > 0.0;
+			const bool from_left  = big_speed < 0.0;
+			const bool selected =
+				(from_right && route == ServoRoute::RIGHT_DIVERSION) ||
+				(from_left && route == ServoRoute::LEFT_DIVERSION) ||
+				(big_speed == 0.0 && (route == ServoRoute::RIGHT_DIVERSION || route == ServoRoute::LEFT_DIVERSION));
+			if (selected && small_speed > 0.0) {
+				return move_on_small();
+			}
+
+			// The central block, an opposite-side diversion, or a selected diversion whose small belt
+			// cannot receive the tub all physically obstruct the straight big-belt path.
+			hold();
 			return false;
 		}
 
-		if (module.big_belt_speed().raw() != 0) {
-			// The big belt is one axis, so its sign alone decides which endpoint the tub heads for.
-			tub.belt        = Belt::BIG;
-			tub.position_um = leg_length_um;
-			tub.carry       = 0;
-			return true;
+		// A tub arriving from the small branch can leave only through the big-belt side physically
+		// connected by the servo. Straight, block, and a belt pushing towards the junction all hold it.
+		if ((route == ServoRoute::RIGHT_DIVERSION && big_speed < 0.0) ||
+			(route == ServoRoute::LEFT_DIVERSION && big_speed > 0.0)) {
+			return move_on_big();
 		}
 
-		rest();
+		hold();
 		return false;
 	}
 
@@ -400,6 +476,7 @@ namespace world {
 				// where it goes, which keeps belt hand-offs free of cross-belt conversion.
 				if (tub.position_um < leg_length_um && target >= leg_length_um) {
 					tub.position_um = leg_length_um;
+					tub.junction_encounter++;
 					return;
 				}
 				if (target >= both_legs) {
@@ -413,6 +490,7 @@ namespace world {
 
 			if (tub.position_um > leg_length_um && target <= leg_length_um) {
 				tub.position_um = leg_length_um;
+				tub.junction_encounter++;
 				return;
 			}
 			if (target <= 0) {
@@ -436,6 +514,7 @@ namespace world {
 
 		if (target <= 0) {
 			tub.position_um = 0;
+			tub.junction_encounter++;
 			return;
 		}
 		tub.position_um = target;

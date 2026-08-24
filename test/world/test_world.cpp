@@ -143,6 +143,7 @@ TEST_F(WorldTest, TheServoDeadZoneHoldsATubOnTheJunction) {
 	place(1, FIRST, world::Position::CENTER);
 	hardware(FIRST)->set_servo_angle(module::ServoAngle{90});
 	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
 
 	advance(100);
 
@@ -165,15 +166,188 @@ TEST_F(WorldTest, TheBigBeltSignDecidesWhichEndpointATubHeadsFor) {
 	EXPECT_EQ(position_um(1), LEG_UM);
 }
 
-TEST_F(WorldTest, TheSmallBeltTakesPrecedenceOffTheJunction) {
-	place(1, FIRST, world::Position::CENTER);
+TEST_F(WorldTest, AnOutwardSmallBeltCannotDivertATubWhileTheServoIsNeutral) {
+	const int64_t right_laser_um = linear_calibration().hardware.right_laser_position_um;
+	place(1, FIRST, world::Position::RIGHT_LASER);
 	hardware(FIRST)->set_servo_angle(module::ServoAngle{0});
 	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
 	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
 
-	advance(10);
+	// The first tick that reaches the junction deliberately stops there. On the next tick, a
+	// neutral servo should leave the tub on the straight big-belt route; merely running the small
+	// belt outward cannot make the routing decision.
+	advance(static_cast<int>((LEG_UM - right_laser_um) / 100));
+	ASSERT_EQ(position_um(1), LEG_UM);
+	ASSERT_EQ(world_.tub(1)->belt, world::Belt::BIG);
+	advance(1);
+
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG);
+	EXPECT_GT(position_um(1), LEG_UM);
+}
+
+TEST_F(WorldTest, TheServoCanDivertFromTheRightSideOntoTheSmallBelt) {
+	const int64_t right_laser_um = linear_calibration().hardware.right_laser_position_um;
+	place(1, FIRST, world::Position::RIGHT_LASER);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{60});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+
+	advance(static_cast<int>((LEG_UM - right_laser_um) / 100));
+	ASSERT_EQ(position_um(1), LEG_UM);
+	advance(1);
 
 	EXPECT_EQ(world_.tub(1)->belt, world::Belt::SMALL);
+	EXPECT_EQ(position_um(1), 100);
+	advance(1);
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::SMALL);
+	EXPECT_EQ(position_um(1), 200);
+}
+
+TEST_F(WorldTest, TheServoCanDivertFromTheLeftSideOntoTheSmallBelt) {
+	const int64_t left_laser_um = linear_calibration().hardware.left_laser_position_um;
+	place(1, FIRST, world::Position::LEFT_LASER);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{120});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{-100});
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+
+	advance(static_cast<int>((left_laser_um - LEG_UM) / 100));
+	ASSERT_EQ(position_um(1), LEG_UM);
+	advance(1);
+
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::SMALL);
+	EXPECT_EQ(position_um(1), 100);
+}
+
+TEST_F(WorldTest, TheEffectiveNeutralBandsAlwaysPassStraightThrough) {
+	for (const double angle : {0.0, 10.0, 20.0, 160.0, 170.0, 180.0}) {
+		world_.clear();
+		place(1, FIRST, world::Position::CENTER);
+		hardware(FIRST)->set_servo_angle(module::ServoAngle{angle});
+		hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+		hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+		advance(1);
+		EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG) << angle;
+		EXPECT_GT(position_um(1), LEG_UM) << angle;
+
+		world_.clear();
+		place(1, FIRST, world::Position::CENTER);
+		hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{-100});
+		advance(1);
+		EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG) << angle;
+		EXPECT_LT(position_um(1), LEG_UM) << angle;
+	}
+}
+
+TEST_F(WorldTest, AnOppositeDiversionAngleBlocksRatherThanPassingTheTub) {
+	place(1, FIRST, world::Position::CENTER);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{120});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+	advance(100);
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG);
+	EXPECT_EQ(position_um(1), LEG_UM);
+
+	world_.clear();
+	place(1, FIRST, world::Position::CENTER);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{60});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{-100});
+	advance(100);
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG);
+	EXPECT_EQ(position_um(1), LEG_UM);
+}
+
+TEST_F(WorldTest, CanonicalDiversionAndBlockBandsIncludeTheirEndpoints) {
+	for (const double angle : {50.0, 70.0}) {
+		world_.clear();
+		place(1, FIRST, world::Position::CENTER);
+		hardware(FIRST)->set_servo_angle(module::ServoAngle{angle});
+		hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+		hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+		advance(1);
+		EXPECT_EQ(world_.tub(1)->belt, world::Belt::SMALL) << angle;
+	}
+
+	for (const double angle : {110.0, 130.0}) {
+		world_.clear();
+		place(1, FIRST, world::Position::CENTER);
+		hardware(FIRST)->set_servo_angle(module::ServoAngle{angle});
+		hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{-100});
+		hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+		advance(1);
+		EXPECT_EQ(world_.tub(1)->belt, world::Belt::SMALL) << angle;
+	}
+
+	for (const double angle : {80.0, 100.0}) {
+		world_.clear();
+		place(1, FIRST, world::Position::CENTER);
+		hardware(FIRST)->set_servo_angle(module::ServoAngle{angle});
+		hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+		hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+		advance(1);
+		EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG) << angle;
+		EXPECT_EQ(position_um(1), LEG_UM) << angle;
+	}
+}
+
+TEST_F(WorldTest, ASelectedDiversionHoldsUntilTheSmallBeltCanReceiveTheTub) {
+	place(1, FIRST, world::Position::CENTER);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{60});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{0});
+	advance(100);
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG);
+	EXPECT_EQ(position_um(1), LEG_UM);
+
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+	advance(1);
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::SMALL);
+	EXPECT_EQ(position_um(1), 100);
+}
+
+TEST_F(WorldTest, TransitionalServoAnglesUseSeededSmootherstepAndRemainStablePerEncounter) {
+	const auto outcome_at = [this](uint64_t seed, double angle, int held_ticks) {
+		world::set_calibration_seed(seed);
+		world::set_calibration_override(linear_calibration());
+		world_.clear();
+		place(1, FIRST, world::Position::CENTER);
+		hardware(FIRST)->set_servo_angle(module::ServoAngle{angle});
+		hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+		hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+		advance(held_ticks);
+		return std::make_pair(world_.tub(1)->belt, position_um(1));
+	};
+
+	// Repeating one seeded encounter produces the same binary decision.
+	EXPECT_EQ(outcome_at(1234, 35.0, 1), outcome_at(1234, 35.0, 1));
+
+	int near_straight_diversions = 0;
+	int midpoint_diversions      = 0;
+	int near_divert_diversions   = 0;
+	for (uint64_t seed = 0; seed < 1000; seed++) {
+		near_straight_diversions += outcome_at(seed, 21.0, 1).first == world::Belt::SMALL ? 1 : 0;
+		midpoint_diversions += outcome_at(seed, 35.0, 1).first == world::Belt::SMALL ? 1 : 0;
+		near_divert_diversions += outcome_at(seed, 49.0, 1).first == world::Belt::SMALL ? 1 : 0;
+	}
+
+	// Quintic smootherstep is almost flat near either endpoint and balanced at the midpoint.
+	EXPECT_LT(near_straight_diversions, 25);
+	EXPECT_GT(midpoint_diversions, 400);
+	EXPECT_LT(midpoint_diversions, 600);
+	EXPECT_GT(near_divert_diversions, 975);
+
+	// Between the right-diversion and block bands, a sampled block remains a block while the tub
+	// waits; it is not rerolled on each simulation tick.
+	bool found_blocked_seed = false;
+	for (uint64_t seed = 0; seed < 100 && !found_blocked_seed; seed++) {
+		const auto first = outcome_at(seed, 75.0, 1);
+		if (first.first == world::Belt::BIG && first.second == LEG_UM) {
+			const auto later = outcome_at(seed, 75.0, 100);
+			EXPECT_EQ(later.first, world::Belt::BIG);
+			EXPECT_EQ(later.second, LEG_UM);
+			found_blocked_seed = true;
+		}
+	}
+	EXPECT_TRUE(found_blocked_seed);
 }
 
 TEST_F(WorldTest, ATubReachingTheJunctionStopsThereForATick) {
@@ -391,6 +565,7 @@ TEST_F(WorldTest, ATubHeadingForAPositionIsNotYetThere) {
 	place(1, FIRST, world::Position::ENTRY);
 	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{-100.0});
 	advance(1800);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{60.0});
 	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{-100.0});
 	advance(1);
 
