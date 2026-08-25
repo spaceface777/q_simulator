@@ -319,8 +319,7 @@ TEST_F(WorldTest, AnInboundSmallBeltTransfersOntoTheBigBeltForEveryNonBlockingRo
 			advance(1);
 
 			EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG) << angle << ", " << big_speed;
-			EXPECT_EQ(position_um(1), LEG_UM + static_cast<int64_t>(big_speed))
-				<< angle << ", " << big_speed;
+			EXPECT_EQ(position_um(1), LEG_UM + static_cast<int64_t>(big_speed)) << angle << ", " << big_speed;
 		}
 	}
 }
