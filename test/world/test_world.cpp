@@ -304,6 +304,59 @@ TEST_F(WorldTest, ASelectedDiversionHoldsUntilTheSmallBeltCanReceiveTheTub) {
 	EXPECT_EQ(position_um(1), 100);
 }
 
+TEST_F(WorldTest, AnInboundSmallBeltTransfersOntoTheBigBeltForEveryNonBlockingRoute) {
+	for (const double angle : {0.0, 60.0, 120.0, 180.0}) {
+		for (const double big_speed : {-100.0, 0.0, 100.0}) {
+			world_.clear();
+			place(1, FIRST, world::Position::ENTRY);
+			hardware(FIRST)->set_servo_angle(module::ServoAngle{angle});
+			hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{-100.0});
+			hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{big_speed});
+
+			while (position_um(1) > 0) advance(1);
+			ASSERT_EQ(world_.tub(1)->belt, world::Belt::SMALL) << angle << ", " << big_speed;
+			ASSERT_EQ(position_um(1), 0) << angle << ", " << big_speed;
+			advance(1);
+
+			EXPECT_EQ(world_.tub(1)->belt, world::Belt::BIG) << angle << ", " << big_speed;
+			EXPECT_EQ(position_um(1), LEG_UM + static_cast<int64_t>(big_speed))
+				<< angle << ", " << big_speed;
+		}
+	}
+}
+
+TEST_F(WorldTest, TheBlockingServoHoldsATubArrivingFromTheSmallBelt) {
+	place(1, FIRST, world::Position::ENTRY);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{90.0});
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{-100.0});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100.0});
+
+	while (position_um(1) > 0) advance(1);
+	ASSERT_EQ(world_.tub(1)->belt, world::Belt::SMALL);
+	ASSERT_EQ(position_um(1), 0);
+	advance(100);
+
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::SMALL);
+	EXPECT_EQ(position_um(1), 0);
+}
+
+TEST_F(WorldTest, AStoppedSmallBeltDoesNotTransferATubOntoTheBigBelt) {
+	place(1, FIRST, world::Position::ENTRY);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{0.0});
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{-100.0});
+
+	while (position_um(1) > 0) advance(1);
+	ASSERT_EQ(world_.tub(1)->belt, world::Belt::SMALL);
+	ASSERT_EQ(position_um(1), 0);
+
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{0.0});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100.0});
+	advance(100);
+
+	EXPECT_EQ(world_.tub(1)->belt, world::Belt::SMALL);
+	EXPECT_EQ(position_um(1), 0);
+}
+
 TEST_F(WorldTest, TransitionalServoAnglesUseSeededSmootherstepAndRemainStablePerEncounter) {
 	const auto outcome_at = [this](uint64_t seed, double angle, int held_ticks) {
 		world::set_calibration_seed(seed);
@@ -565,7 +618,6 @@ TEST_F(WorldTest, ATubHeadingForAPositionIsNotYetThere) {
 	place(1, FIRST, world::Position::ENTRY);
 	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{-100.0});
 	advance(1800);
-	hardware(FIRST)->set_servo_angle(module::ServoAngle{60.0});
 	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{-100.0});
 	advance(1);
 

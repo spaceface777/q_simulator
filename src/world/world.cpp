@@ -455,10 +455,10 @@ namespace world {
 			return false;
 		}
 
-		// A tub arriving from the small branch can leave only through the big-belt side physically
-		// connected by the servo. Straight, block, and a belt pushing towards the junction all hold it.
-		if ((route == ServoRoute::RIGHT_DIVERSION && big_speed < 0.0) ||
-			(route == ServoRoute::LEFT_DIVERSION && big_speed > 0.0)) {
+		// The small belt pushes an inbound tub onto the centre of the big belt unless the servo is
+		// physically blocking the junction. Once transferred, the big belt independently decides
+		// whether and in which direction the tub moves.
+		if (small_speed < 0.0 && route != ServoRoute::BLOCK) {
 			return move_on_big();
 		}
 
