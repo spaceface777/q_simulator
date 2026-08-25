@@ -28,14 +28,13 @@ namespace {
 		static constexpr uint8_t MODULE = 1;
 
 		void SetUp() override {
+			settings::install_test_defaults();
 			world::set_calibration_config(world::CalibrationConfig{});
 			world::set_calibration_override(world::Calibration::nominal());
 			for (uint8_t id = 1; id < MAX_MODULES; id++) {
 				settings::set_module_settings(module::ModuleId{id}, settings::ModuleSettings{});
 			}
 			settings::set_module_settings(module::ModuleId{TOWER_MODULE_ID}, settings::ModuleSettings{});
-			settings::set_setting("simulation_speed", 1.0);
-			settings::set_setting("seed", 1);
 			settings::set_setting("network_fixed_delay_ms", 5);
 			settings::set_setting("network_packet_loss_ppm", 0);
 			settings::set_setting("network_very_late_ppm", 0);
