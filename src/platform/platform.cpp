@@ -127,44 +127,19 @@ namespace platform {
 					static_cast<uint8_t>((bits >> 16) & 0xFF), static_cast<uint8_t>((bits >> 24) & 0xFF)};
 		}
 
-		// An encoder count is 4 bytes on the wire, matching the 32-bit `long` on the Pico and the
-		// 32-bit Native Simulator. A native_sim//64 build reads 8 bytes and correctly rejects this.
-		std::vector<uint8_t> int32_payload(int64_t value) {
-			const uint32_t bits = static_cast<uint32_t>(static_cast<int32_t>(value));
-			return {static_cast<uint8_t>(bits & 0xFF), static_cast<uint8_t>((bits >> 8) & 0xFF),
-					static_cast<uint8_t>((bits >> 16) & 0xFF), static_cast<uint8_t>((bits >> 24) & 0xFF)};
-		}
-
-		std::vector<uint8_t> double_payload(double value) {
-			uint64_t bits = 0;
-			std::memcpy(&bits, &value, sizeof(bits));
-			std::vector<uint8_t> payload(sizeof(bits));
-			for (std::size_t index = 0; index < sizeof(bits); index++) {
-				payload[index] = static_cast<uint8_t>((bits >> (8 * index)) & 0xFF);
-			}
+		template <typename T> std::vector<uint8_t> native_payload(T value) {
+			std::vector<uint8_t> payload(sizeof(value));
+			std::memcpy(payload.data(), &value, sizeof(value));
 			return payload;
 		}
 
-		std::optional<float> parse_float(const std::vector<uint8_t>& payload) {
-			if (payload.size() != 4) {
+		template <typename T> std::optional<T> parse_native(const std::vector<uint8_t>& payload) {
+			if (payload.size() != sizeof(T)) {
 				return {};
 			}
-			float          value = 0;
-			const uint32_t bits  = static_cast<uint32_t>(payload[0]) | (static_cast<uint32_t>(payload[1]) << 8) |
-								  (static_cast<uint32_t>(payload[2]) << 16) | (static_cast<uint32_t>(payload[3]) << 24);
-			std::memcpy(&value, &bits, sizeof(value));
+			T value{};
+			std::memcpy(&value, payload.data(), sizeof(value));
 			return value;
-		}
-
-		std::optional<uint32_t> parse_mask(const std::vector<uint8_t>& payload) {
-			switch (payload.size()) {
-			case 1: return static_cast<uint32_t>(payload[0]);
-			case 2: return static_cast<uint32_t>(payload[0]) | (static_cast<uint32_t>(payload[1]) << 8);
-			case 4:
-				return static_cast<uint32_t>(payload[0]) | (static_cast<uint32_t>(payload[1]) << 8) |
-					   (static_cast<uint32_t>(payload[2]) << 16) | (static_cast<uint32_t>(payload[3]) << 24);
-			default: return {};
-			}
 		}
 
 		// The flight board is variable length: a mirrored board is accepted only when its declared
@@ -604,7 +579,7 @@ namespace platform {
 			response.cmd     = request.cmd;
 			response.call_id = request.call_id;
 
-			const std::optional<uint32_t> mask = parse_mask(request.payload);
+			const std::optional<uint32_t> mask = parse_native<uint32_t>(request.payload);
 			if (!mask.has_value() || (mask.value() & ~SUPPORTED_EVENTS) != 0) {
 				response.status = STATUS_INVALID;
 			} else if (id == TOWER_MODULE_ID && (mask.value() & HARDWARE_EVENTS) != 0) {
@@ -844,47 +819,79 @@ namespace platform {
 		}
 
 		switch (request.cmd) {
-		case CMD_LASER_LEFT_DETECT:  response.payload = byte_payload(module->is_laser_clear(true) ? 1 : 0); break;
-		case CMD_LASER_RIGHT_DETECT: response.payload = byte_payload(module->is_laser_clear(false) ? 1 : 0); break;
-		case CMD_LASER_LEFT_GET:     response.payload = byte_payload(module->is_left_laser_enabled() ? 1 : 0); break;
-		case CMD_LASER_RIGHT_GET:    response.payload = byte_payload(module->is_right_laser_enabled() ? 1 : 0); break;
-		case CMD_LASER_LEFT_SET:
-			if (request.payload.size() != 1) {
+		case CMD_LASER_LEFT_DETECT:
+		case CMD_LASER_RIGHT_DETECT:
+		case CMD_LASER_LEFT_GET:
+		case CMD_LASER_RIGHT_GET:
+			if (!request.payload.empty()) {
 				response.status = STATUS_INVALID;
 				break;
 			}
-			module->set_left_laser_enabled(request.payload[0] != 0);
+			if (request.cmd == CMD_LASER_LEFT_DETECT) {
+				response.payload = byte_payload(module->is_laser_clear(true) ? 1 : 0);
+			} else if (request.cmd == CMD_LASER_RIGHT_DETECT) {
+				response.payload = byte_payload(module->is_laser_clear(false) ? 1 : 0);
+			} else if (request.cmd == CMD_LASER_LEFT_GET) {
+				response.payload = byte_payload(module->is_left_laser_enabled() ? 1 : 0);
+			} else {
+				response.payload = byte_payload(module->is_right_laser_enabled() ? 1 : 0);
+			}
+			break;
+		case CMD_LASER_LEFT_SET:
+			if (request.payload.size() != 1 || request.payload[0] > 1) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			module->set_left_laser_enabled(request.payload[0] == 1);
 			break;
 		case CMD_LASER_RIGHT_SET:
-			if (request.payload.size() != 1) {
+			if (request.payload.size() != 1 || request.payload[0] > 1) {
 				response.status = STATUS_INVALID;
 				break;
 			}
-			module->set_right_laser_enabled(request.payload[0] != 0);
+			module->set_right_laser_enabled(request.payload[0] == 1);
 			break;
 
 		case CMD_BELT_BIG_GET_SPEED:
-			response.payload = float_payload(static_cast<float>(module->big_belt_speed().raw()));
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			response.payload = native_payload(static_cast<int32_t>(std::lround(module->big_belt_speed().raw())));
 			break;
 		case CMD_BELT_SMALL_GET_SPEED:
-			response.payload = float_payload(static_cast<float>(module->small_belt_speed().raw()));
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			response.payload = native_payload(static_cast<int32_t>(std::lround(module->small_belt_speed().raw())));
 			break;
 
 		case CMD_BELT_BIG_GET_ENCODER_COUNT:
 		case CMD_BELT_SMALL_GET_ENCODER_COUNT: {
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
 			const world::Calibration& calibration = world::calibration_for(id);
 			const int64_t travel = request.cmd == CMD_BELT_BIG_GET_ENCODER_COUNT ? module->big_belt_travel_um()
 																				 : module->small_belt_travel_um();
-			response.payload     = int32_payload(world::encoder_count(travel, calibration));
+			response.payload     = native_payload(static_cast<int32_t>(world::encoder_count(travel, calibration)));
 			break;
 		}
 		case CMD_BELT_BIG_GET_ENCODER_FREQ:
 		case CMD_BELT_SMALL_GET_ENCODER_FREQ: {
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
 			const world::Calibration& calibration = world::calibration_for(id);
 			const bool                big         = request.cmd == CMD_BELT_BIG_GET_ENCODER_FREQ;
 			const double              speed = big ? module->big_belt_speed().raw() : module->small_belt_speed().raw();
 			const world::BeltCurve&   curve = big ? calibration.mechanical.big_belt : calibration.mechanical.small_belt;
-			response.payload                = double_payload(world::encoder_frequency_hz(speed, curve, calibration));
+			const uint32_t            frequency_millihz =
+				static_cast<uint32_t>(std::llround(world::encoder_frequency_hz(speed, curve, calibration) * 1000.0));
+			response.payload = native_payload(frequency_millihz);
 			break;
 		}
 
@@ -900,7 +907,7 @@ namespace platform {
 		}
 		case CMD_BELT_BIG_SET_SPEED:
 		case CMD_BELT_SMALL_SET_SPEED: {
-			const std::optional<float> speed = parse_float(request.payload);
+			const std::optional<int32_t> speed = parse_native<int32_t>(request.payload);
 			// A belt runs stopped or between a quarter and full speed. Anything else is refused,
 			// since the physical platform cannot produce it either.
 			if (!speed.has_value() || !world::is_valid_belt_command_percent(static_cast<double>(speed.value()))) {
@@ -917,11 +924,15 @@ namespace platform {
 		}
 
 		case CMD_SERVO_ANGLE_GET:
-			response.payload = float_payload(static_cast<float>(module->servo_angle().raw()));
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			response.payload = native_payload(static_cast<int32_t>(std::lround(module->servo_angle().raw())));
 			break;
 		case CMD_SERVO_ANGLE_SET: {
-			const std::optional<float> angle = parse_float(request.payload);
-			if (!angle.has_value() || !std::isfinite(angle.value()) || angle.value() < 0.0F || angle.value() > 180.0F) {
+			const std::optional<int32_t> angle = parse_native<int32_t>(request.payload);
+			if (!angle.has_value() || angle.value() < 0 || angle.value() > 180) {
 				response.status = STATUS_INVALID;
 				break;
 			}
@@ -931,24 +942,30 @@ namespace platform {
 		}
 
 		case CMD_LED_GET_COLOR: {
-			const uint32_t color = module->led_color().raw();
-			response.payload     = {static_cast<uint8_t>(color & 0xFF), static_cast<uint8_t>((color >> 8) & 0xFF),
-									static_cast<uint8_t>((color >> 16) & 0xFF), static_cast<uint8_t>((color >> 24) & 0xFF)};
-			break;
-		}
-		case CMD_LED_SET_COLOR: {
-			if (request.payload.size() != 4) {
+			if (!request.payload.empty()) {
 				response.status = STATUS_INVALID;
 				break;
 			}
-			const uint32_t color =
-				static_cast<uint32_t>(request.payload[0]) | (static_cast<uint32_t>(request.payload[1]) << 8) |
-				(static_cast<uint32_t>(request.payload[2]) << 16) | (static_cast<uint32_t>(request.payload[3]) << 24);
-			module->set_led_color(module::LedColor{color});
+			response.payload = native_payload(module->led_color().raw() & 0x00FFFFFFU);
+			break;
+		}
+		case CMD_LED_SET_COLOR: {
+			const std::optional<uint32_t> color = parse_native<uint32_t>(request.payload);
+			if (!color.has_value()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			module->set_led_color(module::LedColor{color.value() & 0x00FFFFFFU});
 			break;
 		}
 
-		case CMD_RFID_CHECK_TAG: response.payload = byte_payload(module->is_rfid_active() ? 1 : 0); break;
+		case CMD_RFID_CHECK_TAG:
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			response.payload = byte_payload(module->is_rfid_active() ? 1 : 0);
+			break;
 		case CMD_RFID_GET_UID:
 			// A zero-length UID means no tag; this is not an error.
 			if (module->is_rfid_active()) {

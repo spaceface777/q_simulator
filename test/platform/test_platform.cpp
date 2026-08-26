@@ -14,18 +14,18 @@
 
 namespace {
 
-	std::vector<uint8_t> float_bytes(float value) {
-		uint32_t bits = 0;
-		std::memcpy(&bits, &value, sizeof(bits));
-		return {static_cast<uint8_t>(bits & 0xFF), static_cast<uint8_t>((bits >> 8) & 0xFF),
-				static_cast<uint8_t>((bits >> 16) & 0xFF), static_cast<uint8_t>((bits >> 24) & 0xFF)};
+	template <typename T> std::vector<uint8_t> native_bytes(T value) {
+		std::vector<uint8_t> payload(sizeof(value));
+		std::memcpy(payload.data(), &value, sizeof(value));
+		return payload;
 	}
 
-	float bytes_to_float(const std::vector<uint8_t>& payload) {
-		const uint32_t bits  = static_cast<uint32_t>(payload[0]) | (static_cast<uint32_t>(payload[1]) << 8) |
-							   (static_cast<uint32_t>(payload[2]) << 16) | (static_cast<uint32_t>(payload[3]) << 24);
-		float          value = 0;
-		std::memcpy(&value, &bits, sizeof(value));
+	template <typename T> T native_value(const std::vector<uint8_t>& payload) {
+		EXPECT_EQ(payload.size(), sizeof(T));
+		T value{};
+		if (payload.size() == sizeof(T)) {
+			std::memcpy(&value, payload.data(), sizeof(value));
+		}
 		return value;
 	}
 
@@ -173,35 +173,52 @@ TEST_F(PlatformTest, LaserReportsClearOnlyWhilePowered) {
 TEST_F(PlatformTest, RejectsMalformedLaserSet) {
 	EXPECT_EQ(call(CMD_LASER_RIGHT_SET, {}).status, platform::STATUS_INVALID);
 	EXPECT_EQ(call(CMD_LASER_RIGHT_SET, {1, 2}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_LASER_RIGHT_SET, {2}).status, platform::STATUS_INVALID);
+	EXPECT_FALSE(hardware()->is_right_laser_enabled());
+	EXPECT_EQ(call(CMD_LASER_RIGHT_GET, {0}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_RFID_CHECK_TAG, {0}).status, platform::STATUS_INVALID);
 }
 
 TEST_F(PlatformTest, SetsAndReadsBeltSpeeds) {
-	EXPECT_EQ(call(CMD_BELT_BIG_SET_SPEED, float_bytes(-42.5F)).status, platform::STATUS_OK);
-	EXPECT_FLOAT_EQ(bytes_to_float(call(CMD_BELT_BIG_GET_SPEED).payload), -42.5F);
+	EXPECT_EQ(call(CMD_BELT_BIG_SET_SPEED, native_bytes<int32_t>(-25)).status, platform::STATUS_OK);
+	EXPECT_EQ(native_value<int32_t>(call(CMD_BELT_BIG_GET_SPEED).payload), -25);
 
-	EXPECT_EQ(call(CMD_BELT_SMALL_SET_SPEED, float_bytes(100.0F)).status, platform::STATUS_OK);
-	EXPECT_FLOAT_EQ(bytes_to_float(call(CMD_BELT_SMALL_GET_SPEED).payload), 100.0F);
+	for (const int32_t speed : {0, 25, 100, -100}) {
+		EXPECT_EQ(call(CMD_BELT_SMALL_SET_SPEED, native_bytes(speed)).status, platform::STATUS_OK);
+		EXPECT_EQ(native_value<int32_t>(call(CMD_BELT_SMALL_GET_SPEED).payload), speed);
+	}
+	EXPECT_EQ(call(CMD_BELT_BIG_GET_SPEED, {0}).status, platform::STATUS_INVALID);
 }
 
 TEST_F(PlatformTest, RejectsOutOfRangeBeltSpeed) {
 	// Refused at the boundary rather than allowed to abort the simulation.
-	EXPECT_EQ(call(CMD_BELT_BIG_SET_SPEED, float_bytes(100.1F)).status, platform::STATUS_INVALID);
-	EXPECT_EQ(call(CMD_BELT_BIG_SET_SPEED, float_bytes(-1000.0F)).status, platform::STATUS_INVALID);
-	EXPECT_EQ(call(CMD_BELT_BIG_SET_SPEED, {1, 2}).status, platform::STATUS_INVALID);
+	for (const int32_t speed : {24, -24, 101, -101}) {
+		EXPECT_EQ(call(CMD_BELT_BIG_SET_SPEED, native_bytes(speed)).status, platform::STATUS_INVALID);
+	}
+	EXPECT_EQ(call(CMD_BELT_BIG_SET_SPEED, {1, 2, 3}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_BELT_BIG_SET_SPEED, {1, 2, 3, 4, 5}).status, platform::STATUS_INVALID);
 }
 
 TEST_F(PlatformTest, SetsAndReadsServoAngle) {
-	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, float_bytes(135.0F)).status, platform::STATUS_OK);
-	EXPECT_FLOAT_EQ(bytes_to_float(call(CMD_SERVO_ANGLE_GET).payload), 135.0F);
+	for (const int32_t angle : {0, 135, 180}) {
+		EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, native_bytes(angle)).status, platform::STATUS_OK);
+		EXPECT_EQ(native_value<int32_t>(call(CMD_SERVO_ANGLE_GET).payload), angle);
+	}
 
-	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, float_bytes(181.0F)).status, platform::STATUS_INVALID);
-	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, float_bytes(-1.0F)).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, native_bytes<int32_t>(181)).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, native_bytes<int32_t>(-1)).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, {1, 2, 3}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_SERVO_ANGLE_GET, {0}).status, platform::STATUS_INVALID);
 }
 
 TEST_F(PlatformTest, SetsAndReadsLedColor) {
-	EXPECT_EQ(call(CMD_LED_SET_COLOR, {0x3F, 0x00, 0x00, 0x00}).status, platform::STATUS_OK);
-	EXPECT_EQ(call(CMD_LED_GET_COLOR).payload, std::vector<uint8_t>({0x3F, 0x00, 0x00, 0x00}));
+	EXPECT_EQ(call(CMD_LED_SET_COLOR, native_bytes<uint32_t>(0xAB123456)).status, platform::STATUS_OK);
+	EXPECT_EQ(hardware()->led_color().raw(), 0x00123456u);
+	EXPECT_EQ(native_value<uint32_t>(call(CMD_LED_GET_COLOR).payload), 0x00123456u);
+	hardware()->set_led_color(module::LedColor{0xFF654321});
+	EXPECT_EQ(native_value<uint32_t>(call(CMD_LED_GET_COLOR).payload), 0x00654321u);
 	EXPECT_EQ(call(CMD_LED_SET_COLOR, {1, 2}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_LED_GET_COLOR, {0}).status, platform::STATUS_INVALID);
 }
 
 TEST_F(PlatformTest, ReadsAndWritesRfidOnlyWhileATagIsPresent) {
@@ -270,28 +287,36 @@ TEST_F(PlatformTest, ServesTheModuleList) {
 TEST_F(PlatformTest, TracksSubscriptions) {
 	EXPECT_EQ(manager->subscriptions(module::ModuleId{MODULE}), 0u);
 
-	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT)).status,
+			  platform::STATUS_OK);
 	EXPECT_EQ(manager->subscriptions(module::ModuleId{MODULE}),
 			  static_cast<uint32_t>(EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT));
 
-	EXPECT_EQ(call(CMD_UNSUBSCRIBE_FROM_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	EXPECT_EQ(call(CMD_UNSUBSCRIBE_FROM_EVENT, native_bytes<uint32_t>(EVENT_RFID_DETECT)).status, platform::STATUS_OK);
 	EXPECT_EQ(manager->subscriptions(module::ModuleId{MODULE}), static_cast<uint32_t>(EVENT_LASER_LEFT_DETECT));
 }
 
 TEST_F(PlatformTest, RefusesSubscriptionToUnsupportedEvents) {
 	// Encoder events belong to commands this version does not implement.
-	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_ENCODER_LONG_STOPPED}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_ENCODER_LONG_STOPPED)).status,
+			  platform::STATUS_INVALID);
 	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {1}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {1, 0}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {1, 0, 0}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_UNSUBSCRIBE_FROM_EVENT, {1, 0, 0, 0, 0}).status, platform::STATUS_INVALID);
 	EXPECT_EQ(manager->subscriptions(module::ModuleId{MODULE}), 0u);
 }
 
 TEST_F(PlatformTest, RefusesHardwareAccessFromTheTower) {
-	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, float_bytes(90.0F), TOWER_MODULE_ID).status, platform::STATUS_PERM);
+	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, native_bytes<int32_t>(90), TOWER_MODULE_ID).status, platform::STATUS_PERM);
 	EXPECT_EQ(call(CMD_LASER_LEFT_DETECT, {}, TOWER_MODULE_ID).status, platform::STATUS_PERM);
-	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_LASER_LEFT_DETECT}, TOWER_MODULE_ID).status, platform::STATUS_PERM);
+	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_LASER_LEFT_DETECT), TOWER_MODULE_ID).status,
+			  platform::STATUS_PERM);
 
 	// The tower still takes part in the logical network.
-	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_MESSAGE_RECEIVED}, TOWER_MODULE_ID).status, platform::STATUS_OK);
+	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_MESSAGE_RECEIVED), TOWER_MODULE_ID).status,
+			  platform::STATUS_OK);
 	EXPECT_EQ(call(CMD_GET_NETWORK_MAP, {}, TOWER_MODULE_ID).status, platform::STATUS_OK);
 }
 
@@ -314,16 +339,29 @@ TEST_F(PlatformTest, ReportsAnUnknownCommandAsUnimplemented) {
 	EXPECT_EQ(call(0xAB).status, platform::STATUS_NO_SYS);
 }
 
-TEST_F(PlatformTest, ReadsTheEncodersInTheWidthAnApplicationExpects) {
-	// An encoder count is a `long`, four bytes on both the Pico and the Native Simulator.
+TEST_F(PlatformTest, ReadsCanonicalEncoderCountAndFrequencyValues) {
+	ASSERT_EQ(call(CMD_BELT_BIG_SET_SPEED, native_bytes<int32_t>(100)).status, platform::STATUS_OK);
+	world_.advance_tick();
+
 	const rpc::Frame count = call(CMD_BELT_BIG_GET_ENCODER_COUNT);
 	EXPECT_EQ(count.status, platform::STATUS_OK);
 	EXPECT_EQ(count.payload.size(), 4u);
+	EXPECT_EQ(native_value<int32_t>(count.payload),
+			  static_cast<int32_t>(world::encoder_count(hardware()->big_belt_travel_um(),
+														world::calibration_for(module::ModuleId{MODULE}))));
 
-	// A frequency is a double, which is eight bytes everywhere.
-	const rpc::Frame freq = call(CMD_BELT_SMALL_GET_ENCODER_FREQ);
+	const rpc::Frame freq = call(CMD_BELT_BIG_GET_ENCODER_FREQ);
 	EXPECT_EQ(freq.status, platform::STATUS_OK);
-	EXPECT_EQ(freq.payload.size(), 8u);
+	EXPECT_EQ(freq.payload.size(), 4u);
+	const world::Calibration& calibration = world::calibration_for(module::ModuleId{MODULE});
+	EXPECT_EQ(
+		native_value<uint32_t>(freq.payload),
+		static_cast<uint32_t>(std::llround(world::encoder_frequency_hz(hardware()->big_belt_speed().raw(),
+																	   calibration.mechanical.big_belt, calibration) *
+										   1000.0)));
+
+	EXPECT_EQ(call(CMD_BELT_SMALL_GET_ENCODER_COUNT, {0}).status, platform::STATUS_INVALID);
+	EXPECT_EQ(call(CMD_BELT_SMALL_GET_ENCODER_FREQ, {0}).status, platform::STATUS_INVALID);
 
 	for (const uint8_t cmd : {CMD_CV_SENSOR_GET_CURRENT, CMD_CV_SENSOR_GET_POWER, CMD_CV_SENSOR_GET_VOLTAGE}) {
 		const rpc::Frame reading = call(cmd);
@@ -407,7 +445,7 @@ TEST_F(PlatformTest, PublishesLaserEventsAfterTheConfiguredExtraDelay) {
 	manager->advance(0);
 	EXPECT_TRUE(take_all().empty());
 
-	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_LASER_LEFT_DETECT});
+	call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_LASER_LEFT_DETECT));
 
 	// Steady state produces nothing either; only a clear-to-blocked transition is an event.
 	manager->advance(1);
@@ -442,7 +480,7 @@ TEST_F(PlatformTest, PublishesRfidDetectAfterTheConfiguredSampledDelay) {
 	settings::set_setting("rfid_event_extra_delay_mean_ms", 12.0);
 	settings::set_setting("rfid_event_extra_delay_sd_ms", 0.0);
 	manager = std::make_unique<platform::Manager>(world_);
-	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT});
+	call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_RFID_DETECT));
 
 	RfidPayload data{};
 	hardware()->set_rfid_tag({1, 2, 3, 4, 5, 6, 7}, data);
@@ -473,7 +511,7 @@ TEST_F(PlatformTest, EstablishesRfidBaselineWhenSubscriptionBegins) {
 	hardware()->set_rfid_tag(first_uid, {});
 
 	// A tag already visible when the subscription starts establishes the edge baseline.
-	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_RFID_DETECT)).status, platform::STATUS_OK);
 	manager->advance(0);
 	EXPECT_TRUE(take_all().empty());
 
@@ -491,7 +529,7 @@ TEST_F(PlatformTest, EstablishesRfidBaselineWhenSubscriptionBegins) {
 	EXPECT_EQ(events[0].payload, std::vector<uint8_t>(second_uid.begin(), second_uid.end()));
 
 	// Repeating an already-enabled subscription must not reset the edge history.
-	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_RFID_DETECT)).status, platform::STATUS_OK);
 	hardware()->set_rfid_tag(first_uid, {});
 	manager->advance(3);
 	events = take_all();
@@ -499,9 +537,9 @@ TEST_F(PlatformTest, EstablishesRfidBaselineWhenSubscriptionBegins) {
 	EXPECT_EQ(events[0].payload, std::vector<uint8_t>(first_uid.begin(), first_uid.end()));
 
 	// Re-subscribing after an unsubscribe establishes a fresh baseline again.
-	ASSERT_EQ(call(CMD_UNSUBSCRIBE_FROM_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	ASSERT_EQ(call(CMD_UNSUBSCRIBE_FROM_EVENT, native_bytes<uint32_t>(EVENT_RFID_DETECT)).status, platform::STATUS_OK);
 	hardware()->set_rfid_tag(second_uid, {});
-	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_RFID_DETECT)).status, platform::STATUS_OK);
 	manager->advance(4);
 	EXPECT_TRUE(take_all().empty());
 
@@ -518,7 +556,7 @@ TEST_F(PlatformTest, ZeroConfiguredHardwareDelayPublishesInTheTriggerTick) {
 	settings::set_setting("laser_event_extra_delay_ms", 0);
 	manager = std::make_unique<platform::Manager>(world_);
 	call(CMD_LASER_LEFT_SET, {1});
-	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_LASER_LEFT_DETECT});
+	call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_LASER_LEFT_DETECT));
 	manager->advance(0);
 
 	hardware()->set_left_laser_blocked(true);
@@ -530,7 +568,7 @@ TEST_F(PlatformTest, ZeroConfiguredHardwareDelayPublishesInTheTriggerTick) {
 
 TEST_F(PlatformTest, RfidEventDelaySamplesTheConfiguredNormalDistribution) {
 	constexpr int SAMPLES = 1000;
-	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT});
+	call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_RFID_DETECT));
 
 	std::map<int, uint64_t> triggered_at;
 	std::vector<double>     delays;
@@ -568,7 +606,7 @@ TEST_F(PlatformTest, RfidEventDelaySamplesTheConfiguredNormalDistribution) {
 }
 
 TEST_F(PlatformTest, DeliversPacketsAsEventsAfterTheNetworkDelay) {
-	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_MESSAGE_RECEIVED}, NEIGHBOUR);
+	call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_MESSAGE_RECEIVED), NEIGHBOUR);
 
 	EXPECT_EQ(call(CMD_SEND_PACKET, {NEIGHBOUR, 'h', 'i'}, MODULE).status, platform::STATUS_OK);
 	const uint64_t sent_at = tick_;
@@ -610,8 +648,8 @@ TEST_F(PlatformTest, AcceptsPacketsToConfiguredOfflineModulesWithoutDeliveringTh
 }
 
 TEST_F(PlatformTest, BroadcastNeverReachesSender) {
-	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_MESSAGE_RECEIVED}, MODULE);
-	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_MESSAGE_RECEIVED}, NEIGHBOUR);
+	call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_MESSAGE_RECEIVED), MODULE);
+	call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_MESSAGE_RECEIVED), NEIGHBOUR);
 
 	EXPECT_EQ(call(CMD_BROADCAST_PACKET, {'Q', 'F', 'B'}, MODULE).status, platform::STATUS_OK);
 	manager->advance(tick_ + net::Config{}.fixed_delay_ms);

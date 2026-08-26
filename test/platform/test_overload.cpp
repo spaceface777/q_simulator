@@ -267,7 +267,9 @@ TEST_F(OverloadTest, RateStopResetsStateAndRejectsQueuedSettersAfterCleanup) {
 	subscribe.type    = MT_REQ;
 	subscribe.cmd     = CMD_SUBSCRIBE_TO_EVENT;
 	subscribe.call_id = 1;
-	subscribe.payload = {static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT)};
+	subscribe.payload = {
+		static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT), static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT >> 8),
+		static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT >> 16), static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT >> 24)};
 	ASSERT_TRUE(manager->handle_request(module::ModuleId{MODULE}, subscribe, platform::ModuleTime{1, 1}));
 	manager->enqueue(module::ModuleId{MODULE}, rpc::Frame{});
 
