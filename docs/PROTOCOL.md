@@ -68,7 +68,9 @@ The platform can publish `EVENT_RFID_DETECT` with the seven-byte UID when a subs
 
 ### Module network
 
-`CMD_SEND_PACKET` takes a destination module byte followed by packet data. `CMD_BROADCAST_PACKET` takes packet data and sends it to every other active module. The configured network model applies one delay and loss result to each delivery leg.
+`CMD_SEND_PACKET` takes a destination module byte followed by packet data. A configured module ID is accepted even when that module is offline; its packet traverses the modeled network leg and is discarded because there is no active runtime to receive it. An ID absent from the layout returns not found. `CMD_BROADCAST_PACKET` takes packet data and sends it to every other active module. The configured network model applies one delay and loss result to each delivery leg.
+
+A successful send means the local UDP-like interface accepted the packet, not that the destination received it. Applications must tolerate packet loss, late delivery, and reordering.
 
 `CMD_GET_OWN_ID` returns one module-id byte. `CMD_GET_NETWORK_MAP` returns the layout map. `CMD_GET_MODULE_LIST` returns a 16-bit module count followed by five bytes for each active module.
 

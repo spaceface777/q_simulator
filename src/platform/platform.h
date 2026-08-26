@@ -7,6 +7,7 @@
 #include <deque>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -137,6 +138,7 @@ namespace platform {
 
 		// Keyed by module id rather than indexed by it, to avoid a fixed 256-entry table.
 		std::map<uint8_t, Runtime> runtimes_;
+		std::set<uint8_t>          known_modules_;
 
 		[[nodiscard]] Runtime*        find(module::ModuleId id);
 		[[nodiscard]] const Runtime*  find(module::ModuleId id) const;

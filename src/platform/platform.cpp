@@ -294,6 +294,9 @@ namespace platform {
 		  laser_event_extra_delay_ms_(static_cast<uint64_t>(settings::get_setting<int>("laser_event_extra_delay_ms"))),
 		  rfid_event_delay_mean_ms_(settings::get_setting<double>("rfid_event_extra_delay_mean_ms")),
 		  rfid_event_delay_sd_ms_(settings::get_setting<double>("rfid_event_extra_delay_sd_ms")), world_(&world) {
+		for (const module::ModuleId id : settings::get_configured_modules()) {
+			known_modules_.insert(id.raw());
+		}
 		for (const module::ModuleId id : settings::get_active_modules()) {
 			add_module(id);
 		}
@@ -301,6 +304,7 @@ namespace platform {
 	}
 
 	void Manager::add_module(module::ModuleId id) {
+		known_modules_.insert(id.raw());
 		if (find(id) != nullptr) {
 			return;
 		}
@@ -588,7 +592,7 @@ namespace platform {
 				return false;
 			}
 			const uint8_t destination = request.payload[0];
-			if (runtimes_.find(destination) == runtimes_.end()) {
+			if (!known_modules_.contains(destination)) {
 				return false;
 			}
 			data.assign(request.payload.begin() + 1, request.payload.end());

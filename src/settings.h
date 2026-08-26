@@ -21,7 +21,10 @@ namespace settings {
 	};
 
 	struct ModuleSettings {
-		bool                            active;
+		// Configured records whether this ID has an entry in layout.toml. An inactive configured
+		// module is known to the network even though no application runtime is started for it.
+		bool                            configured = false;
+		bool                            active     = false;
 		std::optional<module::ModuleId> left;
 		std::optional<module::ModuleId> middle;
 		std::optional<module::ModuleId> right;
@@ -48,6 +51,9 @@ namespace settings {
 
 	// Ascending. Includes the tower when configured.
 	[[nodiscard]] std::vector<module::ModuleId> get_active_modules();
+
+	// Ascending. Includes inactive module entries from layout.toml.
+	[[nodiscard]] std::vector<module::ModuleId> get_configured_modules();
 
 	// The module's own binary override when set, otherwise the global application_path.
 	[[nodiscard]] std::string get_module_binary(module::ModuleId id);

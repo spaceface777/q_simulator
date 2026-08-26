@@ -109,7 +109,8 @@ namespace settings {
 
 	// Reads one [module.N] table. Geometry is optional for the tower, required for routing modules.
 	static void parse_module(uint8_t id, const toml::table& table) {
-		const bool is_tower = id == TOWER_MODULE_ID;
+		const bool is_tower            = id == TOWER_MODULE_ID;
+		module_settings[id].configured = true;
 
 		{
 			auto opt_active = table["active"].value_exact<bool>();
@@ -301,6 +302,16 @@ namespace settings {
 			}
 		}
 		return active;
+	}
+
+	std::vector<module::ModuleId> get_configured_modules() {
+		std::vector<module::ModuleId> configured;
+		for (const uint8_t id : all_module_ids()) {
+			if (module_settings[id].configured || module_settings[id].active) {
+				configured.push_back(module::ModuleId{id});
+			}
+		}
+		return configured;
 	}
 
 	std::string get_module_binary(module::ModuleId id) {

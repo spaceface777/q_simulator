@@ -591,6 +591,24 @@ TEST_F(PlatformTest, RefusesPacketsToUnknownModules) {
 	EXPECT_EQ(call(CMD_SEND_PACKET, {}, MODULE).status, platform::STATUS_NO_ENTRY);
 }
 
+TEST_F(PlatformTest, AcceptsPacketsToConfiguredOfflineModulesWithoutDeliveringThem) {
+	constexpr uint8_t        OFFLINE = 3;
+	settings::ModuleSettings offline{};
+	offline.configured = true;
+	settings::set_module_settings(module::ModuleId{OFFLINE}, offline);
+	manager = std::make_unique<platform::Manager>(world_);
+
+	EXPECT_EQ(call(CMD_SEND_PACKET, {OFFLINE, 'x'}, MODULE).status, platform::STATUS_OK);
+	manager->advance(tick_ + net::Config{}.fixed_delay_ms);
+	EXPECT_EQ(manager->backlog(module::ModuleId{OFFLINE}), 0u);
+
+	const rpc::Frame module_list = call(CMD_GET_MODULE_LIST);
+	ASSERT_GE(module_list.payload.size(), 2u);
+	const uint16_t active_count =
+		static_cast<uint16_t>(module_list.payload[0]) | (static_cast<uint16_t>(module_list.payload[1]) << 8);
+	EXPECT_EQ(active_count, 3u);
+}
+
 TEST_F(PlatformTest, BroadcastNeverReachesSender) {
 	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_MESSAGE_RECEIVED}, MODULE);
 	call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_MESSAGE_RECEIVED}, NEIGHBOUR);

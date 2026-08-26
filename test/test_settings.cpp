@@ -112,6 +112,9 @@ angle = 90
 	EXPECT_EQ(1, mod2.y);
 
 	EXPECT_EQ(1, settings::get_modules_active());
+	EXPECT_EQ(settings::get_active_modules(), std::vector<module::ModuleId>({module::ModuleId{1}}));
+	EXPECT_EQ(settings::get_configured_modules(),
+			  std::vector<module::ModuleId>({module::ModuleId{1}, module::ModuleId{2}}));
 }
 
 TEST_F(SettingsTest, ParseSettingsAcceptsFiniteHardwarePositionSettings) {
