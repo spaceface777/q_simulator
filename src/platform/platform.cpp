@@ -336,53 +336,58 @@ namespace platform {
 		network_map_ = stream.str();
 	}
 
-	bool Manager::charge(module::ModuleId id, uint8_t cmd, ModuleTime time) {
-		Runtime& runtime = *find(id);
-		bool     allowed = true;
-
-		// Charged to its own bucket and the global one, so traffic cannot dodge the overall limit.
-		for (const Bucket bucket : {Bucket::GLOBAL, request_bucket(cmd)}) {
-			const std::size_t index = static_cast<std::size_t>(bucket);
-			const int         limit = capacity_of(bucket);
-			if (limit == 0) {
-				continue;
-			}
-
-			std::deque<uint64_t>& samples = runtime.bucket_samples[index];
-			samples.push_back(time.local_tick);
-			const uint64_t oldest =
-				time.local_tick >= (RATE_LIMIT_WINDOW_TICKS - 1) ? time.local_tick - (RATE_LIMIT_WINDOW_TICKS - 1) : 0;
-			while (!samples.empty() && samples.front() < oldest) {
-				samples.pop_front();
-			}
-
-			const int count = static_cast<int>(samples.size());
-
-			// Escalation mirrors the platform: refuse, warn, pause, then stop.
-			if (count >= threshold(limit, 120) &&
-				(!runtime.bucket_has_warned[index] || runtime.bucket_warned_tick[index] != time.local_tick)) {
-				runtime.bucket_has_warned[index]  = true;
-				runtime.bucket_warned_tick[index] = time.local_tick;
-				diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "warning", count, limit});
-			}
-			if (count >= threshold(limit, 150) && runtime.paused_until_global_tick <= time.global_tick) {
-				runtime.paused_until_global_tick = time.global_tick + PAUSE_DURATION_TICKS;
-				runtime.lifecycle                = Lifecycle::PAUSED;
-				diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "pause", count, limit});
-			}
-			if (count >= threshold(limit, 200)) {
-				runtime.lifecycle   = Lifecycle::STOPPED;
-				runtime.stop_reason = to_string(bucket) + " bucket exceeded its stop threshold (" +
-									  std::to_string(count) + "/" + std::to_string(limit) + ")";
-				diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "stop", count, limit});
-				return false;
-			}
-			if (count >= limit) {
-				allowed = false;
-			}
+	bool Manager::charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time) {
+		Runtime* runtime_ptr = find(id);
+		if (runtime_ptr == nullptr) {
+			return false;
+		}
+		Runtime&          runtime = *runtime_ptr;
+		const std::size_t index   = static_cast<std::size_t>(bucket);
+		const int         limit   = capacity_of(bucket);
+		if (limit == 0) {
+			return true;
 		}
 
-		return allowed;
+		std::deque<uint64_t>& samples = runtime.bucket_samples[index];
+		samples.push_back(time.local_tick);
+		const uint64_t oldest =
+			time.local_tick >= (RATE_LIMIT_WINDOW_TICKS - 1) ? time.local_tick - (RATE_LIMIT_WINDOW_TICKS - 1) : 0;
+		while (!samples.empty() && samples.front() < oldest) {
+			samples.pop_front();
+		}
+
+		const int count = static_cast<int>(samples.size());
+
+		// Escalation mirrors the platform: refuse, warn, pause, then stop.
+		if (count >= threshold(limit, 120) &&
+			(!runtime.bucket_has_warned[index] || runtime.bucket_warned_tick[index] != time.local_tick)) {
+			runtime.bucket_has_warned[index]  = true;
+			runtime.bucket_warned_tick[index] = time.local_tick;
+			diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "warning", count, limit});
+		}
+		if (count >= threshold(limit, 150) && runtime.paused_until_global_tick <= time.global_tick) {
+			runtime.paused_until_global_tick = time.global_tick + PAUSE_DURATION_TICKS;
+			runtime.lifecycle                = Lifecycle::PAUSED;
+			diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "pause", count, limit});
+		}
+		if (count >= threshold(limit, 200)) {
+			runtime.lifecycle   = Lifecycle::STOPPED;
+			runtime.stop_reason = to_string(bucket) + " bucket exceeded its stop threshold (" + std::to_string(count) +
+								  "/" + std::to_string(limit) + ")";
+			diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "stop", count, limit});
+			return false;
+		}
+		return count < limit;
+	}
+
+	IngressAdmission Manager::account_ingress(module::ModuleId id, ModuleTime time) {
+		return IngressAdmission{charge_bucket(id, Bucket::GLOBAL, time)};
+	}
+
+	bool Manager::charge_category(module::ModuleId id, uint8_t cmd, ModuleTime time) {
+		const Bucket bucket = request_bucket(cmd);
+		// Unknown commands use the global worker lane but have no semantic category.
+		return bucket == Bucket::GLOBAL || charge_bucket(id, bucket, time);
 	}
 
 	void Manager::prepare_tick(uint64_t tick) {
@@ -485,14 +490,39 @@ namespace platform {
 		return taken;
 	}
 
-	std::optional<rpc::Frame> Manager::handle_request(module::ModuleId id, const rpc::Frame& request, ModuleTime time) {
-		Runtime* runtime_ptr = find(id);
+	std::size_t Manager::rate_sample_count(module::ModuleId id, Bucket bucket) const {
+		const Runtime* runtime = find(id);
+		if (runtime == nullptr || bucket >= Bucket::COUNT) {
+			return 0;
+		}
+		return runtime->bucket_samples[static_cast<std::size_t>(bucket)].size();
+	}
+
+	std::optional<rpc::Frame> Manager::handle_request(module::ModuleId id, const rpc::Frame& request, ModuleTime time,
+													  std::optional<IngressAdmission> ingress) {
+		const IngressAdmission ingress_admission = ingress.has_value() ? *ingress : account_ingress(id, time);
+		Runtime*               runtime_ptr       = find(id);
 		if (runtime_ptr == nullptr) {
 			return {};
 		}
 		Runtime& runtime = *runtime_ptr;
 		if (runtime.lifecycle == Lifecycle::STOPPED) {
 			return {};
+		}
+
+		// These permission gates precede semantic command admission on physical Core0. The raw frame
+		// has already consumed global capacity, but a denied call does not consume its category.
+		if ((id == TOWER_MODULE_ID && is_hardware_command(request.cmd)) ||
+			(id != TOWER_MODULE_ID && request.cmd == CMD_SET_FLIGHT_SCHEDULE)) {
+			if ((request.flags & RPC_FLAG_NON_CON) != 0) {
+				return {};
+			}
+			rpc::Frame response;
+			response.type    = MT_RESP;
+			response.cmd     = request.cmd;
+			response.call_id = request.call_id;
+			response.status  = STATUS_PERM;
+			return response;
 		}
 
 		// Recorded before dispatch, so a heartbeat counts even if its command is later refused.
@@ -505,7 +535,8 @@ namespace platform {
 			}
 		}
 
-		if (!charge(id, request.cmd, time)) {
+		const bool category_allowed = charge_category(id, request.cmd, time);
+		if (!ingress_admission.allowed || !category_allowed) {
 			// Over its limit: refuse rather than queue, matching what hardware would do.
 			if ((request.flags & RPC_FLAG_NON_CON) != 0) {
 				return {};
@@ -558,9 +589,7 @@ namespace platform {
 			response.cmd     = request.cmd;
 			response.call_id = request.call_id;
 
-			if (!(id == TOWER_MODULE_ID)) {
-				response.status = STATUS_PERM;
-			} else if (!is_valid_flight_board(request.payload)) {
+			if (!is_valid_flight_board(request.payload)) {
 				response.status = STATUS_INVALID;
 			} else {
 				flight_schedule_ = request.payload;

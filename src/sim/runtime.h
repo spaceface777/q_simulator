@@ -64,11 +64,12 @@ namespace sim {
 	class Runtime {
 	private:
 		struct PendingRpcRequest {
-			uint64_t    due_local_tick = 0;
-			uint64_t    work_id        = 0;
-			rpc::Frame  frame;
-			std::string label;
-			uint64_t    observation_id = 0;
+			uint64_t                   due_local_tick = 0;
+			uint64_t                   work_id        = 0;
+			rpc::Frame                 frame;
+			std::string                label;
+			uint64_t                   observation_id = 0;
+			platform::IngressAdmission ingress;
 		};
 
 		struct PendingRpcResponse {
@@ -159,7 +160,8 @@ namespace sim {
 
 		void trace_observation(const ltl::Observation& observation);
 
-		// Throws if the child wrote something undecodable into its mailbox.
+		// Drops undecodable application frames after ingress accounting. Corrupt mailbox metadata,
+		// which cannot be indexed safely, remains fatal.
 		void drain(Child& child, uint64_t source_global_tick, uint64_t source_local_tick, uint32_t batch_index = 0);
 
 		void release_local_rpc(Child& child, uint64_t global_tick, uint64_t local_tick);

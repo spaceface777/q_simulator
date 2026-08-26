@@ -62,6 +62,9 @@ namespace {
 			::unsetenv("FAKE_CHILD_SUBSCRIBE");
 			::unsetenv("FAKE_CHILD_EXIT_AFTER");
 			::unsetenv("FAKE_CHILD_QUERY_TICK");
+			::unsetenv("FAKE_CHILD_INGRESS_PROBE");
+			::unsetenv("FAKE_CHILD_INGRESS_PROBE_1");
+			::unsetenv("FAKE_CHILD_INGRESS_PROBE_2");
 			::unsetenv("FAKE_CHILD_RECORD");
 			::unsetenv("FAKE_CHILD_RECORD_TICKS");
 			::unsetenv("FAKE_CHILD_GRANT_RECORD");
@@ -98,6 +101,26 @@ TEST_F(RuntimeTest, StartsApplicationsAndWaitsForThemToActivate) {
 	EXPECT_EQ(runtime.platform().lifecycle(module::ModuleId{FIRST}), platform::Lifecycle::RUNNING);
 	EXPECT_GT(runtime.tick(), 0u);
 
+	runtime.stop();
+}
+
+TEST_F(RuntimeTest, DropsAndAccountsForAShortMalformedMailboxFrame) {
+	::setenv("FAKE_CHILD_INGRESS_PROBE_1", "1", 1);
+
+	sim::Runtime runtime(7);
+	ASSERT_NO_THROW(runtime.start());
+	EXPECT_EQ(runtime.platform().rate_sample_count(module::ModuleId{FIRST}, platform::Bucket::GLOBAL),
+			  runtime.platform().rate_sample_count(module::ModuleId{SECOND}, platform::Bucket::GLOBAL) + 1);
+	runtime.stop();
+}
+
+TEST_F(RuntimeTest, DropsAndAccountsForAnUnexpectedResponseFrame) {
+	::setenv("FAKE_CHILD_INGRESS_PROBE_1", "2", 1);
+
+	sim::Runtime runtime(7);
+	ASSERT_NO_THROW(runtime.start());
+	EXPECT_EQ(runtime.platform().rate_sample_count(module::ModuleId{FIRST}, platform::Bucket::GLOBAL),
+			  runtime.platform().rate_sample_count(module::ModuleId{SECOND}, platform::Bucket::GLOBAL) + 1);
 	runtime.stop();
 }
 

@@ -92,6 +92,12 @@ namespace platform {
 		uint64_t local_tick  = 0;
 	};
 
+	// The result of charging one frame at the receive boundary. It follows a decoded request to
+	// command admission so the global bucket is checked without being incremented again.
+	struct IngressAdmission {
+		bool allowed = false;
+	};
+
 	// The bucket's name, for diagnostics and traces.
 	[[nodiscard]] std::string to_string(Bucket bucket);
 
@@ -168,7 +174,9 @@ namespace platform {
 
 		[[nodiscard]] rpc::Frame dispatch(module::ModuleId id, const rpc::Frame& request, uint64_t global_tick);
 
-		[[nodiscard]] bool charge(module::ModuleId id, uint8_t cmd, ModuleTime time);
+		[[nodiscard]] bool charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time);
+
+		[[nodiscard]] bool charge_category(module::ModuleId id, uint8_t cmd, ModuleTime time);
 
 		void publish(module::ModuleId id, uint32_t event, std::vector<uint8_t> payload);
 
@@ -192,9 +200,13 @@ namespace platform {
 
 		void rebuild_topology();
 
+		// Charges every frame as soon as it reaches the platform receive boundary, before decoding.
+		[[nodiscard]] IngressAdmission account_ingress(module::ModuleId id, ModuleTime time = {});
+
 		// Returns the response to send, or nothing when the request was non-confirmable.
 		[[nodiscard]] std::optional<rpc::Frame> handle_request(module::ModuleId id, const rpc::Frame& request,
-															   ModuleTime time = {});
+															   ModuleTime                      time    = {},
+															   std::optional<IngressAdmission> ingress = std::nullopt);
 
 		void prepare_tick(uint64_t tick);
 
@@ -204,6 +216,9 @@ namespace platform {
 		std::vector<module::ModuleId> check_supervision(uint64_t tick);
 
 		[[nodiscard]] std::vector<Diagnostic> take_diagnostics();
+
+		// Current samples in a bucket's sliding window; useful for platform observability and tests.
+		[[nodiscard]] std::size_t rate_sample_count(module::ModuleId id, Bucket bucket) const;
 
 		// Turns world state and network traffic into application-visible events, landing them in
 		// the per-module backlog rather than sending immediately.

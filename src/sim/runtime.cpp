@@ -669,18 +669,33 @@ namespace sim {
 
 		const std::size_t count = childsync::mailbox_count(mailbox);
 		for (std::size_t index = 0; index < count; index++) {
-			std::size_t    length = 0;
-			const uint8_t* bytes  = childsync::mailbox_read(mailbox, index, length);
-			rpc::Frame     frame;
+			std::size_t                      length = 0;
+			const uint8_t*                   bytes  = childsync::mailbox_read(mailbox, index, length);
+			const platform::IngressAdmission ingress =
+				platform_->account_ingress(child.id, platform::ModuleTime{source_global_tick, source_local_tick});
+			rpc::Frame frame;
 			reader_.clear();
 			reader_.append(bytes, length);
 			if (reader_.next(frame) != rpc::DecodeStatus::OK) {
-				throw std::runtime_error("Module " + std::to_string(child.id.raw()) + " sent a malformed frame");
+				if (trace_.enabled()) {
+					trace_.write(trace::Entry("rpc_ingress_drop")
+									 .field("tick", source_global_tick)
+									 .field("module", static_cast<uint64_t>(child.id.raw()))
+									 .field("reason", "malformed_frame")
+									 .field("length", static_cast<uint64_t>(length)));
+				}
+				continue;
 			}
 
 			if (frame.type != MT_REQ) {
-				throw std::runtime_error("Module " + std::to_string(child.id.raw()) +
-										 " sent an unexpected frame type " + std::to_string(frame.type));
+				if (trace_.enabled()) {
+					trace_.write(trace::Entry("rpc_ingress_drop")
+									 .field("tick", source_global_tick)
+									 .field("module", static_cast<uint64_t>(child.id.raw()))
+									 .field("reason", "unexpected_frame_type")
+									 .field("frame_type", static_cast<uint64_t>(frame.type)));
+				}
+				continue;
 			}
 
 			uint64_t observation_id = 0;
@@ -701,7 +716,7 @@ namespace sim {
 
 			child.pending_requests.push_back(PendingRpcRequest{source_local_tick + RPC_RX_DELAY_LOCAL_TICKS,
 															   next_rpc_work_id_++, std::move(frame), std::move(label),
-															   observation_id});
+															   observation_id, ingress});
 		}
 	}
 
@@ -741,8 +756,8 @@ namespace sim {
 
 			PendingRpcRequest pending = std::move(found->second);
 			child.rpc_work.erase(found);
-			std::optional<rpc::Frame> response =
-				platform_->handle_request(child.id, pending.frame, platform::ModuleTime{global_tick, local_tick});
+			std::optional<rpc::Frame> response = platform_->handle_request(
+				child.id, pending.frame, platform::ModuleTime{global_tick, local_tick}, pending.ingress);
 			if (!response) {
 				for (const uint64_t started : child.rpc_workers.complete(current_work_id)) {
 					work_to_start.push_back(started);

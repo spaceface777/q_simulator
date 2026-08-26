@@ -67,6 +67,23 @@ namespace {
 		return childsync::mailbox_append(outbound, bytes.data(), bytes.size()) == childsync::MailboxStatus::OK;
 	}
 
+	bool append_ingress_probe(childsync::Mailbox& outbound, unsigned kind) {
+		if (kind == 1) {
+			const uint8_t short_frame = 0xA5;
+			return childsync::mailbox_append(outbound, &short_frame, sizeof(short_frame)) ==
+				   childsync::MailboxStatus::OK;
+		}
+		if (kind == 2) {
+			rpc::Frame response;
+			response.type                    = MT_RESP;
+			response.cmd                     = CMD_HEARTBEAT;
+			response.call_id                 = 0x1234;
+			const std::vector<uint8_t> bytes = rpc::encode(response);
+			return childsync::mailbox_append(outbound, bytes.data(), bytes.size()) == childsync::MailboxStatus::OK;
+		}
+		return true;
+	}
+
 	// Mirrors the queueing the real adapter does: the page is copied out before the tick runs, so the
 	// parent is free to refill it the moment the barrier releases.
 	std::vector<rpc::Frame> take_inbound(childsync::Mailbox& mailbox, bool& corrupt) {
@@ -120,6 +137,7 @@ int main() {
 	const unsigned exit_after =
 		env_number("FAKE_CHILD_EXIT_AFTER", 0); // Simulates a crash after N ticks. 0 runs forever.
 	const unsigned    query_tick        = env_number("FAKE_CHILD_QUERY_TICK", UINT_MAX);
+	const unsigned    ingress_probe     = module_env_number("FAKE_CHILD_INGRESS_PROBE", id, 0);
 	const bool        reply_to_message  = env_number("FAKE_CHILD_REPLY_TO_MESSAGE", 0) != 0 && id == 1;
 	const char*       record_path       = ::getenv("FAKE_CHILD_RECORD"); // File to append observed commands to.
 	const bool        record_ticks      = env_number("FAKE_CHILD_RECORD_TICKS", 0) != 0;
@@ -194,6 +212,10 @@ int main() {
 						childsync::MailboxStatus::OK) {
 						return 4;
 					}
+				}
+
+				if (ticks == 0 && !append_ingress_probe(outbound, ingress_probe)) {
+					return 4;
 				}
 
 				if (ticks == query_tick) {

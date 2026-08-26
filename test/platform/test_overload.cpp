@@ -172,6 +172,49 @@ TEST_F(OverloadTest, TheGlobalBucketCatchesTrafficSpreadAcrossCategories) {
 	EXPECT_GT(refused, 0);
 }
 
+TEST_F(OverloadTest, UnknownCommandConsumesGlobalExactlyOnceAndNoCategory) {
+	EXPECT_EQ(call(0xFE, 1), platform::STATUS_NO_SYS);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 1u);
+	for (int index = 1; index < static_cast<int>(platform::Bucket::COUNT); index++) {
+		EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, static_cast<platform::Bucket>(index)), 0u);
+	}
+}
+
+TEST_F(OverloadTest, RecognizedRequestConsumesGlobalAndItsCategoryOnce) {
+	EXPECT_EQ(call(CMD_LASER_LEFT_GET, 1), platform::STATUS_OK);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 1u);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::LASER), 1u);
+}
+
+TEST_F(OverloadTest, PermissionDeniedScheduleConsumesGlobalButNotSchedule) {
+	rpc::Frame frame;
+	frame.type    = MT_REQ;
+	frame.cmd     = CMD_SET_FLIGHT_SCHEDULE;
+	frame.call_id = 1;
+	const std::optional<rpc::Frame> response =
+		manager->handle_request(module::ModuleId{MODULE}, frame, platform::ModuleTime{1, 1});
+
+	ASSERT_TRUE(response.has_value());
+	EXPECT_EQ(response->status, platform::STATUS_PERM);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 1u);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::SCHEDULE), 0u);
+}
+
+TEST_F(OverloadTest, RawIngressAloneEscalatesGlobalWarningPauseAndStop) {
+	const int limit = platform::capacity_of(platform::Bucket::GLOBAL);
+	for (int index = 0; index < limit * 2; index++) {
+		(void)manager->account_ingress(module::ModuleId{MODULE}, platform::ModuleTime{1, 1});
+	}
+	collect();
+
+	EXPECT_TRUE(raised("warning"));
+	EXPECT_TRUE(raised("pause"));
+	EXPECT_TRUE(raised("stop"));
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::STOPPED);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL),
+			  static_cast<std::size_t>(limit * 2));
+}
+
 TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {
 	const int limit = platform::capacity_of(platform::Bucket::SERVO);
 	for (int index = 0; index < limit - 1; index++) {
