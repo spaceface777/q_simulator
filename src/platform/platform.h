@@ -45,7 +45,7 @@ namespace platform {
 	// holding four messages, so the byte budget can bite before the frame count does.
 	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = childsync::MAX_FRAMES_PER_TICK;
 
-	// Rate limits are application-facing, so this window counts module-local executed ticks.
+	// Physical rate windows use Core0 uptime, so they keep aging while Core1 is paused.
 	inline constexpr uint64_t RATE_LIMIT_WINDOW_TICKS = 1000;
 
 	// Forced pauses and heartbeat supervision belong to the external platform and use global time.
@@ -95,7 +95,8 @@ namespace platform {
 	// The result of charging one frame at the receive boundary. It follows a decoded request to
 	// command admission so the global bucket is checked without being incremented again.
 	struct IngressAdmission {
-		bool allowed = false;
+		bool allowed        = false;
+		bool stop_triggered = false;
 	};
 
 	// The bucket's name, for diagnostics and traces.
@@ -114,10 +115,14 @@ namespace platform {
 		bool                     heartbeat_seen           = false;
 		Lifecycle                lifecycle                = Lifecycle::ACTIVATING;
 		uint64_t                 paused_until_global_tick = 0;
+		bool                     pause_resume_pending     = false;
+		bool                     belt_restore_valid       = false;
+		module::BeltSpeed        restore_big_belt_speed;
+		module::BeltSpeed        restore_small_belt_speed;
 		std::vector<std::string> logs;
 		std::vector<std::string> panics;
 
-		// One sliding window of module-local request ticks per bucket, and the local tick last warned
+		// One sliding window of Core0/global request ticks per bucket, and the global tick last warned
 		// at, so that a sustained overload warns once rather than every request.
 		std::array<std::deque<uint64_t>, static_cast<std::size_t>(Bucket::COUNT)> bucket_samples;
 		std::array<uint64_t, static_cast<std::size_t>(Bucket::COUNT)>             bucket_warned_tick{};
@@ -126,6 +131,7 @@ namespace platform {
 		uint64_t    last_heartbeat_global_tick = 0;
 		bool        heartbeat_warned           = false;
 		bool        heartbeat_failed           = false;
+		bool        rate_stopped               = false;
 		std::string stop_reason;
 
 		// Edge detection state. Events report transitions, so the platform remembers what the
@@ -174,9 +180,14 @@ namespace platform {
 
 		[[nodiscard]] rpc::Frame dispatch(module::ModuleId id, const rpc::Frame& request, uint64_t global_tick);
 
-		[[nodiscard]] bool charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time);
+		struct ChargeResult {
+			bool allowed        = false;
+			bool stop_triggered = false;
+		};
 
-		[[nodiscard]] bool charge_category(module::ModuleId id, uint8_t cmd, ModuleTime time);
+		[[nodiscard]] ChargeResult charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time);
+
+		[[nodiscard]] ChargeResult charge_category(module::ModuleId id, uint8_t cmd, ModuleTime time);
 
 		void publish(module::ModuleId id, uint32_t event, std::vector<uint8_t> payload);
 
@@ -190,7 +201,10 @@ namespace platform {
 		[[nodiscard]] bool enqueue_packet(uint64_t tick, module::ModuleId sender, const rpc::Frame& request,
 										  bool broadcast);
 
-		void stop_application(uint64_t tick, module::ModuleId id, std::string reason);
+		void pause_application(module::ModuleId id, uint64_t tick);
+
+		void stop_application(uint64_t tick, module::ModuleId id, std::string reason, Bucket cause,
+							  bool heartbeat_failure);
 
 	public:
 		explicit Manager(world::State& world);
@@ -211,8 +225,7 @@ namespace platform {
 		void prepare_tick(uint64_t tick);
 
 		// Stops applications that missed their heartbeat deadline and returns heartbeat-failed modules.
-		// Returning existing heartbeat failures makes runtime retirement idempotent. Other stop causes
-		// retain their existing exception behavior.
+		// Rate-stopped modules remain observable but are retired by the runtime's safe-stop transaction.
 		std::vector<module::ModuleId> check_supervision(uint64_t tick);
 
 		[[nodiscard]] std::vector<Diagnostic> take_diagnostics();

@@ -31,6 +31,9 @@ namespace rpc {
 		// Simulator-only Core0 worker ownership. A confirmable request keeps its worker lane and
 		// category mutex until this response is handed to the requesting module.
 		uint64_t handler_work_id = 0;
+
+		// The one response a rate-stop transaction may deliver after closing module intake.
+		bool stop_after_delivery = false;
 	};
 
 	enum class DecodeStatus {

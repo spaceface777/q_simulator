@@ -95,14 +95,14 @@ TEST_F(OverloadTest, TheWindowSlidesSoASustainedRateBelowTheLimitIsNeverRefused)
 	}
 }
 
-TEST_F(OverloadTest, GlobalTimeDoesNotAgeRequestsOutOfAModuleLocalRateWindow) {
+TEST_F(OverloadTest, GlobalTimeAgesRequestsWhileModuleLocalTimeIsFrozen) {
 	const int limit = platform::capacity_of(platform::Bucket::LASER);
 
 	for (int index = 0; index < limit - 1; index++) {
-		EXPECT_EQ(call(CMD_LASER_LEFT_GET, platform::ModuleTime{static_cast<uint64_t>(index) * 10'000, 1}),
-				  platform::STATUS_OK);
+		EXPECT_EQ(call(CMD_LASER_LEFT_GET, platform::ModuleTime{1, 1}), platform::STATUS_OK);
 	}
-	EXPECT_EQ(call(CMD_LASER_LEFT_GET, platform::ModuleTime{1'000'000, 1}), platform::STATUS_TRY_AGAIN);
+	EXPECT_EQ(call(CMD_LASER_LEFT_GET, platform::ModuleTime{platform::RATE_LIMIT_WINDOW_TICKS + 1, 1}),
+			  platform::STATUS_OK);
 }
 
 TEST_F(OverloadTest, EscalatesFromWarningToPauseToStop) {
@@ -154,6 +154,43 @@ TEST_F(OverloadTest, APauseExpiresAfterASimulatedSecond) {
 	manager->prepare_tick(1 + platform::PAUSE_DURATION_TICKS);
 	collect();
 	EXPECT_TRUE(raised("resume"));
+	EXPECT_NE(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
+}
+
+TEST_F(OverloadTest, PauseStopsWorldMotionExtendsAndRestoresBelts) {
+	module::Module* physical = world_.module(module::ModuleId{MODULE});
+	ASSERT_NE(physical, nullptr);
+	physical->set_big_belt_speed(module::BeltSpeed{100.0});
+	physical->set_small_belt_speed(module::BeltSpeed{-50.0});
+	world_.place(7, module::ModuleId{MODULE}, world::Position::RIGHT_LASER, RfidPayload{});
+	world_.advance_tick();
+	const int64_t moving_position = world_.tub(7)->position_um;
+	const int64_t moving_encoder  = physical->big_belt_travel_um();
+	ASSERT_NE(moving_encoder, 0);
+
+	const int limit = platform::capacity_of(platform::Bucket::LASER);
+	for (int index = 0; index < limit * 3 / 2; index++) {
+		call(CMD_LASER_LEFT_GET, 1);
+	}
+	ASSERT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
+	EXPECT_DOUBLE_EQ(physical->big_belt_speed().raw(), 0.0);
+	EXPECT_DOUBLE_EQ(physical->small_belt_speed().raw(), 0.0);
+
+	for (int index = 0; index < 10; index++) world_.advance_tick();
+	EXPECT_EQ(world_.tub(7)->position_um, moving_position);
+	EXPECT_EQ(physical->big_belt_travel_um(), moving_encoder);
+
+	// A queued Core0 request during the pause repeats enforcement and extends the pending resume.
+	call(CMD_LASER_LEFT_GET, 500);
+	manager->prepare_tick(1 + platform::PAUSE_DURATION_TICKS);
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
+	manager->prepare_tick(500 + platform::PAUSE_DURATION_TICKS);
+	EXPECT_NE(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
+	EXPECT_DOUBLE_EQ(physical->big_belt_speed().raw(), 100.0);
+	EXPECT_DOUBLE_EQ(physical->small_belt_speed().raw(), -50.0);
+
+	// Core0 time aged the old burst out, so the first resumed request cannot immediately repause.
+	EXPECT_EQ(call(CMD_LASER_LEFT_GET, 500 + platform::PAUSE_DURATION_TICKS), platform::STATUS_OK);
 	EXPECT_NE(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
 }
 
@@ -211,8 +248,64 @@ TEST_F(OverloadTest, RawIngressAloneEscalatesGlobalWarningPauseAndStop) {
 	EXPECT_TRUE(raised("pause"));
 	EXPECT_TRUE(raised("stop"));
 	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::STOPPED);
-	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL),
-			  static_cast<std::size_t>(limit * 2));
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 0u);
+}
+
+TEST_F(OverloadTest, RateStopResetsStateAndRejectsQueuedSettersAfterCleanup) {
+	module::Module* physical = world_.module(module::ModuleId{MODULE});
+	ASSERT_NE(physical, nullptr);
+	physical->set_big_belt_speed(module::BeltSpeed{100.0});
+	physical->set_small_belt_speed(module::BeltSpeed{-100.0});
+	physical->set_servo_angle(module::ServoAngle{90.0});
+	physical->set_led_color(module::LedColor{0x123456});
+	physical->set_left_laser_enabled(true);
+	physical->set_right_laser_enabled(true);
+	world_.advance_tick();
+	ASSERT_NE(physical->big_belt_travel_um(), 0);
+
+	rpc::Frame subscribe;
+	subscribe.type    = MT_REQ;
+	subscribe.cmd     = CMD_SUBSCRIBE_TO_EVENT;
+	subscribe.call_id = 1;
+	subscribe.payload = {static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT)};
+	ASSERT_TRUE(manager->handle_request(module::ModuleId{MODULE}, subscribe, platform::ModuleTime{1, 1}));
+	manager->enqueue(module::ModuleId{MODULE}, rpc::Frame{});
+
+	const int limit = platform::capacity_of(platform::Bucket::LASER);
+	for (int index = 0; index < (limit * 2) - 1; index++) call(CMD_LASER_LEFT_GET, 2);
+
+	rpc::Frame trigger;
+	trigger.type    = MT_REQ;
+	trigger.cmd     = CMD_LASER_LEFT_GET;
+	trigger.call_id = 0xCAFE;
+	const std::optional<rpc::Frame> terminal =
+		manager->handle_request(module::ModuleId{MODULE}, trigger, platform::ModuleTime{2, 2});
+	ASSERT_TRUE(terminal.has_value());
+	EXPECT_EQ(terminal->status, platform::STATUS_TRY_AGAIN);
+	EXPECT_TRUE(terminal->stop_after_delivery);
+
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::STOPPED);
+	EXPECT_EQ(manager->subscriptions(module::ModuleId{MODULE}), 0u);
+	EXPECT_EQ(manager->backlog(module::ModuleId{MODULE}), 0u);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 0u);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::LASER), 0u);
+	EXPECT_DOUBLE_EQ(physical->big_belt_speed().raw(), 0.0);
+	EXPECT_DOUBLE_EQ(physical->small_belt_speed().raw(), 0.0);
+	EXPECT_EQ(physical->big_belt_travel_um(), 0);
+	EXPECT_EQ(physical->small_belt_travel_um(), 0);
+	EXPECT_DOUBLE_EQ(physical->servo_angle().raw(), 0.0);
+	EXPECT_EQ(physical->led_color().raw(), 0u);
+	EXPECT_FALSE(physical->is_left_laser_enabled());
+	EXPECT_FALSE(physical->is_right_laser_enabled());
+
+	// This models a setter that was already queued behind the triggering handler.
+	rpc::Frame stale_setter;
+	stale_setter.type    = MT_REQ;
+	stale_setter.cmd     = CMD_LASER_LEFT_SET;
+	stale_setter.call_id = 0xCAFF;
+	stale_setter.payload = {1};
+	EXPECT_FALSE(manager->handle_request(module::ModuleId{MODULE}, stale_setter, platform::ModuleTime{3, 3}));
+	EXPECT_FALSE(physical->is_left_laser_enabled());
 }
 
 TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {

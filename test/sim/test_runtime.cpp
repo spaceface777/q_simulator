@@ -65,9 +65,13 @@ namespace {
 			::unsetenv("FAKE_CHILD_INGRESS_PROBE");
 			::unsetenv("FAKE_CHILD_INGRESS_PROBE_1");
 			::unsetenv("FAKE_CHILD_INGRESS_PROBE_2");
+			::unsetenv("FAKE_CHILD_RATE_BURST");
+			::unsetenv("FAKE_CHILD_RATE_BURST_1");
+			::unsetenv("FAKE_CHILD_RATE_BURST_2");
 			::unsetenv("FAKE_CHILD_RECORD");
 			::unsetenv("FAKE_CHILD_RECORD_TICKS");
 			::unsetenv("FAKE_CHILD_GRANT_RECORD");
+			::unsetenv("FAKE_CHILD_STATUS_RECORD");
 			::unsetenv("FAKE_CHILD_MUTANT");
 			::unsetenv("FAKE_CHILD_REPLY_TO_MESSAGE");
 		}
@@ -148,6 +152,38 @@ TEST_F(RuntimeTest, HeartbeatDeathStopsOnlyTheFailedModule) {
 	EXPECT_EQ(runtime.module_tick(module::ModuleId{SECOND}) - live_before, 100u);
 
 	runtime.stop();
+}
+
+TEST_F(RuntimeTest, RateStopDeliversTryAgainBeforeRetiringOnlyTheOffendingModule) {
+	const fs::path statuses = fs::temp_directory_path() / ("quercus_rate_stop_" + std::to_string(::getpid()));
+	fs::remove(statuses);
+	::setenv("FAKE_CHILD_RATE_BURST_1", "4", 1);
+	::setenv("FAKE_CHILD_STATUS_RECORD", statuses.c_str(), 1);
+
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, sim::MAX_TICK_BATCH);
+	ASSERT_NO_THROW(runtime.start());
+	ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(200), 1.0, std::chrono::seconds(10)));
+
+	EXPECT_EQ(runtime.platform().lifecycle(module::ModuleId{FIRST}), platform::Lifecycle::STOPPED);
+	EXPECT_EQ(runtime.platform().lifecycle(module::ModuleId{SECOND}), platform::Lifecycle::RUNNING);
+	EXPECT_NE(runtime.platform().stop_reason(module::ModuleId{FIRST}).find("global bucket"), std::string::npos);
+
+	std::ifstream input(statuses);
+	std::string   line;
+	bool          saw_terminal_try_again = false;
+	while (std::getline(input, line)) {
+		if (line.ends_with(":" + std::to_string(platform::STATUS_TRY_AGAIN))) saw_terminal_try_again = true;
+	}
+	EXPECT_TRUE(saw_terminal_try_again);
+
+	const uint64_t world_before = runtime.tick();
+	const uint64_t live_before  = runtime.module_tick(module::ModuleId{SECOND});
+	ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(100), 1.0, std::chrono::seconds(5)));
+	EXPECT_EQ(runtime.tick() - world_before, 96u);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{SECOND}) - live_before, 96u);
+
+	runtime.stop();
+	fs::remove(statuses);
 }
 
 TEST_F(RuntimeTest, AppliesEarlyScenarioEventsWhileStartupSkewAdvancesTime) {

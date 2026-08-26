@@ -68,6 +68,13 @@ namespace module {
 			small_travel_um_ += small_step_um < 0 ? -small_step_um : small_step_um;
 		}
 
+		void reset_belt_travel() noexcept {
+			big_travel_um_      = 0;
+			small_travel_um_    = 0;
+			big_travel_carry_   = 0;
+			small_travel_carry_ = 0;
+		}
+
 		// Carried between ticks so a slow belt accumulates travel exactly instead of rounding to zero.
 		int64_t& big_belt_travel_carry() noexcept { return big_travel_carry_; }
 

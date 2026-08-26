@@ -497,6 +497,9 @@ namespace sim {
 		// relaxed-timing mode selected by --tick-batch.
 		grant_tick(batch_ticks);
 		collect_acknowledgements();
+		for (Child& child : children_) {
+			if (child.active && child.retire_after_ack) retire_module(child.id, global_tick_);
+		}
 
 		uint32_t completed = 0;
 		for (uint32_t batch_index = 0; batch_index < batch_ticks; batch_index++) {
@@ -575,7 +578,9 @@ namespace sim {
 						break;
 
 					const uint64_t completed_work_id = frame.handler_work_id;
+					const bool     stop_after_ack    = frame.stop_after_delivery;
 					child.staged_outbound.pop_front();
+					if (stop_after_ack) child.retire_after_ack = true;
 					if (completed_work_id != 0) {
 						for (const uint64_t work_id : child.rpc_workers.complete(completed_work_id)) {
 							start_rpc_work(child, work_id, global_tick_, module_ticks_[child.id.raw()]);
@@ -634,11 +639,14 @@ namespace sim {
 			return;
 		}
 
-		Child& child       = *found;
-		child.active       = false;
-		child.tick_granted = false;
-		child.grant_mask   = 0;
-		child.skipped_mask = 0;
+		Child& child           = *found;
+		child.active           = false;
+		child.accepting_rpc    = false;
+		child.tick_granted     = false;
+		child.grant_mask       = 0;
+		child.skipped_mask     = 0;
+		child.retire_pending   = false;
+		child.retire_after_ack = false;
 		child.staged_outbound.clear();
 		child.pending_requests.clear();
 		child.pending_responses.clear();
@@ -661,6 +669,10 @@ namespace sim {
 
 	void Runtime::drain(Child& child, uint64_t source_global_tick, uint64_t source_local_tick, uint32_t batch_index) {
 		childsync::Mailbox& mailbox = child.segment->get().to_parent[batch_index];
+		if (!child.accepting_rpc) {
+			childsync::mailbox_clear(mailbox);
+			return;
+		}
 
 		// The child shares the page, so its offsets are checked before they are used to index it.
 		if (!childsync::mailbox_valid(mailbox)) {
@@ -684,6 +696,7 @@ namespace sim {
 									 .field("reason", "malformed_frame")
 									 .field("length", static_cast<uint64_t>(length)));
 				}
+				if (ingress.stop_triggered) quiesce_module_for_stop(child, source_local_tick, std::nullopt);
 				continue;
 			}
 
@@ -704,6 +717,21 @@ namespace sim {
 				pending_rpc_requests_[source_global_tick].push_back(
 					ltl::RpcRequest{observation_id, source_global_tick, child.id.raw(), frame.cmd, frame.call_id,
 									frame.flags, (frame.flags & RPC_FLAG_NON_CON) == 0, frame.payload});
+			}
+			if (ingress.stop_triggered) {
+				std::optional<rpc::Frame> terminal;
+				if ((frame.flags & RPC_FLAG_NON_CON) == 0) {
+					rpc::Frame response;
+					response.type                   = MT_RESP;
+					response.cmd                    = frame.cmd;
+					response.call_id                = frame.call_id;
+					response.status                 = platform::STATUS_TRY_AGAIN;
+					response.observation_request_id = observation_id;
+					response.stop_after_delivery    = true;
+					terminal                        = std::move(response);
+				}
+				quiesce_module_for_stop(child, source_local_tick, std::move(terminal));
+				return;
 			}
 
 			// Requests become tasks so their order is decided by the seed, not by mailbox order.
@@ -734,6 +762,7 @@ namespace sim {
 			queue_.schedule(
 				global_tick, engine::Priority::CHILD_INTAKE, std::move(label),
 				[this, child_ptr, local_tick, pending = std::move(pending)](engine::TaskContext& context) mutable {
+					if (!child_ptr->accepting_rpc) return;
 					const uint64_t         work_id = pending.work_id;
 					const platform::Bucket bucket  = platform::request_bucket(pending.frame.cmd);
 					child_ptr->rpc_work.emplace(work_id, std::move(pending));
@@ -741,6 +770,37 @@ namespace sim {
 						start_rpc_work(*child_ptr, work_id, context.tick(), local_tick);
 					}
 				});
+		}
+	}
+
+	void Runtime::quiesce_module_for_stop(Child& child, uint64_t local_tick, std::optional<rpc::Frame> final_response) {
+		child.accepting_rpc = false;
+		child.pending_requests.clear();
+		child.pending_responses.clear();
+		child.staged_outbound.clear();
+		child.rpc_workers = platform::RpcWorkerPool{};
+		child.rpc_work.clear();
+		for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
+			childsync::mailbox_clear(child.segment->get().to_child[index]);
+		}
+
+		const uint16_t module_id = child.id.raw();
+		for (auto& entry : pending_rpc_responses_) {
+			auto& responses = entry.second;
+			std::erase_if(responses,
+						  [module_id](const ltl::RpcResponse& response) { return response.module == module_id; });
+		}
+		for (auto& entry : pending_rpc_events_) {
+			auto& events = entry.second;
+			std::erase_if(events, [module_id](const ltl::RpcEvent& event) { return event.module == module_id; });
+		}
+
+		if (final_response.has_value()) {
+			final_response->handler_work_id = 0;
+			child.pending_responses.push_back(
+				PendingRpcResponse{local_tick + RPC_TX_DELAY_LOCAL_TICKS, std::move(*final_response)});
+		} else {
+			child.retire_pending = true;
 		}
 	}
 
@@ -759,6 +819,10 @@ namespace sim {
 			std::optional<rpc::Frame> response = platform_->handle_request(
 				child.id, pending.frame, platform::ModuleTime{global_tick, local_tick}, pending.ingress);
 			if (!response) {
+				if (platform_->lifecycle(child.id) == platform::Lifecycle::STOPPED) {
+					quiesce_module_for_stop(child, local_tick, std::nullopt);
+					return;
+				}
 				for (const uint64_t started : child.rpc_workers.complete(current_work_id)) {
 					work_to_start.push_back(started);
 				}
@@ -767,7 +831,11 @@ namespace sim {
 
 			rpc::Frame answer             = std::move(response.value());
 			answer.observation_request_id = pending.observation_id;
-			answer.handler_work_id        = current_work_id;
+			if (answer.stop_after_delivery) {
+				quiesce_module_for_stop(child, local_tick, std::move(answer));
+				return;
+			}
+			answer.handler_work_id = current_work_id;
 			child.pending_responses.push_back(
 				PendingRpcResponse{local_tick + RPC_TX_DELAY_LOCAL_TICKS, std::move(answer)});
 		}
@@ -784,6 +852,9 @@ namespace sim {
 		});
 
 		queue_.schedule(tick, engine::Priority::MONITORING, "supervision", [this, tick](engine::TaskContext&) {
+			for (Child& child : children_) {
+				if (child.active && child.retire_pending) retire_module(child.id, tick);
+			}
 			for (const module::ModuleId id : platform_->check_supervision(tick)) {
 				retire_module(id, tick);
 			}

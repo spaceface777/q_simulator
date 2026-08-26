@@ -26,6 +26,7 @@ TEST(FrameTest, RoundTripsRequest) {
 	rpc::Frame sent             = make_request(CMD_SERVO_ANGLE_SET, {1, 2, 3, 4});
 	sent.observation_request_id = 42;
 	sent.handler_work_id        = 43;
+	sent.stop_after_delivery    = true;
 
 	rpc::FrameReader reader;
 	feed(reader, rpc::encode(sent));
@@ -38,6 +39,7 @@ TEST(FrameTest, RoundTripsRequest) {
 	EXPECT_EQ(received.payload, sent.payload);
 	EXPECT_EQ(received.observation_request_id, 0u);
 	EXPECT_EQ(received.handler_work_id, 0u);
+	EXPECT_FALSE(received.stop_after_delivery);
 	EXPECT_EQ(reader.buffered(), 0u);
 }
 

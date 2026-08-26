@@ -81,15 +81,18 @@ namespace sim {
 			module::ModuleId                       id;
 			childproc::Handle                      process;
 			std::optional<childsync::ChildSegment> segment;
-			uint64_t                               start_tick      = 0;
-			int64_t                                clock_rate_ppm  = 1'000'000;
-			int64_t                                clock_remainder = 0;
-			uint32_t                               tick_skip_ppm   = 0;
-			uint64_t                               tick_skip_rng   = 0;
-			uint16_t                               grant_mask      = 0;
-			uint16_t                               skipped_mask    = 0;
-			bool                                   tick_granted    = false;
-			bool                                   active          = true;
+			uint64_t                               start_tick       = 0;
+			int64_t                                clock_rate_ppm   = 1'000'000;
+			int64_t                                clock_remainder  = 0;
+			uint32_t                               tick_skip_ppm    = 0;
+			uint64_t                               tick_skip_rng    = 0;
+			uint16_t                               grant_mask       = 0;
+			uint16_t                               skipped_mask     = 0;
+			bool                                   tick_granted     = false;
+			bool                                   active           = true;
+			bool                                   accepting_rpc    = true;
+			bool                                   retire_pending   = false;
+			bool                                   retire_after_ack = false;
 			std::deque<rpc::Frame>                 staged_outbound;
 			std::deque<PendingRpcRequest>          pending_requests;
 			std::deque<PendingRpcResponse>         pending_responses;
@@ -167,6 +170,8 @@ namespace sim {
 		void release_local_rpc(Child& child, uint64_t global_tick, uint64_t local_tick);
 
 		void start_rpc_work(Child& child, uint64_t work_id, uint64_t global_tick, uint64_t local_tick);
+
+		void quiesce_module_for_stop(Child& child, uint64_t local_tick, std::optional<rpc::Frame> final_response);
 
 		void retire_module(module::ModuleId id, uint64_t tick);
 
