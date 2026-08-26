@@ -568,16 +568,6 @@ namespace platform {
 			return response;
 		}
 
-		// Recorded before dispatch, so a heartbeat counts even if its command is later refused.
-		if (request.cmd == CMD_HEARTBEAT) {
-			runtime.heartbeat_seen             = true;
-			runtime.last_heartbeat_global_tick = time.global_tick;
-			runtime.heartbeat_warned           = false;
-			if (runtime.lifecycle == Lifecycle::ACTIVATING) {
-				runtime.lifecycle = Lifecycle::RUNNING;
-			}
-		}
-
 		const ChargeResult category = charge_category(id, request.cmd, time);
 		if (!ingress_admission.allowed || !category.allowed) {
 			// Over its limit: refuse rather than queue, matching what hardware would do.
@@ -591,6 +581,15 @@ namespace platform {
 			response.status              = STATUS_TRY_AGAIN;
 			response.stop_after_delivery = ingress_admission.stop_triggered || category.stop_triggered;
 			return response;
+		}
+		// A heartbeat only counts after both raw-ingress and category admission succeed.
+		if (request.cmd == CMD_HEARTBEAT) {
+			runtime.heartbeat_seen             = true;
+			runtime.last_heartbeat_global_tick = time.global_tick;
+			runtime.heartbeat_warned           = false;
+			if (runtime.lifecycle == Lifecycle::ACTIVATING) {
+				runtime.lifecycle = Lifecycle::RUNNING;
+			}
 		}
 		if (request.cmd == CMD_LOG) {
 			log_network_.send(time.global_tick, id, {id}, tag_diagnostic(DIAGNOSTIC_KIND_LOG, request.payload));

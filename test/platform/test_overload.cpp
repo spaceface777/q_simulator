@@ -326,6 +326,74 @@ TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {
 	EXPECT_DOUBLE_EQ(world_.module(module::ModuleId{MODULE})->servo_angle().raw(), 0.0);
 }
 
+TEST_F(OverloadTest, ARateRejectedHeartbeatDoesNotActivateOrRefreshLiveness) {
+	const int global_limit = platform::capacity_of(platform::Bucket::GLOBAL);
+	for (int index = 0; index < global_limit - 1; index++) {
+		EXPECT_EQ(call(0xFE, 1), platform::STATUS_NO_SYS);
+	}
+
+	rpc::Frame heartbeat;
+	heartbeat.type    = MT_REQ;
+	heartbeat.cmd     = CMD_HEARTBEAT;
+	heartbeat.call_id = 2;
+	const std::optional<rpc::Frame> response =
+		manager->handle_request(module::ModuleId{MODULE}, heartbeat, platform::ModuleTime{1, 1});
+
+	ASSERT_TRUE(response.has_value());
+	EXPECT_EQ(response->status, platform::STATUS_TRY_AGAIN);
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::ACTIVATING);
+	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::HEARTBEAT), 1u);
+
+	const std::vector<module::ModuleId> stopped = manager->check_supervision(platform::ACTIVATION_DEADLINE_TICKS);
+	ASSERT_EQ(stopped.size(), 1u);
+	EXPECT_EQ(stopped.front(), module::ModuleId{MODULE});
+	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+}
+
+TEST_F(OverloadTest, ANonConfirmableRateRejectedHeartbeatDoesNotActivate) {
+	const int global_limit = platform::capacity_of(platform::Bucket::GLOBAL);
+	for (int index = 0; index < global_limit - 1; index++) {
+		EXPECT_EQ(call(0xFE, 1), platform::STATUS_NO_SYS);
+	}
+
+	rpc::Frame heartbeat;
+	heartbeat.type    = MT_REQ;
+	heartbeat.cmd     = CMD_HEARTBEAT;
+	heartbeat.call_id = 2;
+	heartbeat.flags   = RPC_FLAG_NON_CON;
+	EXPECT_FALSE(manager->handle_request(module::ModuleId{MODULE}, heartbeat, platform::ModuleTime{1, 1}));
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::ACTIVATING);
+	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+}
+
+TEST_F(OverloadTest, ARateRejectedHeartbeatDoesNotClearWarningOrRefreshRunningLiveness) {
+	call(CMD_HEARTBEAT, 100);
+	manager->check_supervision(100 + platform::HEARTBEAT_WARNING_TICKS + 1);
+	(void)manager->take_diagnostics();
+
+	const int global_limit = platform::capacity_of(platform::Bucket::GLOBAL);
+	for (int index = 0; index < global_limit - 2; index++) {
+		EXPECT_EQ(call(0xFE, 600), platform::STATUS_NO_SYS);
+	}
+	rpc::Frame heartbeat;
+	heartbeat.type    = MT_REQ;
+	heartbeat.cmd     = CMD_HEARTBEAT;
+	heartbeat.call_id = 2;
+	const std::optional<rpc::Frame> response =
+		manager->handle_request(module::ModuleId{MODULE}, heartbeat, platform::ModuleTime{600, 600});
+	ASSERT_TRUE(response.has_value());
+	EXPECT_EQ(response->status, platform::STATUS_TRY_AGAIN);
+
+	manager->check_supervision(601);
+	EXPECT_TRUE(manager->take_diagnostics().empty());
+
+	const std::vector<module::ModuleId> stopped =
+		manager->check_supervision(100 + platform::HEARTBEAT_FAILURE_TICKS + 1);
+	ASSERT_EQ(stopped.size(), 1u);
+	EXPECT_EQ(stopped.front(), module::ModuleId{MODULE});
+}
+
 TEST_F(OverloadTest, AnApplicationThatNeverHeartbeatsStopsAtItsActivationDeadline) {
 	EXPECT_NO_THROW(manager->check_supervision(platform::ACTIVATION_DEADLINE_TICKS - 1));
 	const std::vector<module::ModuleId> stopped = manager->check_supervision(platform::ACTIVATION_DEADLINE_TICKS);
