@@ -88,6 +88,7 @@ namespace sim {
 			uint16_t                               grant_mask      = 0;
 			uint16_t                               skipped_mask    = 0;
 			bool                                   tick_granted    = false;
+			bool                                   active          = true;
 			std::deque<rpc::Frame>                 staged_outbound;
 			std::deque<PendingRpcRequest>          pending_requests;
 			std::deque<PendingRpcResponse>         pending_responses;
@@ -164,6 +165,8 @@ namespace sim {
 		void release_local_rpc(Child& child, uint64_t global_tick, uint64_t local_tick);
 
 		void start_rpc_work(Child& child, uint64_t work_id, uint64_t global_tick, uint64_t local_tick);
+
+		void retire_module(module::ModuleId id, uint64_t tick);
 
 		void grant_tick(uint32_t batch_ticks);
 

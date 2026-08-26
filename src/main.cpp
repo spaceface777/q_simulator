@@ -178,7 +178,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
 			// Without a window there is nothing that can ask the run to stop, so the loop ends
 			// at the timeout rather than on a closed window.
 			if (using_visualization) {
-				visualization::update(runtime.world(), vclock);
+				visualization::update(runtime.world(), runtime.platform(), vclock);
 				is_running = visualization::is_running();
 			}
 

@@ -119,6 +119,7 @@ namespace platform {
 
 		uint64_t    last_heartbeat_global_tick = 0;
 		bool        heartbeat_warned           = false;
+		bool        heartbeat_failed           = false;
 		std::string stop_reason;
 
 		// Edge detection state. Events report transitions, so the platform remembers what the
@@ -181,6 +182,8 @@ namespace platform {
 		[[nodiscard]] bool enqueue_packet(uint64_t tick, module::ModuleId sender, const rpc::Frame& request,
 										  bool broadcast);
 
+		void stop_application(uint64_t tick, module::ModuleId id, std::string reason);
+
 	public:
 		explicit Manager(world::State& world);
 
@@ -195,8 +198,10 @@ namespace platform {
 
 		void prepare_tick(uint64_t tick);
 
-		// Throws std::runtime_error if an application missed its deadline or was stopped.
-		void check_supervision(uint64_t tick);
+		// Stops applications that missed their heartbeat deadline and returns heartbeat-failed modules.
+		// Returning existing heartbeat failures makes runtime retirement idempotent. Other stop causes
+		// retain their existing exception behavior.
+		std::vector<module::ModuleId> check_supervision(uint64_t tick);
 
 		[[nodiscard]] std::vector<Diagnostic> take_diagnostics();
 
@@ -216,6 +221,8 @@ namespace platform {
 		[[nodiscard]] uint32_t subscriptions(module::ModuleId id) const;
 
 		[[nodiscard]] Lifecycle lifecycle(module::ModuleId id) const;
+
+		[[nodiscard]] const std::string& stop_reason(module::ModuleId id) const;
 
 		[[nodiscard]] bool is_paused(module::ModuleId id, uint64_t tick) const;
 

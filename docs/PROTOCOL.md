@@ -88,6 +88,6 @@ The supported masks are left laser, right laser, RFID, long encoder stopped, sho
 
 ### Application lifecycle and diagnostics
 
-`CMD_HEARTBEAT` marks an application as active and keeps its lifecycle check current. The simulator reports a late heartbeat and stops the run after the failure limit.
+`CMD_HEARTBEAT` marks an application as active and keeps its lifecycle check current. The simulator reports a late heartbeat, then safe-stops and resets only that application's state after the failure limit. Its lifecycle remains `STOPPED` for monitoring while other applications and global simulation time continue.
 
 `CMD_LOG` and `CMD_PANIC_REPORT` carry application diagnostic bytes. They use the normal network model plus the configured log-forwarding delay.

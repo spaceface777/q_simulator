@@ -150,7 +150,7 @@ namespace platform {
 				return {};
 			}
 			float          value = 0;
-			const uint32_t bits = static_cast<uint32_t>(payload[0]) | (static_cast<uint32_t>(payload[1]) << 8) |
+			const uint32_t bits  = static_cast<uint32_t>(payload[0]) | (static_cast<uint32_t>(payload[1]) << 8) |
 								  (static_cast<uint32_t>(payload[2]) << 16) | (static_cast<uint32_t>(payload[3]) << 24);
 			std::memcpy(&value, &bits, sizeof(value));
 			return value;
@@ -395,12 +395,55 @@ namespace platform {
 		}
 	}
 
-	void Manager::check_supervision(uint64_t tick) {
+	void Manager::stop_application(uint64_t tick, module::ModuleId id, std::string reason) {
+		Runtime* runtime_ptr = find(id);
+		if (runtime_ptr == nullptr || runtime_ptr->lifecycle == Lifecycle::STOPPED) {
+			return;
+		}
+		Runtime& runtime = *runtime_ptr;
+
+		runtime.lifecycle                  = Lifecycle::STOPPED;
+		runtime.stop_reason                = std::move(reason);
+		runtime.subscriptions              = 0;
+		runtime.heartbeat_seen             = false;
+		runtime.last_heartbeat_global_tick = 0;
+		runtime.heartbeat_warned           = false;
+		runtime.heartbeat_failed           = true;
+		runtime.paused_until_global_tick   = 0;
+		runtime.bucket_samples             = {};
+		runtime.bucket_warned_tick         = {};
+		runtime.bucket_has_warned          = {};
+		runtime.last_left_clear            = false;
+		runtime.last_right_clear           = false;
+		runtime.last_rfid_uid.clear();
+		runtime.outbound.clear();
+
+		std::erase_if(pending_hardware_events_, [id](const PendingHardwareEvent& event) { return event.module == id; });
+
+		// Core0's safe stop affects this module's outputs only. Sensors and accumulated physical
+		// state remain part of the world, while moving/energized actuators are made safe.
+		if (module::Module* physical = world_->module(id)) {
+			physical->set_big_belt_speed(module::BeltSpeed{});
+			physical->set_small_belt_speed(module::BeltSpeed{});
+			physical->set_servo_angle(physical->servo_actual_angle());
+			physical->set_led_color(module::LedColor{});
+			physical->set_left_laser_enabled(false);
+			physical->set_right_laser_enabled(false);
+		}
+
+		diagnostics_.push_back(Diagnostic{tick, id, Bucket::HEARTBEAT, "stop", 0, 0});
+	}
+
+	std::vector<module::ModuleId> Manager::check_supervision(uint64_t tick) {
 		for (const module::ModuleId id : modules_) {
 			Runtime& runtime = *find(id);
 
 			if (runtime.lifecycle == Lifecycle::STOPPED) {
-				throw std::runtime_error("Module " + std::to_string(id.raw()) + " was stopped: " + runtime.stop_reason);
+				if (!runtime.heartbeat_failed) {
+					throw std::runtime_error("Module " + std::to_string(id.raw()) +
+											 " was stopped: " + runtime.stop_reason);
+				}
+				continue;
 			}
 
 			// A paused application gets no ticks, so it cannot be expected to do anything.
@@ -410,21 +453,30 @@ namespace platform {
 
 			if (!runtime.heartbeat_seen) {
 				if (tick >= ACTIVATION_DEADLINE_TICKS) {
-					throw std::runtime_error("Module " + std::to_string(id.raw()) +
-											 " did not send a first heartbeat before its activation deadline");
+					stop_application(tick, id, "did not send a first heartbeat before its activation deadline");
 				}
 				continue;
 			}
 
 			const uint64_t silence = tick - runtime.last_heartbeat_global_tick;
 			if (silence > HEARTBEAT_FAILURE_TICKS) {
-				throw std::runtime_error("Module " + std::to_string(id.raw()) + " stopped sending heartbeats");
+				stop_application(tick, id, "stopped sending heartbeats");
+				continue;
 			}
 			if (silence > HEARTBEAT_WARNING_TICKS && !runtime.heartbeat_warned) {
 				runtime.heartbeat_warned = true;
 				diagnostics_.push_back(Diagnostic{tick, id, Bucket::HEARTBEAT, "heartbeat_late", 0, 0});
 			}
 		}
+
+		std::vector<module::ModuleId> stopped;
+		for (const module::ModuleId id : modules_) {
+			const Runtime* runtime = find(id);
+			if (runtime->lifecycle == Lifecycle::STOPPED && runtime->heartbeat_failed) {
+				stopped.push_back(id);
+			}
+		}
+		return stopped;
 	}
 
 	std::vector<Diagnostic> Manager::take_diagnostics() {
@@ -439,6 +491,9 @@ namespace platform {
 			return {};
 		}
 		Runtime& runtime = *runtime_ptr;
+		if (runtime.lifecycle == Lifecycle::STOPPED) {
+			return {};
+		}
 
 		// Recorded before dispatch, so a heartbeat counts even if its command is later refused.
 		if (request.cmd == CMD_HEARTBEAT) {
@@ -526,7 +581,7 @@ namespace platform {
 
 	void Manager::publish(module::ModuleId id, uint32_t event, std::vector<uint8_t> payload) {
 		Runtime* runtime = find(id);
-		if (runtime == nullptr || (runtime->subscriptions & event) == 0) {
+		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED || (runtime->subscriptions & event) == 0) {
 			return;
 		}
 
@@ -540,7 +595,7 @@ namespace platform {
 	void Manager::schedule_hardware_event(uint64_t tick, module::ModuleId id, uint32_t event,
 										  std::vector<uint8_t> payload, uint64_t delay_ms) {
 		Runtime* runtime = find(id);
-		if (runtime == nullptr || (runtime->subscriptions & event) == 0) {
+		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED || (runtime->subscriptions & event) == 0) {
 			return;
 		}
 
@@ -570,7 +625,8 @@ namespace platform {
 
 		auto first_pending = pending_hardware_events_.begin();
 		while (first_pending != pending_hardware_events_.end() && first_pending->due_tick <= tick) {
-			if (Runtime* runtime = find(first_pending->module)) {
+			if (Runtime* runtime = find(first_pending->module);
+				runtime != nullptr && runtime->lifecycle != Lifecycle::STOPPED) {
 				runtime->outbound.push_back(std::move(first_pending->frame));
 			}
 			first_pending++;
@@ -579,7 +635,8 @@ namespace platform {
 	}
 
 	bool Manager::enqueue_packet(uint64_t tick, module::ModuleId sender, const rpc::Frame& request, bool broadcast) {
-		if (find(sender) == nullptr) {
+		const Runtime* sender_runtime = find(sender);
+		if (sender_runtime == nullptr || sender_runtime->lifecycle == Lifecycle::STOPPED) {
 			return false;
 		}
 
@@ -609,8 +666,11 @@ namespace platform {
 
 	void Manager::advance(uint64_t tick) {
 		for (const module::ModuleId id : modules_) {
-			Runtime&              runtime = runtimes_[id.raw()];
-			const module::Module* module  = world_->module(id);
+			Runtime& runtime = runtimes_[id.raw()];
+			if (runtime.lifecycle == Lifecycle::STOPPED) {
+				continue;
+			}
+			const module::Module* module = world_->module(id);
 			if (module == nullptr) {
 				continue;
 			}
@@ -661,7 +721,7 @@ namespace platform {
 
 	void Manager::enqueue(module::ModuleId id, rpc::Frame frame) {
 		Runtime* runtime = find(id);
-		if (runtime == nullptr) {
+		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED) {
 			return;
 		}
 		runtime->outbound.push_back(std::move(frame));
@@ -670,7 +730,7 @@ namespace platform {
 	std::vector<rpc::Frame> Manager::take_outbound(module::ModuleId id, std::size_t byte_budget) {
 		std::vector<rpc::Frame> frames;
 		Runtime*                runtime = find(id);
-		if (runtime == nullptr) {
+		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED) {
 			return frames;
 		}
 
@@ -799,8 +859,8 @@ namespace platform {
 
 		case CMD_LED_GET_COLOR: {
 			const uint32_t color = module->led_color().raw();
-			response.payload = {static_cast<uint8_t>(color & 0xFF), static_cast<uint8_t>((color >> 8) & 0xFF),
-								static_cast<uint8_t>((color >> 16) & 0xFF), static_cast<uint8_t>((color >> 24) & 0xFF)};
+			response.payload     = {static_cast<uint8_t>(color & 0xFF), static_cast<uint8_t>((color >> 8) & 0xFF),
+									static_cast<uint8_t>((color >> 16) & 0xFF), static_cast<uint8_t>((color >> 24) & 0xFF)};
 			break;
 		}
 		case CMD_LED_SET_COLOR: {
@@ -909,6 +969,12 @@ namespace platform {
 	Lifecycle Manager::lifecycle(module::ModuleId id) const {
 		const Runtime* runtime = find(id);
 		return runtime == nullptr ? Lifecycle::STOPPED : runtime->lifecycle;
+	}
+
+	const std::string& Manager::stop_reason(module::ModuleId id) const {
+		static const std::string none;
+		const Runtime*           runtime = find(id);
+		return runtime == nullptr ? none : runtime->stop_reason;
 	}
 
 	bool Manager::is_paused(module::ModuleId id, uint64_t tick) const {

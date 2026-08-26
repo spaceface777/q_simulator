@@ -152,7 +152,7 @@ A tub moves on the big or small belt. The servo selects its path at the junction
 
 The runtime starts one `native_sim` child process for each active layout module. `application_path` supplies the common file. A module can use its own `binary` value. Module 255 is the optional tower and has no conveyor geometry.
 
-The child receives its module id and inherited shared-memory descriptors in `QSIM_MODULE_ID`, `QSIM_CTRL_FD`, and `QSIM_MBOX_FD`. It validates the shared-memory ABI, maps its private mailbox segment, marks itself ready, and waits for the next barrier generation. The first heartbeat changes its lifecycle from activating to running.
+The child receives its module id and inherited shared-memory descriptors in `QSIM_MODULE_ID`, `QSIM_CTRL_FD`, and `QSIM_MBOX_FD`. It validates the shared-memory ABI, maps its private mailbox segment, marks itself ready, and waits for the next barrier generation. The first heartbeat changes its lifecycle from activating to running. Missing the activation or heartbeat deadline changes only that module to stopped, resets its application-facing platform state, reaps its child process, and removes it from later barriers. Other children and global world time continue. The visualization marks the stopped module with a red overlay.
 
 Each physical module has an independent start offset, fixed clock rate, and local tick-skip probability. The global world and network clock still advances on every simulator tick. A skipped local tick does not advance that application's uptime, code, RPC service delays, or rate-limit windows. A ready response or event waits for the module's next executed tick.
 

@@ -98,7 +98,8 @@ namespace sim {
 		// clear message rather than silently reading the segment at the wrong offsets.
 		childsync::store_release(control.abi, QUERCUS_SHM_ABI);
 
-		// Every child answers every generation, so the barrier width is fixed for the run.
+		// All children participate initially. Heartbeat supervision can reduce this before a later
+		// generation after the failed child has been reaped.
 		childsync::store_relaxed(control.expected, static_cast<uint32_t>(active_modules_.size()));
 		control_->mapping().keep_across_exec();
 
@@ -114,8 +115,8 @@ namespace sim {
 			child.clock_rate_ppm = std::max<int64_t>(1, 1'000'000 + static_cast<int64_t>(std::llround(drift)));
 			const double skip_ppm = settings::get_setting<double>("module_tick_skip_mean_ppm") +
 									settings::get_setting<double>("module_tick_skip_sd_ppm") * standard_normal(timing);
-			child.tick_skip_ppm   = static_cast<uint32_t>(std::clamp(std::llround(skip_ppm), 0LL, 1'000'000LL));
-			child.tick_skip_rng   = seed::derive(seed_, "module-clock-skips/" + std::to_string(id.raw()));
+			child.tick_skip_ppm = static_cast<uint32_t>(std::clamp(std::llround(skip_ppm), 0LL, 1'000'000LL));
+			child.tick_skip_rng = seed::derive(seed_, "module-clock-skips/" + std::to_string(id.raw()));
 			child.segment.emplace();
 			child.segment->mapping().keep_across_exec();
 
@@ -170,7 +171,8 @@ namespace sim {
 		const Clock::time_point activation_deadline = Clock::now() + activation_timeout_;
 		while (true) {
 			const bool all_active = std::all_of(children_.begin(), children_.end(), [this](const Child& child) {
-				return platform_->is_activated(child.id);
+				return platform_->is_activated(child.id) ||
+					   platform_->lifecycle(child.id) == platform::Lifecycle::STOPPED;
 			});
 			if (all_active) {
 				break;
@@ -226,9 +228,9 @@ namespace sim {
 
 		for (const auto& [id, tub] : observation.tubs()) {
 			// One line per tub, only when it moved.
-			const std::string current  = std::to_string(tub.module) + "/" + std::to_string(static_cast<int>(tub.belt)) +
-										 "/" + std::to_string(tub.position_um);
-			std::string&      previous = last_world_[id];
+			const std::string current = std::to_string(tub.module) + "/" + std::to_string(static_cast<int>(tub.belt)) +
+										"/" + std::to_string(tub.position_um);
+			std::string& previous = last_world_[id];
 			if (previous == current) {
 				continue;
 			}
@@ -377,7 +379,7 @@ namespace sim {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
 			const ltl::Verdict              verdict =
-				global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
+                global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
 			const ltl::Monitor& monitor = property_monitors_[index];
 			results.push_back(PropertyResult{declaration.name, property_filename_, declaration.span.begin, verdict,
 											 property_decisive_ticks_[index], monitor.failure(), monitor.activations(),
@@ -500,7 +502,7 @@ namespace sim {
 		for (uint32_t batch_index = 0; batch_index < batch_ticks; batch_index++) {
 			for (Child& child : children_) {
 				const uint16_t slot = static_cast<uint16_t>(1U << batch_index);
-				child.tick_granted  = (child.grant_mask & slot) != 0;
+				child.tick_granted  = child.active && (child.grant_mask & slot) != 0;
 				if ((child.skipped_mask & slot) != 0 && trace_.enabled()) {
 					trace_.write(trace::Entry("module_tick_skipped")
 									 .field("tick", global_tick_)
@@ -536,13 +538,17 @@ namespace sim {
 		for (Child& child : children_) {
 			child.grant_mask   = 0;
 			child.skipped_mask = 0;
+			if (!child.active) {
+				control.active_mask[child.id.raw()] = 0;
+				continue;
+			}
 			for (uint32_t index = 0; index < batch_ticks; index++) {
 				const uint16_t slot      = static_cast<uint16_t>(1U << index);
 				const uint64_t slot_tick = global_tick_ + index;
 				const bool     started   = slot_tick >= child.start_tick;
 				const bool     eligible  = started && !platform_->is_paused(child.id, slot_tick);
 				const bool     skipped   = eligible && child.tick_skip_ppm != 0 &&
-										   (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
+									 (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
 				if (skipped) child.skipped_mask |= slot;
 				if (!eligible || skipped) continue;
 
@@ -585,6 +591,9 @@ namespace sim {
 		platform_->prepare_tick(global_tick_);
 
 		childsync::store_relaxed(control.done_count, 0);
+		const uint32_t expected =
+			static_cast<uint32_t>(std::ranges::count_if(children_, [](const Child& child) { return child.active; }));
+		childsync::store_relaxed(control.expected, expected);
 
 		// One wake for every child. The release pairs with each child's acquire on generation, so
 		// the tick fields and inbound mailboxes above are visible before any of them runs.
@@ -595,6 +604,9 @@ namespace sim {
 
 	void Runtime::collect_acknowledgements() {
 		childsync::Control& control = control_->get();
+		if (childsync::load_acquire(control.expected) == 0) {
+			return;
+		}
 
 		// Waiting on the release word rather than on done_count costs one futex wait per tick: the
 		// count changes once per child, and a futex wait returns on every change to its word.
@@ -613,6 +625,37 @@ namespace sim {
 					}
 				}
 			}
+		}
+	}
+
+	void Runtime::retire_module(module::ModuleId id, uint64_t tick) {
+		auto found = std::ranges::find_if(children_, [id](const Child& child) { return child.id == id; });
+		if (found == children_.end() || !found->active) {
+			return;
+		}
+
+		Child& child       = *found;
+		child.active       = false;
+		child.tick_granted = false;
+		child.grant_mask   = 0;
+		child.skipped_mask = 0;
+		child.staged_outbound.clear();
+		child.pending_requests.clear();
+		child.pending_responses.clear();
+		child.rpc_workers = platform::RpcWorkerPool{};
+		child.rpc_work.clear();
+		for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
+			childsync::mailbox_clear(child.segment->get().to_parent[index]);
+			childsync::mailbox_clear(child.segment->get().to_child[index]);
+		}
+		control_->get().active_mask[id.raw()] = 0;
+		child.process.terminate();
+
+		if (trace_.enabled()) {
+			trace_.write(trace::Entry("module_stopped")
+							 .field("tick", tick)
+							 .field("module", static_cast<uint64_t>(id.raw()))
+							 .field("reason", platform_->stop_reason(id)));
 		}
 	}
 
@@ -726,7 +769,9 @@ namespace sim {
 		});
 
 		queue_.schedule(tick, engine::Priority::MONITORING, "supervision", [this, tick](engine::TaskContext&) {
-			platform_->check_supervision(tick);
+			for (const module::ModuleId id : platform_->check_supervision(tick)) {
+				retire_module(id, tick);
+			}
 			for (const platform::Diagnostic& diagnostic : platform_->take_diagnostics()) {
 				if (trace_.enabled()) {
 					trace_.write(trace::Entry("diagnostic")
@@ -777,7 +822,7 @@ namespace sim {
 					const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 					const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
 					const uint64_t                  until_tick =
-						declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
+                        declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
 					if (tick < from_tick || tick > until_tick) continue;
 
 					if (property_decisive_ticks_[index]) continue;
@@ -836,6 +881,7 @@ namespace sim {
 			tick, engine::Priority::PLATFORM_OUTBOUND, "outbound", [this, tick, batch_index](engine::TaskContext&) {
 				platform_->advance(tick);
 				for (Child& child : children_) {
+					if (!child.active) continue;
 					// A child has already executed the entire granted window. At its final global
 					// boundary, stage what became ready during the replay; the next grant puts it in
 					// the first slot that child will actually execute. If a whole window is skipped,

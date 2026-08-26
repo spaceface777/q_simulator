@@ -190,13 +190,34 @@ TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {
 	EXPECT_DOUBLE_EQ(world_.module(module::ModuleId{MODULE})->servo_angle().raw(), 0.0);
 }
 
-TEST_F(OverloadTest, AnApplicationThatNeverHeartbeatsFailsItsActivationDeadline) {
+TEST_F(OverloadTest, AnApplicationThatNeverHeartbeatsStopsAtItsActivationDeadline) {
 	EXPECT_NO_THROW(manager->check_supervision(platform::ACTIVATION_DEADLINE_TICKS - 1));
-	EXPECT_THROW(manager->check_supervision(platform::ACTIVATION_DEADLINE_TICKS), std::runtime_error);
+	const std::vector<module::ModuleId> stopped = manager->check_supervision(platform::ACTIVATION_DEADLINE_TICKS);
+	ASSERT_EQ(stopped.size(), 1u);
+	EXPECT_EQ(stopped.front(), module::ModuleId{MODULE});
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::STOPPED);
+	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+	EXPECT_NE(manager->stop_reason(module::ModuleId{MODULE}).find("activation deadline"), std::string::npos);
 }
 
-TEST_F(OverloadTest, AnApplicationThatStopsHeartbeatingIsWarnedThenFailed) {
+TEST_F(OverloadTest, AnApplicationThatStopsHeartbeatingIsWarnedThenSafeStopped) {
 	call(CMD_HEARTBEAT, 100);
+	module::Module* physical = world_.module(module::ModuleId{MODULE});
+	ASSERT_NE(physical, nullptr);
+	physical->set_big_belt_speed(module::BeltSpeed{100.0});
+	physical->set_small_belt_speed(module::BeltSpeed{-100.0});
+	physical->set_left_laser_enabled(true);
+	physical->set_right_laser_enabled(true);
+	rpc::Frame subscribe;
+	subscribe.type    = MT_REQ;
+	subscribe.cmd     = CMD_SUBSCRIBE_TO_EVENT;
+	subscribe.call_id = 2;
+	subscribe.payload = {
+		static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT), static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT >> 8),
+		static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT >> 16), static_cast<uint8_t>(EVENT_LASER_LEFT_DETECT >> 24)};
+	ASSERT_TRUE(manager->handle_request(module::ModuleId{MODULE}, subscribe, platform::ModuleTime{100, 100}));
+	ASSERT_NE(manager->subscriptions(module::ModuleId{MODULE}), 0u);
+	manager->enqueue(module::ModuleId{MODULE}, rpc::Frame{});
 
 	EXPECT_NO_THROW(manager->check_supervision(100 + platform::HEARTBEAT_WARNING_TICKS));
 	collect();
@@ -206,7 +227,28 @@ TEST_F(OverloadTest, AnApplicationThatStopsHeartbeatingIsWarnedThenFailed) {
 	collect();
 	EXPECT_TRUE(raised("heartbeat_late"));
 
-	EXPECT_THROW(manager->check_supervision(101 + platform::HEARTBEAT_FAILURE_TICKS), std::runtime_error);
+	const std::vector<module::ModuleId> stopped = manager->check_supervision(101 + platform::HEARTBEAT_FAILURE_TICKS);
+	ASSERT_EQ(stopped.size(), 1u);
+	EXPECT_EQ(stopped.front(), module::ModuleId{MODULE});
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::STOPPED);
+	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+	EXPECT_EQ(manager->subscriptions(module::ModuleId{MODULE}), 0u);
+	EXPECT_EQ(manager->backlog(module::ModuleId{MODULE}), 0u);
+	EXPECT_DOUBLE_EQ(physical->big_belt_speed().raw(), 0.0);
+	EXPECT_DOUBLE_EQ(physical->small_belt_speed().raw(), 0.0);
+	EXPECT_FALSE(physical->is_left_laser_enabled());
+	EXPECT_FALSE(physical->is_right_laser_enabled());
+	rpc::Frame stale;
+	stale.type    = MT_REQ;
+	stale.cmd     = CMD_LASER_LEFT_SET;
+	stale.call_id = 3;
+	stale.payload = {1};
+	EXPECT_FALSE(manager->handle_request(
+		module::ModuleId{MODULE}, stale,
+		platform::ModuleTime{102 + platform::HEARTBEAT_FAILURE_TICKS, 102 + platform::HEARTBEAT_FAILURE_TICKS}));
+	EXPECT_FALSE(physical->is_left_laser_enabled());
+	collect();
+	EXPECT_TRUE(raised("stop"));
 }
 
 TEST_F(OverloadTest, AHeartbeatClearsTheWarning) {

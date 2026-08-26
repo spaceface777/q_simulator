@@ -26,6 +26,15 @@ namespace {
 		return static_cast<unsigned>(std::strtoul(value, nullptr, 0));
 	}
 
+	unsigned module_env_number(const char* name, uint8_t id, unsigned fallback) {
+		const std::string per_module = std::string(name) + "_" + std::to_string(id);
+		const char*       value      = ::getenv(per_module.c_str());
+		if (value == nullptr || *value == '\0') {
+			return env_number(name, fallback);
+		}
+		return static_cast<unsigned>(std::strtoul(value, nullptr, 0));
+	}
+
 	void record(const char* path, const rpc::Frame& frame, unsigned tick, bool include_tick) {
 		if (path == nullptr) {
 			return;
@@ -105,7 +114,8 @@ int main() {
 	childsync::Control&      control = shared.get();
 	childsync::Segment&      pages   = segment.get();
 
-	const unsigned heartbeat_every = env_number("FAKE_CHILD_HEARTBEAT_EVERY", 50); // 0 disables it.
+	const unsigned heartbeat_every = module_env_number("FAKE_CHILD_HEARTBEAT_EVERY", id, 50); // 0 disables it.
+	const unsigned heartbeat_until = module_env_number("FAKE_CHILD_HEARTBEAT_UNTIL", id, UINT_MAX);
 	const unsigned subscribe_mask  = env_number("FAKE_CHILD_SUBSCRIBE", 0); // Mask to subscribe to on the first tick.
 	const unsigned exit_after =
 		env_number("FAKE_CHILD_EXIT_AFTER", 0); // Simulates a crash after N ticks. 0 runs forever.
@@ -174,7 +184,7 @@ int main() {
 					}
 				}
 
-				if (heartbeat_every != 0 && (ticks % heartbeat_every) == 0) {
+				if (heartbeat_every != 0 && ticks <= heartbeat_until && (ticks % heartbeat_every) == 0) {
 					rpc::Frame heartbeat;
 					heartbeat.type                   = MT_REQ;
 					heartbeat.cmd                    = CMD_HEARTBEAT;

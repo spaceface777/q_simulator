@@ -54,6 +54,11 @@ namespace {
 			}
 
 			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY_1");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY_2");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL_1");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL_2");
 			::unsetenv("FAKE_CHILD_SUBSCRIBE");
 			::unsetenv("FAKE_CHILD_EXIT_AFTER");
 			::unsetenv("FAKE_CHILD_QUERY_TICK");
@@ -92,6 +97,32 @@ TEST_F(RuntimeTest, StartsApplicationsAndWaitsForThemToActivate) {
 	EXPECT_TRUE(runtime.platform().is_activated(module::ModuleId{SECOND}));
 	EXPECT_EQ(runtime.platform().lifecycle(module::ModuleId{FIRST}), platform::Lifecycle::RUNNING);
 	EXPECT_GT(runtime.tick(), 0u);
+
+	runtime.stop();
+}
+
+TEST_F(RuntimeTest, HeartbeatDeathStopsOnlyTheFailedModule) {
+	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL_1", "100", 1);
+
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 5);
+	ASSERT_NO_THROW(runtime.start());
+	ASSERT_EQ(runtime.platform().lifecycle(module::ModuleId{FIRST}), platform::Lifecycle::RUNNING);
+	ASSERT_EQ(runtime.platform().lifecycle(module::ModuleId{SECOND}), platform::Lifecycle::RUNNING);
+
+	ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(2200), 1.0, std::chrono::seconds(10)));
+	ASSERT_EQ(runtime.platform().lifecycle(module::ModuleId{FIRST}), platform::Lifecycle::STOPPED);
+	ASSERT_EQ(runtime.platform().lifecycle(module::ModuleId{SECOND}), platform::Lifecycle::RUNNING);
+	EXPECT_FALSE(runtime.platform().is_activated(module::ModuleId{FIRST}));
+	EXPECT_NE(runtime.platform().stop_reason(module::ModuleId{FIRST}).find("stopped sending heartbeats"),
+			  std::string::npos);
+
+	const uint64_t world_before  = runtime.tick();
+	const uint64_t failed_before = runtime.module_tick(module::ModuleId{FIRST});
+	const uint64_t live_before   = runtime.module_tick(module::ModuleId{SECOND});
+	ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(100), 1.0, std::chrono::seconds(5)));
+	EXPECT_EQ(runtime.tick() - world_before, 100u);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{FIRST}), failed_before);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{SECOND}) - live_before, 100u);
 
 	runtime.stop();
 }
@@ -344,9 +375,9 @@ TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 	std::optional<uint64_t> request_tick;
 	std::optional<uint64_t> response_tick;
 	const auto              read_tick = [](const std::string& record) {
-		const std::string marker = "\"tick\":";
-		const std::size_t begin  = record.find(marker);
-		return std::stoull(record.substr(begin + marker.size()));
+        const std::string marker = "\"tick\":";
+        const std::size_t begin  = record.find(marker);
+        return std::stoull(record.substr(begin + marker.size()));
 	};
 	while (std::getline(trace, line)) {
 		if (line.find("\"type\":\"rpc_request\"") != std::string::npos &&

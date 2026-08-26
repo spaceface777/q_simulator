@@ -194,9 +194,9 @@ namespace visualization {
 	static void render_rfid(int module_x, int module_y, int rfid_state, const world::Calibration& calibration,
 							settings::ModuleAngle rotation) {
 		float        rfid_rel_x, rfid_rel_y;
-		const double progress  = static_cast<double>(calibration.hardware.rfid_position_um) /
-								 static_cast<double>(calibration.endpoint_to_junction_um);
-		const float  half_size = scale_within_module(75.0 * world::RFID_HALF_SMALL_BELT_FRACTION);
+		const double progress = static_cast<double>(calibration.hardware.rfid_position_um) /
+								static_cast<double>(calibration.endpoint_to_junction_um);
+		const float half_size = scale_within_module(75.0 * world::RFID_HALF_SMALL_BELT_FRACTION);
 		switch (rotation) {
 		case settings::ModuleAngle::NORMAL:
 			rfid_rel_x = scale_within_module(90);
@@ -610,7 +610,8 @@ namespace visualization {
 		}
 	}
 
-	static void render_module(const world::State& world, module::ModuleId module_id, float x, float y) {
+	static void render_module(const world::State& world, const platform::Manager& platform, module::ModuleId module_id,
+							  float x, float y) {
 		const module::Module* module = world.module(module_id);
 		if (module == nullptr) {
 			return;
@@ -642,6 +643,19 @@ namespace visualization {
 		render_laser(x, y, module->is_right_laser_enabled(), module->is_right_laser_blocked(),
 					 calibration.hardware.right_laser_position_um, calibration.endpoint_to_junction_um,
 					 module_settings.angle);
+
+		if (platform.lifecycle(module_id) == platform::Lifecycle::STOPPED) {
+			SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+			SDL_SetRenderDrawColor(renderer_, 180, 0, 0, 80);
+			SDL_RenderFillRect(renderer_, &bg);
+			SDL_SetRenderDrawColor(renderer_, 255, 64, 64, 255);
+			const float far_x = x + bg.w;
+			const float far_y = y + bg.h;
+			for (int offset = -2; offset <= 2; offset++) {
+				SDL_RenderLine(renderer_, x, y + offset, far_x, far_y + offset);
+				SDL_RenderLine(renderer_, far_x, y + offset, x, far_y + offset);
+			}
+		}
 	}
 
 	void stop() {
@@ -694,7 +708,7 @@ namespace visualization {
 
 	static std::chrono::milliseconds last_time = std::chrono::milliseconds(0);
 
-	void update(const world::State& world, virtual_clock::ISimulationClock& vclock) {
+	void update(const world::State& world, const platform::Manager& platform, virtual_clock::ISimulationClock& vclock) {
 		if (!running_) {
 			return;
 		}
@@ -756,7 +770,7 @@ namespace visualization {
 
 			float x, y;
 			get_module_coords(mid, x, y);
-			render_module(world, mid, x, y);
+			render_module(world, platform, mid, x, y);
 		}
 
 		render_tubs(world);
