@@ -80,7 +80,7 @@ namespace module {
 			g_ = (color >> 8) & 0xFF;
 			b_ = color & 0xFF;
 
-			value_ = color;
+			value_ = color & 0x00FFFFFFU;
 		}
 
 		[[nodiscard]] constexpr uint32_t raw() const noexcept { return value_; }

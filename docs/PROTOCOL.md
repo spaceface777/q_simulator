@@ -34,29 +34,45 @@ Requests cross an application handoff before the platform handles them. Each mod
 
 ## Messages
 
-The command values are defined in `quercus/rpc_wire.h`. Payload numbers use the SDK representation. The main command groups are below.
+The command values are defined in `quercus/rpc_wire.h`. Unless a command says otherwise, numeric
+payloads use the native byte order of the application and simulator. Payload lengths below are
+exact: an invalid length returns `-EINVAL` and does not perform the command. The main command
+groups are below.
 
 ### Laser sensors
 
-`CMD_LASER_LEFT_DETECT` and `CMD_LASER_RIGHT_DETECT` return one byte. A nonzero value means that the beam is clear. `CMD_LASER_LEFT_GET` and `CMD_LASER_RIGHT_GET` return whether the sensor is enabled. The matching `SET` commands take one byte.
+`CMD_LASER_LEFT_DETECT` and `CMD_LASER_RIGHT_DETECT` take no payload and return exactly one
+`uint8_t`. A value of `0` means false and `1` means true; other boolean values are never emitted.
+`CMD_LASER_LEFT_GET` and `CMD_LASER_RIGHT_GET` also take no payload and return whether the sensor
+is enabled. The matching `SET` commands take exactly one `uint8_t`, which must be `0` or `1`.
 
 The platform can publish `EVENT_LASER_LEFT_DETECT` and `EVENT_LASER_RIGHT_DETECT` when an enabled subscribed beam changes from clear to blocked.
 
 ### Belts and encoders
 
-`CMD_BELT_BIG_GET_SPEED` and `CMD_BELT_SMALL_GET_SPEED` return a float speed percentage. The matching `SET_SPEED` commands take one float. A valid command is zero or a magnitude from 25 through 100 percent.
+`CMD_BELT_BIG_GET_SPEED` and `CMD_BELT_SMALL_GET_SPEED` take no payload and return a native-order
+`int32_t` whole-number speed percentage. The matching `SET_SPEED` commands take exactly one
+native-order `int32_t`. A valid command is `0` or a magnitude from `25` through `100` percent;
+fractional values are not part of the wire contract.
 
-`GET_ENCODER_COUNT` returns a signed 32-bit count. `GET_ENCODER_FREQ` returns a double count rate. The physical calibration determines both values.
+`GET_ENCODER_COUNT` takes no payload and returns a native-order `int32_t` count. `GET_ENCODER_FREQ`
+takes no payload and returns a native-order `uint32_t` count rate in milli-Hz. The physical
+calibration determines both values.
 
 ### Servo and LED
 
-`CMD_SERVO_ANGLE_GET` returns a float angle. `CMD_SERVO_ANGLE_SET` takes a float from 0 through 180 degrees.
+`CMD_SERVO_ANGLE_GET` takes no payload and returns a native-order `int32_t` angle in degrees.
+`CMD_SERVO_ANGLE_SET` takes exactly one native-order `int32_t` from `0` through `180` degrees.
 
-`CMD_LED_GET_COLOR` returns a four-byte color. `CMD_LED_SET_COLOR` takes the same four-byte value. The least significant byte comes first.
+`CMD_LED_GET_COLOR` takes no payload and returns a native-order `uint32_t` in `0x00RRGGBB`
+format. `CMD_LED_SET_COLOR` takes exactly the same four-byte value; the high byte is reserved and
+is clear in the stored and returned color.
 
 ### RFID reader
 
-`CMD_RFID_CHECK_TAG` returns one byte. A nonzero value means that a tag is in the reader. `CMD_RFID_GET_UID` returns the seven-byte UID, or an empty payload when no tag is present.
+`CMD_RFID_CHECK_TAG` takes no payload and returns exactly one `uint8_t`, `0` or `1`. A value of `1`
+means that a tag is in the reader. `CMD_RFID_GET_UID` takes no payload and returns the seven-byte
+UID, or an empty payload when no tag is present.
 
 `CMD_RFID_READ_DATA_BLOCK` takes one page index and returns its four bytes. `CMD_RFID_WRITE_DATA_BLOCK` takes one page index followed by four data bytes. Valid payload pages are 0 through 31.
 
@@ -64,7 +80,9 @@ The platform can publish `EVENT_RFID_DETECT` with the seven-byte UID when a subs
 
 ### Current and voltage sensor
 
-`CMD_CV_SENSOR_GET_CURRENT`, `CMD_CV_SENSOR_GET_POWER`, and `CMD_CV_SENSOR_GET_VOLTAGE` return one float. The world model calculates the result from the module calibration and current actuator state.
+`CMD_CV_SENSOR_GET_CURRENT`, `CMD_CV_SENSOR_GET_POWER`, and `CMD_CV_SENSOR_GET_VOLTAGE` take no
+payload and return one native-order `float`. The world model calculates the result from the module
+calibration and current actuator state.
 
 ### Module network
 
@@ -72,7 +90,9 @@ The platform can publish `EVENT_RFID_DETECT` with the seven-byte UID when a subs
 
 A successful send means the local UDP-like interface accepted the packet, not that the destination received it. Applications must tolerate packet loss, late delivery, and reordering.
 
-`CMD_GET_OWN_ID` returns one module-id byte. `CMD_GET_NETWORK_MAP` returns the layout map. `CMD_GET_MODULE_LIST` returns a 16-bit module count followed by five bytes for each active module.
+`CMD_GET_OWN_ID`, `CMD_GET_NETWORK_MAP`, and `CMD_GET_MODULE_LIST` take no payload. The first
+returns one module-id byte, the second returns the layout map, and the third returns a 16-bit module
+count followed by five bytes for each active module.
 
 The platform publishes `EVENT_MESSAGE_RECEIVED` with packet data when a subscribed delivery reaches its destination.
 
@@ -82,12 +102,17 @@ The platform publishes `EVENT_MESSAGE_RECEIVED` with packet data when a subscrib
 
 ### Event subscriptions
 
-`CMD_SUBSCRIBE_TO_EVENT` and `CMD_UNSUBSCRIBE_FROM_EVENT` take a 32-bit event mask. A module receives only events in its current mask. Module 255 cannot subscribe to physical hardware events.
+`CMD_SUBSCRIBE_TO_EVENT` and `CMD_UNSUBSCRIBE_FROM_EVENT` take exactly one native-order `uint32_t`
+event mask. A module receives only events in its current mask. Module 255 cannot subscribe to
+physical hardware events.
 
 The supported masks are left laser, right laser, RFID, long encoder stopped, short encoder stopped, current threshold, power threshold, and message received.
 
 ### Application lifecycle and diagnostics
 
-`CMD_HEARTBEAT` marks an application as active and keeps its lifecycle check current. The simulator reports a late heartbeat, then safe-stops and resets only that application's state after the failure limit. Its lifecycle remains `STOPPED` for monitoring while other applications and global simulation time continue.
+`CMD_HEARTBEAT` takes no payload, marks an application as active, and keeps its lifecycle check
+current. The simulator reports a late heartbeat, then safe-stops and resets only that application's
+state after the failure limit. Its lifecycle remains `STOPPED` for monitoring while other
+applications and global simulation time continue.
 
 `CMD_LOG` and `CMD_PANIC_REPORT` carry application diagnostic bytes. They use the normal network model plus the configured log-forwarding delay.

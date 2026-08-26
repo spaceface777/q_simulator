@@ -55,4 +55,5 @@ TEST(ModuleTypesTest, LedColor) {
 
 	EXPECT_NO_THROW(module::LedColor{0});
 	EXPECT_NO_THROW(module::LedColor{0xAABBCC});
+	EXPECT_EQ(module::LedColor{0xFFAABBCC}.raw(), 0x00AABBCCu);
 }

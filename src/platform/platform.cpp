@@ -120,13 +120,6 @@ namespace platform {
 			return {uid.begin(), uid.end()};
 		}
 
-		std::vector<uint8_t> float_payload(float value) {
-			uint32_t bits = 0;
-			std::memcpy(&bits, &value, sizeof(bits));
-			return {static_cast<uint8_t>(bits & 0xFF), static_cast<uint8_t>((bits >> 8) & 0xFF),
-					static_cast<uint8_t>((bits >> 16) & 0xFF), static_cast<uint8_t>((bits >> 24) & 0xFF)};
-		}
-
 		template <typename T> std::vector<uint8_t> native_payload(T value) {
 			std::vector<uint8_t> payload(sizeof(value));
 			std::memcpy(payload.data(), &value, sizeof(value));
@@ -557,6 +550,17 @@ namespace platform {
 			response.stop_after_delivery = ingress_admission.stop_triggered || category.stop_triggered;
 			return response;
 		}
+		if (request.cmd == CMD_HEARTBEAT && !request.payload.empty()) {
+			if ((request.flags & RPC_FLAG_NON_CON) != 0) {
+				return {};
+			}
+			rpc::Frame response;
+			response.type    = MT_RESP;
+			response.cmd     = request.cmd;
+			response.call_id = request.call_id;
+			response.status  = STATUS_INVALID;
+			return response;
+		}
 		// A heartbeat only counts after both raw-ingress and category admission succeed.
 		if (request.cmd == CMD_HEARTBEAT) {
 			runtime.heartbeat_seen             = true;
@@ -898,11 +902,15 @@ namespace platform {
 		case CMD_CV_SENSOR_GET_CURRENT:
 		case CMD_CV_SENSOR_GET_POWER:
 		case CMD_CV_SENSOR_GET_VOLTAGE: {
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
 			const world::Electrics electrics = world::electrics_of(*module, world::calibration_for(id));
 			const double           value     = request.cmd == CMD_CV_SENSOR_GET_CURRENT ? electrics.current_a
 											   : request.cmd == CMD_CV_SENSOR_GET_POWER ? electrics.power_w
 																						: electrics.voltage_v;
-			response.payload                 = float_payload(static_cast<float>(value));
+			response.payload                 = native_payload(static_cast<float>(value));
 			break;
 		}
 		case CMD_BELT_BIG_SET_SPEED:
@@ -967,6 +975,10 @@ namespace platform {
 			response.payload = byte_payload(module->is_rfid_active() ? 1 : 0);
 			break;
 		case CMD_RFID_GET_UID:
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
 			// A zero-length UID means no tag; this is not an error.
 			if (module->is_rfid_active()) {
 				const RfidUid& uid = module->rfid_uid();
@@ -1023,21 +1035,30 @@ namespace platform {
 			}
 			break;
 
-		case CMD_GET_OWN_ID:      response.payload = byte_payload(id.raw()); break;
-		case CMD_GET_NETWORK_MAP: response.payload.assign(network_map_.begin(), network_map_.end()); break;
-		case CMD_GET_MODULE_LIST: {
-			response.payload.reserve(2 + (5 * modules_.size()));
-			response.payload.push_back(static_cast<uint8_t>(modules_.size() & 0xFF));
-			response.payload.push_back(static_cast<uint8_t>((modules_.size() >> 8) & 0xFF));
-			for (const module::ModuleId listed : modules_) {
-				response.payload.push_back(listed.raw());
-				response.payload.push_back(10);
-				response.payload.push_back(0);
-				response.payload.push_back(0);
-				response.payload.push_back(listed.raw());
+		case CMD_GET_OWN_ID:
+		case CMD_GET_NETWORK_MAP:
+		case CMD_GET_MODULE_LIST:
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			if (request.cmd == CMD_GET_OWN_ID) {
+				response.payload = byte_payload(id.raw());
+			} else if (request.cmd == CMD_GET_NETWORK_MAP) {
+				response.payload.assign(network_map_.begin(), network_map_.end());
+			} else {
+				response.payload.reserve(2 + (5 * modules_.size()));
+				response.payload.push_back(static_cast<uint8_t>(modules_.size() & 0xFF));
+				response.payload.push_back(static_cast<uint8_t>((modules_.size() >> 8) & 0xFF));
+				for (const module::ModuleId listed : modules_) {
+					response.payload.push_back(listed.raw());
+					response.payload.push_back(10);
+					response.payload.push_back(0);
+					response.payload.push_back(0);
+					response.payload.push_back(listed.raw());
+				}
 			}
 			break;
-		}
 
 		case CMD_HEARTBEAT:
 		case CMD_LOG:

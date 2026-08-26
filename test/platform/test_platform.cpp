@@ -141,6 +141,21 @@ TEST_F(PlatformTest, RespondsWithTheRequestsCommandAndCallId) {
 	EXPECT_EQ(response.payload[0], MODULE);
 }
 
+TEST_F(PlatformTest, RejectsUnexpectedPayloadsForZeroArgumentCalls) {
+	for (const uint8_t cmd : {CMD_LASER_LEFT_DETECT, CMD_LASER_LEFT_GET, CMD_RFID_CHECK_TAG, CMD_RFID_GET_UID,
+							  CMD_GET_OWN_ID, CMD_GET_NETWORK_MAP, CMD_GET_MODULE_LIST, CMD_CV_SENSOR_GET_CURRENT,
+							  CMD_CV_SENSOR_GET_POWER, CMD_CV_SENSOR_GET_VOLTAGE}) {
+		EXPECT_EQ(call(cmd, {0}).status, platform::STATUS_INVALID) << "command " << static_cast<unsigned>(cmd);
+	}
+
+	const std::optional<rpc::Frame> heartbeat =
+		manager->handle_request(module::ModuleId{MODULE}, request(CMD_HEARTBEAT, {0}), platform::ModuleTime{1, 1});
+	ASSERT_TRUE(heartbeat.has_value());
+	EXPECT_EQ(heartbeat->status, platform::STATUS_INVALID);
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::ACTIVATING);
+	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+}
+
 TEST_F(PlatformTest, DoesNotAnswerNonConfirmableRequests) {
 	rpc::Frame frame = request(CMD_LOG, {'h', 'i'});
 	frame.flags      = RPC_FLAG_NON_CON;
@@ -367,6 +382,11 @@ TEST_F(PlatformTest, ReadsCanonicalEncoderCountAndFrequencyValues) {
 		const rpc::Frame reading = call(cmd);
 		EXPECT_EQ(reading.status, platform::STATUS_OK);
 		EXPECT_EQ(reading.payload.size(), 4u);
+		const world::Electrics electrics = world::electrics_of(*hardware(), calibration);
+		const double           value     = cmd == CMD_CV_SENSOR_GET_CURRENT ? electrics.current_a
+										   : cmd == CMD_CV_SENSOR_GET_POWER ? electrics.power_w
+																			: electrics.voltage_v;
+		EXPECT_EQ(reading.payload, native_bytes(static_cast<float>(value)));
 	}
 }
 

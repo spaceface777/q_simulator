@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,6 +11,12 @@
 #include "../../src/world/world.h"
 
 namespace {
+
+	template <typename T> std::vector<uint8_t> native_bytes(T value) {
+		std::vector<uint8_t> payload(sizeof(value));
+		std::memcpy(payload.data(), &value, sizeof(value));
+		return payload;
+	}
 
 	// Checks how the platform escalates against an application that ignores backpressure.
 	class OverloadTest : public ::testing::Test {
@@ -319,7 +326,7 @@ TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {
 	rpc::Frame frame;
 	frame.type    = MT_REQ;
 	frame.cmd     = CMD_SERVO_ANGLE_SET;
-	frame.payload = {0, 0, 0x34, 0x43}; // 180 degrees
+	frame.payload = native_bytes<int32_t>(180);
 	const std::optional<rpc::Frame> response =
 		manager->handle_request(module::ModuleId{MODULE}, frame, platform::ModuleTime{1, 1});
 

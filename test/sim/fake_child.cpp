@@ -50,16 +50,10 @@ namespace {
 		file << static_cast<unsigned>(frame.cmd) << ":" << frame.status << "\n";
 	}
 
-	std::vector<uint8_t> float_payload(float value) {
-		uint32_t bits = 0;
-		std::memcpy(&bits, &value, sizeof(bits));
-		return {static_cast<uint8_t>(bits), static_cast<uint8_t>(bits >> 8), static_cast<uint8_t>(bits >> 16),
-				static_cast<uint8_t>(bits >> 24)};
-	}
-
-	std::vector<uint8_t> uint32_payload(uint32_t value) {
-		return {static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8), static_cast<uint8_t>(value >> 16),
-				static_cast<uint8_t>(value >> 24)};
+	template <typename T> std::vector<uint8_t> native_payload(T value) {
+		std::vector<uint8_t> payload(sizeof(value));
+		std::memcpy(payload.data(), &value, sizeof(value));
+		return payload;
 	}
 
 	bool append_request(childsync::Mailbox& outbound, uint16_t& call_id, uint8_t command,
@@ -203,7 +197,7 @@ int main() {
 					subscribe.type                   = MT_REQ;
 					subscribe.cmd                    = CMD_SUBSCRIBE_TO_EVENT;
 					subscribe.call_id                = call_id++;
-					subscribe.payload                = {static_cast<uint8_t>(subscribe_mask)};
+					subscribe.payload                = native_payload(static_cast<uint32_t>(subscribe_mask));
 					const std::vector<uint8_t> bytes = rpc::encode(subscribe);
 					if (childsync::mailbox_append(outbound, bytes.data(), bytes.size()) !=
 						childsync::MailboxStatus::OK) {
@@ -252,11 +246,13 @@ int main() {
 				if (ticks == 2) {
 					bool accepted = true;
 					if (mutant == "reverse_leg") {
-						accepted = append_request(outbound, call_id, CMD_BELT_BIG_SET_SPEED, float_payload(-100.0F));
+						accepted =
+							append_request(outbound, call_id, CMD_BELT_BIG_SET_SPEED, native_payload<int32_t>(-100));
 					} else if (mutant == "wrong_laser") {
 						accepted = append_request(outbound, call_id, CMD_LASER_RIGHT_SET, {1});
 					} else if (mutant == "forbidden_colour") {
-						accepted = append_request(outbound, call_id, CMD_LED_SET_COLOR, uint32_payload(0xDEADBE));
+						accepted =
+							append_request(outbound, call_id, CMD_LED_SET_COLOR, native_payload<uint32_t>(0xDEADBE));
 					}
 					if (!accepted) return 4;
 				}
