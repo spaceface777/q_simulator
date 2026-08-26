@@ -217,12 +217,14 @@ TEST_F(PlatformTest, ReadsAndWritesRfidOnlyWhileATagIsPresent) {
 	EXPECT_EQ(call(CMD_RFID_WRITE_DATA_BLOCK, {32, 1, 2, 3, 4}).status, platform::STATUS_RANGE);
 
 	RfidPayload data{};
+	data[0]  = {1, 2, 3, 4};
 	data[2]  = {9, 8, 7, 6};
 	data[31] = {0xAA, 0xBB, 0xCC, 0xDD};
 	hardware()->set_rfid_tag({1, 2, 3, 4, 5, 6, 7}, data);
 
 	EXPECT_EQ(call(CMD_RFID_CHECK_TAG).payload[0], 1);
 	EXPECT_EQ(call(CMD_RFID_GET_UID).payload, std::vector<uint8_t>({1, 2, 3, 4, 5, 6, 7}));
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, {0}).payload, std::vector<uint8_t>({1, 2, 3, 4}));
 	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, {2}).payload, std::vector<uint8_t>({9, 8, 7, 6}));
 	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, {31}).payload, std::vector<uint8_t>({0xAA, 0xBB, 0xCC, 0xDD}));
 
@@ -459,6 +461,57 @@ TEST_F(PlatformTest, PublishesRfidDetectAfterTheConfiguredSampledDelay) {
 	hardware()->clear_rfid_tag();
 	manager->advance(13);
 	EXPECT_TRUE(take_all().empty());
+}
+
+TEST_F(PlatformTest, EstablishesRfidBaselineWhenSubscriptionBegins) {
+	settings::set_setting("rfid_event_extra_delay_mean_ms", 0.0);
+	settings::set_setting("rfid_event_extra_delay_sd_ms", 0.0);
+	manager = std::make_unique<platform::Manager>(world_);
+
+	const RfidUid first_uid{1, 2, 3, 4, 5, 6, 7};
+	const RfidUid second_uid{7, 6, 5, 4, 3, 2, 1};
+	hardware()->set_rfid_tag(first_uid, {});
+
+	// A tag already visible when the subscription starts establishes the edge baseline.
+	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	manager->advance(0);
+	EXPECT_TRUE(take_all().empty());
+
+	// Departure updates the baseline but is intentionally not an event.
+	hardware()->clear_rfid_tag();
+	manager->advance(1);
+	EXPECT_TRUE(take_all().empty());
+
+	// A later arrival is the first meaningful transition and is delivered immediately here.
+	hardware()->set_rfid_tag(second_uid, {});
+	manager->advance(2);
+	std::vector<rpc::Frame> events = take_all();
+	ASSERT_EQ(events.size(), 1u);
+	EXPECT_EQ(events[0].cmd, EVENT_RFID_DETECT);
+	EXPECT_EQ(events[0].payload, std::vector<uint8_t>(second_uid.begin(), second_uid.end()));
+
+	// Repeating an already-enabled subscription must not reset the edge history.
+	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	hardware()->set_rfid_tag(first_uid, {});
+	manager->advance(3);
+	events = take_all();
+	ASSERT_EQ(events.size(), 1u);
+	EXPECT_EQ(events[0].payload, std::vector<uint8_t>(first_uid.begin(), first_uid.end()));
+
+	// Re-subscribing after an unsubscribe establishes a fresh baseline again.
+	ASSERT_EQ(call(CMD_UNSUBSCRIBE_FROM_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	hardware()->set_rfid_tag(second_uid, {});
+	ASSERT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, {EVENT_RFID_DETECT}).status, platform::STATUS_OK);
+	manager->advance(4);
+	EXPECT_TRUE(take_all().empty());
+
+	hardware()->clear_rfid_tag();
+	manager->advance(5);
+	hardware()->set_rfid_tag(first_uid, {});
+	manager->advance(6);
+	events = take_all();
+	ASSERT_EQ(events.size(), 1u);
+	EXPECT_EQ(events[0].payload, std::vector<uint8_t>(first_uid.begin(), first_uid.end()));
 }
 
 TEST_F(PlatformTest, ZeroConfiguredHardwareDelayPublishesInTheTriggerTick) {

@@ -112,6 +112,14 @@ namespace platform {
 			return {value};
 		}
 
+		std::vector<uint8_t> visible_rfid_uid(const module::Module& module) {
+			if (!module.is_rfid_active()) {
+				return {};
+			}
+			const RfidUid& uid = module.rfid_uid();
+			return {uid.begin(), uid.end()};
+		}
+
 		std::vector<uint8_t> float_payload(float value) {
 			uint32_t bits = 0;
 			std::memcpy(&bits, &value, sizeof(bits));
@@ -465,7 +473,12 @@ namespace platform {
 			} else if (id == TOWER_MODULE_ID && (mask.value() & HARDWARE_EVENTS) != 0) {
 				response.status = STATUS_PERM;
 			} else if (request.cmd == CMD_SUBSCRIBE_TO_EVENT) {
+				const uint32_t newly_subscribed = mask.value() & ~runtime.subscriptions;
 				runtime.subscriptions |= mask.value();
+				if ((newly_subscribed & EVENT_RFID_DETECT) != 0) {
+					const module::Module* module = world_->module(id);
+					runtime.last_rfid_uid = module == nullptr ? std::vector<uint8_t>{} : visible_rfid_uid(*module);
+				}
 			} else {
 				runtime.subscriptions &= ~mask.value();
 			}
@@ -606,9 +619,7 @@ namespace platform {
 			runtime.last_left_clear  = left_clear;
 			runtime.last_right_clear = right_clear;
 
-			const RfidUid&             uid = module->rfid_uid();
-			const std::vector<uint8_t> uid_payload =
-				module->is_rfid_active() ? std::vector<uint8_t>(uid.begin(), uid.end()) : std::vector<uint8_t>{};
+			const std::vector<uint8_t> uid_payload = visible_rfid_uid(*module);
 			if (uid_payload != runtime.last_rfid_uid) {
 				runtime.last_rfid_uid = uid_payload;
 				// Only an arriving tag is worth an event; a departing one is observed by polling.
