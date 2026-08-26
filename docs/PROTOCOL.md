@@ -30,7 +30,7 @@ The receiver validates the mailbox slot offsets before it reads frame bytes. It 
 
 A response has status 0 for success or a negative errno value for failure. Common values are permission denied (`-1`), not found (`-2`), try again (`-11`), invalid argument (`-22`), and not supported (`-38`). The platform can also return range and no-entry errors for commands that need them.
 
-Requests cross an application handoff before the platform handles them. Responses and events return on an executed local tick. A skipped module tick also pauses that module's RPC service delays and rate-limit windows. Laser events have a configured additional delay. RFID event delays use a configured seeded distribution. Network packets, logs, and panic reports pass through the configured network delay and loss model.
+Requests cross an application handoff before the platform handles them. Each module has its own three deterministic Core0 handler lanes and per-category mutexes. A confirmable request occupies its lane through the handoff of its response to that module, including while it waits for another request from the same module and command category; different categories on one module and the same category on different modules may run together. Non-confirmable work releases its lane when its handler returns. Seeded same-tick intake order determines lane assignment. Responses and events return on an executed local tick. A skipped module tick also pauses that module's RPC service delays and rate-limit windows. Laser events have a configured additional delay. RFID event delays use a configured seeded distribution. Network packets, logs, and panic reports pass through the configured network delay and loss model.
 
 ## Messages
 

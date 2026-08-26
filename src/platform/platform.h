@@ -98,6 +98,9 @@ namespace platform {
 	// How many requests per simulated second the bucket allows.
 	[[nodiscard]] int capacity_of(Bucket bucket);
 
+	// The per-category mutex a command uses on Core0.
+	[[nodiscard]] Bucket request_bucket(uint8_t cmd);
+
 	// Per-application state the platform owns. None of it lives in the child.
 	struct Runtime {
 		bool                     present                  = false;

@@ -75,6 +75,7 @@ add_library(core STATIC
     src/sim/runtime.cpp
     src/sim/pacing.cpp
     src/platform/platform.cpp
+    src/platform/rpc_worker_pool.cpp
     src/childsync/mailbox.cpp
     src/childsync/barrier.cpp
     src/rpc/frame.cpp

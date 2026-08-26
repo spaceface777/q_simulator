@@ -20,6 +20,7 @@
 #include "../ltl/observation.h"
 #include "../module/types.h"
 #include "../platform/platform.h"
+#include "../platform/rpc_worker_pool.h"
 #include "../trace/trace.h"
 #include "../world/world.h"
 #include "pacing.h"
@@ -64,6 +65,7 @@ namespace sim {
 	private:
 		struct PendingRpcRequest {
 			uint64_t    due_local_tick = 0;
+			uint64_t    work_id        = 0;
 			rpc::Frame  frame;
 			std::string label;
 			uint64_t    observation_id = 0;
@@ -89,6 +91,8 @@ namespace sim {
 			std::deque<rpc::Frame>                 staged_outbound;
 			std::deque<PendingRpcRequest>          pending_requests;
 			std::deque<PendingRpcResponse>         pending_responses;
+			platform::RpcWorkerPool                rpc_workers;
+			std::map<uint64_t, PendingRpcRequest>  rpc_work;
 		};
 
 		uint64_t                      seed_;
@@ -144,6 +148,7 @@ namespace sim {
 		uint64_t                                          scenario_duration_tick_ = 0;
 		std::string                                       property_filename_;
 		uint64_t                                          next_rpc_observation_id_ = 1;
+		uint64_t                                          next_rpc_work_id_        = 1;
 		std::map<uint64_t, std::vector<ltl::RpcRequest>>  pending_rpc_requests_;
 		std::map<uint64_t, std::vector<ltl::RpcResponse>> pending_rpc_responses_;
 		std::map<uint64_t, std::vector<ltl::RpcEvent>>    pending_rpc_events_;
@@ -157,6 +162,8 @@ namespace sim {
 		void drain(Child& child, uint64_t source_global_tick, uint64_t source_local_tick, uint32_t batch_index = 0);
 
 		void release_local_rpc(Child& child, uint64_t global_tick, uint64_t local_tick);
+
+		void start_rpc_work(Child& child, uint64_t work_id, uint64_t global_tick, uint64_t local_tick);
 
 		void grant_tick(uint32_t batch_ticks);
 

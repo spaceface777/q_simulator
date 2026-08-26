@@ -277,6 +277,10 @@ namespace platform {
 		return 0;
 	}
 
+	Bucket request_bucket(uint8_t cmd) {
+		return bucket_for(cmd);
+	}
+
 	Runtime* Manager::find(module::ModuleId id) {
 		const auto found = runtimes_.find(id.raw());
 		return found == runtimes_.end() ? nullptr : &found->second;
@@ -337,7 +341,7 @@ namespace platform {
 		bool     allowed = true;
 
 		// Charged to its own bucket and the global one, so traffic cannot dodge the overall limit.
-		for (const Bucket bucket : {Bucket::GLOBAL, bucket_for(cmd)}) {
+		for (const Bucket bucket : {Bucket::GLOBAL, request_bucket(cmd)}) {
 			const std::size_t index = static_cast<std::size_t>(bucket);
 			const int         limit = capacity_of(bucket);
 			if (limit == 0) {

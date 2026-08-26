@@ -21,6 +21,7 @@ add_executable(tests
     net/test_network.cpp
     platform/test_overload.cpp
     platform/test_platform.cpp
+    platform/test_rpc_worker_pool.cpp
     sim/test_applet_e2e.cpp
     sim/test_determinism.cpp
     sim/test_runtime.cpp

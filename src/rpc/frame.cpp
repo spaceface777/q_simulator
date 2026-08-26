@@ -82,6 +82,7 @@ namespace rpc {
 		out.status  = static_cast<int16_t>(out.flags);
 		out.payload.assign(header + HEADER_SIZE, header + frame_size);
 		out.observation_request_id = 0;
+		out.handler_work_id        = 0;
 
 		consumed_ += frame_size;
 		return DecodeStatus::OK;

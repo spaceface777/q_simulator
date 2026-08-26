@@ -27,6 +27,10 @@ namespace rpc {
 		// Simulator-only correlation metadata. It is deliberately absent from encode/decode and
 		// follows a response through the platform backlog to its actual delivery boundary.
 		uint64_t observation_request_id = 0;
+
+		// Simulator-only Core0 worker ownership. A confirmable request keeps its worker lane and
+		// category mutex until this response is handed to the requesting module.
+		uint64_t handler_work_id = 0;
 	};
 
 	enum class DecodeStatus {

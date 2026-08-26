@@ -164,7 +164,7 @@ A mailbox is one 4096-byte page. It has four frame slots and 4088 data bytes. A 
 
 The barrier uses acquire and release operations and Linux futex waits. The parent writes mailboxes only while children are blocked. A child writes its outbound mailbox only while the parent is blocked. The final child increments the release word and wakes the parent.
 
-`docs/PROTOCOL.md` defines the RPC frame. Requests cross the next application handoff. Responses and events return on an executed local tick. Laser events have a configurable additional delay. RFID events use a configurable seeded delay distribution. Module packets, logs, and panic reports use the configured deterministic network delay and loss model.
+`docs/PROTOCOL.md` defines the RPC frame. Requests cross the next application handoff and enter one of three deterministic Core0 handler lanes owned by that module. Lane assignment follows seeded intake order. A confirmable request keeps its lane through response handoff even when it is waiting for that module's per-category mutex. Different categories on one module and matching categories on separate modules can therefore run concurrently, while one module's category remains serialized. Responses and events return on an executed local tick. Laser events have a configurable additional delay. RFID events use a configurable seeded delay distribution. Module packets, logs, and panic reports use the configured deterministic network delay and loss model.
 
 ## 8. Visualization
 

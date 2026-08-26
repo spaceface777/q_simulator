@@ -568,7 +568,13 @@ namespace sim {
 					if (childsync::mailbox_append(mailbox, bytes.data(), bytes.size()) != childsync::MailboxStatus::OK)
 						break;
 
+					const uint64_t completed_work_id = frame.handler_work_id;
 					child.staged_outbound.pop_front();
+					if (completed_work_id != 0) {
+						for (const uint64_t work_id : child.rpc_workers.complete(completed_work_id)) {
+							start_rpc_work(child, work_id, global_tick_, module_ticks_[child.id.raw()]);
+						}
+					}
 				}
 			}
 		}
@@ -651,7 +657,8 @@ namespace sim {
 			const std::string label = prefix + std::to_string(frame.call_id) + "/" + std::to_string(frame.cmd);
 
 			child.pending_requests.push_back(PendingRpcRequest{source_local_tick + RPC_RX_DELAY_LOCAL_TICKS,
-															   std::move(frame), std::move(label), observation_id});
+															   next_rpc_work_id_++, std::move(frame), std::move(label),
+															   observation_id});
 		}
 	}
 
@@ -669,15 +676,42 @@ namespace sim {
 			queue_.schedule(
 				global_tick, engine::Priority::CHILD_INTAKE, std::move(label),
 				[this, child_ptr, local_tick, pending = std::move(pending)](engine::TaskContext& context) mutable {
-					std::optional<rpc::Frame> response = platform_->handle_request(
-						child_ptr->id, pending.frame, platform::ModuleTime{context.tick(), local_tick});
-					if (!response) return;
-
-					rpc::Frame answer             = std::move(response.value());
-					answer.observation_request_id = pending.observation_id;
-					child_ptr->pending_responses.push_back(
-						PendingRpcResponse{local_tick + RPC_TX_DELAY_LOCAL_TICKS, std::move(answer)});
+					const uint64_t         work_id = pending.work_id;
+					const platform::Bucket bucket  = platform::request_bucket(pending.frame.cmd);
+					child_ptr->rpc_work.emplace(work_id, std::move(pending));
+					if (child_ptr->rpc_workers.enqueue(work_id, bucket).has_value()) {
+						start_rpc_work(*child_ptr, work_id, context.tick(), local_tick);
+					}
 				});
+		}
+	}
+
+	void Runtime::start_rpc_work(Child& child, uint64_t work_id, uint64_t global_tick, uint64_t local_tick) {
+		std::deque<uint64_t> work_to_start{work_id};
+		while (!work_to_start.empty()) {
+			const uint64_t current_work_id = work_to_start.front();
+			work_to_start.pop_front();
+			auto found = child.rpc_work.find(current_work_id);
+			if (found == child.rpc_work.end()) {
+				throw std::logic_error("RPC worker started an unknown request");
+			}
+
+			PendingRpcRequest pending = std::move(found->second);
+			child.rpc_work.erase(found);
+			std::optional<rpc::Frame> response =
+				platform_->handle_request(child.id, pending.frame, platform::ModuleTime{global_tick, local_tick});
+			if (!response) {
+				for (const uint64_t started : child.rpc_workers.complete(current_work_id)) {
+					work_to_start.push_back(started);
+				}
+				continue;
+			}
+
+			rpc::Frame answer             = std::move(response.value());
+			answer.observation_request_id = pending.observation_id;
+			answer.handler_work_id        = current_work_id;
+			child.pending_responses.push_back(
+				PendingRpcResponse{local_tick + RPC_TX_DELAY_LOCAL_TICKS, std::move(answer)});
 		}
 	}
 
