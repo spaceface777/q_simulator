@@ -139,6 +139,7 @@ int main() {
 	const unsigned    query_tick         = env_number("FAKE_CHILD_QUERY_TICK", UINT_MAX);
 	const unsigned    ingress_probe      = module_env_number("FAKE_CHILD_INGRESS_PROBE", id, 0);
 	const unsigned    rate_burst         = module_env_number("FAKE_CHILD_RATE_BURST", id, 0);
+	const bool        startup_rpc        = env_number("FAKE_CHILD_STARTUP_RPC", 0) != 0;
 	const bool        reply_to_message   = env_number("FAKE_CHILD_REPLY_TO_MESSAGE", 0) != 0 && id == 1;
 	const char*       record_path        = ::getenv("FAKE_CHILD_RECORD"); // File to append observed commands to.
 	const bool        record_ticks       = env_number("FAKE_CHILD_RECORD_TICKS", 0) != 0;
@@ -146,9 +147,12 @@ int main() {
 	const char*       status_record_path = id == 1 ? ::getenv("FAKE_CHILD_STATUS_RECORD") : nullptr;
 	const std::string mutant = ::getenv("FAKE_CHILD_MUTANT") == nullptr ? "" : ::getenv("FAKE_CHILD_MUTANT");
 
-	uint16_t call_id   = 0x8000;
-	unsigned ticks     = 0;
-	uint32_t last_seen = 0;
+	uint16_t call_id                = 0x8000;
+	unsigned ticks                  = 0;
+	uint32_t last_seen              = 0;
+	bool     startup_rpc_sent       = false;
+	bool     startup_rpc_done       = !startup_rpc;
+	bool     startup_heartbeat_sent = false;
 
 	// Announced only once the mapping is in place, so the parent never ticks an unmapped child.
 	if (childsync::load_acquire(control.abi) != QUERCUS_SHM_ABI) {
@@ -181,6 +185,10 @@ int main() {
 					// that a test can assert what the child was told.
 					record(record_path, frame, ticks, record_ticks);
 					record_status(status_record_path, frame);
+					if (startup_rpc && frame.type == MT_RESP && frame.cmd == CMD_GET_OWN_ID && frame.status == 0 &&
+						frame.payload.size() == 1 && frame.payload.front() == id) {
+						startup_rpc_done = true;
+					}
 					if (frame.type == MT_EVENT && frame.cmd == EVENT_MESSAGE_RECEIVED) message_received = true;
 				}
 				if (corrupt) return 3;
@@ -205,7 +213,15 @@ int main() {
 					}
 				}
 
-				if (heartbeat_every != 0 && ticks <= heartbeat_until && (ticks % heartbeat_every) == 0) {
+				if (startup_rpc && !startup_rpc_sent) {
+					if (!append_request(outbound, call_id, CMD_GET_OWN_ID, {})) return 4;
+					startup_rpc_sent = true;
+				}
+
+				const bool startup_heartbeat = startup_rpc_done && !startup_heartbeat_sent;
+				const bool periodic_heartbeat =
+					!startup_rpc && heartbeat_every != 0 && ticks <= heartbeat_until && (ticks % heartbeat_every) == 0;
+				if (startup_heartbeat || periodic_heartbeat) {
 					rpc::Frame heartbeat;
 					heartbeat.type                   = MT_REQ;
 					heartbeat.cmd                    = CMD_HEARTBEAT;
@@ -215,13 +231,13 @@ int main() {
 						childsync::MailboxStatus::OK) {
 						return 4;
 					}
+					startup_heartbeat_sent = startup_heartbeat_sent || startup_heartbeat;
 				}
 
-				const bool sent_heartbeat =
-					heartbeat_every != 0 && ticks <= heartbeat_until && (ticks % heartbeat_every) == 0;
-				const unsigned burst_count = sent_heartbeat && rate_burst >= childsync::MAX_FRAMES_PER_TICK
-												 ? childsync::MAX_FRAMES_PER_TICK - 1
-												 : rate_burst;
+				const bool     sent_heartbeat = startup_heartbeat || periodic_heartbeat;
+				const unsigned burst_count    = sent_heartbeat && rate_burst >= childsync::MAX_FRAMES_PER_TICK
+													? childsync::MAX_FRAMES_PER_TICK - 1
+													: rate_burst;
 				for (unsigned request = 0; request < burst_count; request++) {
 					if (!append_request(outbound, call_id, CMD_LASER_LEFT_GET, {})) return 4;
 				}

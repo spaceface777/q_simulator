@@ -68,6 +68,7 @@ namespace {
 			::unsetenv("FAKE_CHILD_RATE_BURST");
 			::unsetenv("FAKE_CHILD_RATE_BURST_1");
 			::unsetenv("FAKE_CHILD_RATE_BURST_2");
+			::unsetenv("FAKE_CHILD_STARTUP_RPC");
 			::unsetenv("FAKE_CHILD_RECORD");
 			::unsetenv("FAKE_CHILD_RECORD_TICKS");
 			::unsetenv("FAKE_CHILD_GRANT_RECORD");
@@ -105,6 +106,16 @@ TEST_F(RuntimeTest, StartsApplicationsAndWaitsForThemToActivate) {
 	EXPECT_EQ(runtime.platform().lifecycle(module::ModuleId{FIRST}), platform::Lifecycle::RUNNING);
 	EXPECT_GT(runtime.tick(), 0u);
 
+	runtime.stop();
+}
+
+TEST_F(RuntimeTest, DeliversSynchronousRpcResponsesDuringBatchedActivation) {
+	::setenv("FAKE_CHILD_STARTUP_RPC", "1", 1);
+
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, std::chrono::milliseconds(200), 2);
+	ASSERT_NO_THROW(runtime.start());
+	EXPECT_TRUE(runtime.platform().is_activated(module::ModuleId{FIRST}));
+	EXPECT_TRUE(runtime.platform().is_activated(module::ModuleId{SECOND}));
 	runtime.stop();
 }
 

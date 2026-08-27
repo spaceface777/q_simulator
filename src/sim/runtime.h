@@ -181,7 +181,7 @@ namespace sim {
 		// for, not killed, because skipping its tick would change the run.
 		void collect_acknowledgements();
 
-		void schedule_tick_tasks(uint32_t batch_index = 0);
+		void schedule_tick_tasks(uint32_t batch_index, uint32_t batch_ticks);
 
 		uint32_t step(uint32_t batch_ticks);
 

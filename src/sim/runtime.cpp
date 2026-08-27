@@ -522,7 +522,7 @@ namespace sim {
 			if (batch_index != 0) {
 				platform_->prepare_tick(global_tick_);
 			}
-			schedule_tick_tasks(batch_index);
+			schedule_tick_tasks(batch_index, batch_ticks);
 			queue_.run_tick(global_tick_);
 			global_tick_++;
 			completed++;
@@ -841,7 +841,7 @@ namespace sim {
 		}
 	}
 
-	void Runtime::schedule_tick_tasks(uint32_t batch_index) {
+	void Runtime::schedule_tick_tasks(uint32_t batch_index, uint32_t batch_ticks) {
 		const uint64_t tick = global_tick_;
 
 		queue_.schedule(tick, engine::Priority::WORLD_ADVANCE, "world",
@@ -964,7 +964,8 @@ namespace sim {
 		});
 
 		queue_.schedule(
-			tick, engine::Priority::PLATFORM_OUTBOUND, "outbound", [this, tick, batch_index](engine::TaskContext&) {
+			tick, engine::Priority::PLATFORM_OUTBOUND, "outbound",
+			[this, tick, batch_index, batch_ticks](engine::TaskContext&) {
 				platform_->advance(tick);
 				for (Child& child : children_) {
 					if (!child.active) continue;
@@ -972,7 +973,7 @@ namespace sim {
 					// boundary, stage what became ready during the replay; the next grant puts it in
 					// the first slot that child will actually execute. If a whole window is skipped,
 					// keep the already-observed delivery staged so `next` waits for its next real step.
-					if (batch_index + 1U != tick_batch_ || !child.staged_outbound.empty()) continue;
+					if (batch_index + 1U != batch_ticks || !child.staged_outbound.empty()) continue;
 					for (rpc::Frame& frame : platform_->take_outbound(child.id, childsync::MAILBOX_CAPACITY)) {
 						if (trace_.enabled() || !property_monitors_.empty()) {
 							if (frame.type == MT_RESP && frame.observation_request_id != 0) {
