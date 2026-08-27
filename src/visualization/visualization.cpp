@@ -194,9 +194,9 @@ namespace visualization {
 	static void render_rfid(int module_x, int module_y, int rfid_state, const world::Calibration& calibration,
 							settings::ModuleAngle rotation) {
 		float        rfid_rel_x, rfid_rel_y;
-		const double progress = static_cast<double>(calibration.hardware.rfid_position_um) /
-								static_cast<double>(calibration.endpoint_to_junction_um);
-		const float half_size = scale_within_module(75.0 * world::RFID_HALF_SMALL_BELT_FRACTION);
+		const double progress  = static_cast<double>(calibration.hardware.rfid_position_um) /
+								 static_cast<double>(calibration.endpoint_to_junction_um);
+		const float  half_size = scale_within_module(75.0 * world::RFID_HALF_SMALL_BELT_FRACTION);
 		switch (rotation) {
 		case settings::ModuleAngle::NORMAL:
 			rfid_rel_x = scale_within_module(90);

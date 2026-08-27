@@ -434,9 +434,9 @@ TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 	std::optional<uint64_t> request_tick;
 	std::optional<uint64_t> response_tick;
 	const auto              read_tick = [](const std::string& record) {
-        const std::string marker = "\"tick\":";
-        const std::size_t begin  = record.find(marker);
-        return std::stoull(record.substr(begin + marker.size()));
+		const std::string marker = "\"tick\":";
+		const std::size_t begin  = record.find(marker);
+		return std::stoull(record.substr(begin + marker.size()));
 	};
 	while (std::getline(trace, line)) {
 		if (line.find("\"type\":\"rpc_request\"") != std::string::npos &&

@@ -115,8 +115,8 @@ namespace sim {
 			child.clock_rate_ppm = std::max<int64_t>(1, 1'000'000 + static_cast<int64_t>(std::llround(drift)));
 			const double skip_ppm = settings::get_setting<double>("module_tick_skip_mean_ppm") +
 									settings::get_setting<double>("module_tick_skip_sd_ppm") * standard_normal(timing);
-			child.tick_skip_ppm = static_cast<uint32_t>(std::clamp(std::llround(skip_ppm), 0LL, 1'000'000LL));
-			child.tick_skip_rng = seed::derive(seed_, "module-clock-skips/" + std::to_string(id.raw()));
+			child.tick_skip_ppm   = static_cast<uint32_t>(std::clamp(std::llround(skip_ppm), 0LL, 1'000'000LL));
+			child.tick_skip_rng   = seed::derive(seed_, "module-clock-skips/" + std::to_string(id.raw()));
 			child.segment.emplace();
 			child.segment->mapping().keep_across_exec();
 
@@ -228,9 +228,9 @@ namespace sim {
 
 		for (const auto& [id, tub] : observation.tubs()) {
 			// One line per tub, only when it moved.
-			const std::string current = std::to_string(tub.module) + "/" + std::to_string(static_cast<int>(tub.belt)) +
-										"/" + std::to_string(tub.position_um);
-			std::string& previous = last_world_[id];
+			const std::string current  = std::to_string(tub.module) + "/" + std::to_string(static_cast<int>(tub.belt)) +
+										 "/" + std::to_string(tub.position_um);
+			std::string&      previous = last_world_[id];
 			if (previous == current) {
 				continue;
 			}
@@ -379,7 +379,7 @@ namespace sim {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
 			const ltl::Verdict              verdict =
-                global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
+				global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
 			const ltl::Monitor& monitor = property_monitors_[index];
 			results.push_back(PropertyResult{declaration.name, property_filename_, declaration.span.begin, verdict,
 											 property_decisive_ticks_[index], monitor.failure(), monitor.activations(),
@@ -551,7 +551,7 @@ namespace sim {
 				const bool     started   = slot_tick >= child.start_tick;
 				const bool     eligible  = started && !platform_->is_paused(child.id, slot_tick);
 				const bool     skipped   = eligible && child.tick_skip_ppm != 0 &&
-									 (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
+										   (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
 				if (skipped) child.skipped_mask |= slot;
 				if (!eligible || skipped) continue;
 
@@ -908,7 +908,7 @@ namespace sim {
 					const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 					const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
 					const uint64_t                  until_tick =
-                        declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
+						declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
 					if (tick < from_tick || tick > until_tick) continue;
 
 					if (property_decisive_ticks_[index]) continue;

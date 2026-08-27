@@ -128,11 +128,11 @@ file(GLOB_RECURSE FORMAT_FILES
 )
 
 add_custom_target(format
-    COMMAND clang-format -style=file -i ${FORMAT_FILES}
+    COMMAND clang-format-22 -style=file -i ${FORMAT_FILES}
     VERBATIM)
 
 add_custom_target(format-check
-    COMMAND clang-format -style=file --dry-run --Werror ${FORMAT_FILES}
+    COMMAND clang-format-22 -style=file --dry-run --Werror ${FORMAT_FILES}
     VERBATIM)
 
 # === Subdirectories ===
