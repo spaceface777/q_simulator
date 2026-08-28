@@ -40,6 +40,31 @@ namespace {
 		static constexpr uint8_t FIRST  = 1;
 		static constexpr uint8_t SECOND = 2;
 
+		static void clear_fake_child_environment() {
+			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY_1");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY_2");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL_1");
+			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL_2");
+			::unsetenv("FAKE_CHILD_SUBSCRIBE");
+			::unsetenv("FAKE_CHILD_EXIT_AFTER");
+			::unsetenv("FAKE_CHILD_QUERY_TICK");
+			::unsetenv("FAKE_CHILD_INGRESS_PROBE");
+			::unsetenv("FAKE_CHILD_INGRESS_PROBE_1");
+			::unsetenv("FAKE_CHILD_INGRESS_PROBE_2");
+			::unsetenv("FAKE_CHILD_RATE_BURST");
+			::unsetenv("FAKE_CHILD_RATE_BURST_1");
+			::unsetenv("FAKE_CHILD_RATE_BURST_2");
+			::unsetenv("FAKE_CHILD_STARTUP_RPC");
+			::unsetenv("FAKE_CHILD_RECORD");
+			::unsetenv("FAKE_CHILD_RECORD_TICKS");
+			::unsetenv("FAKE_CHILD_GRANT_RECORD");
+			::unsetenv("FAKE_CHILD_STATUS_RECORD");
+			::unsetenv("FAKE_CHILD_MUTANT");
+			::unsetenv("FAKE_CHILD_REPLY_TO_MESSAGE");
+		}
+
 		void SetUp() override {
 			// Sets every setting a settings.toml would, so the fixture does not depend on test order.
 			settings::install_test_defaults();
@@ -68,28 +93,7 @@ namespace {
 				settings::set_module_settings(module::ModuleId{id}, module_settings);
 			}
 
-			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY_1");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY_2");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL_1");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL_2");
-			::unsetenv("FAKE_CHILD_SUBSCRIBE");
-			::unsetenv("FAKE_CHILD_EXIT_AFTER");
-			::unsetenv("FAKE_CHILD_QUERY_TICK");
-			::unsetenv("FAKE_CHILD_INGRESS_PROBE");
-			::unsetenv("FAKE_CHILD_INGRESS_PROBE_1");
-			::unsetenv("FAKE_CHILD_INGRESS_PROBE_2");
-			::unsetenv("FAKE_CHILD_RATE_BURST");
-			::unsetenv("FAKE_CHILD_RATE_BURST_1");
-			::unsetenv("FAKE_CHILD_RATE_BURST_2");
-			::unsetenv("FAKE_CHILD_STARTUP_RPC");
-			::unsetenv("FAKE_CHILD_RECORD");
-			::unsetenv("FAKE_CHILD_RECORD_TICKS");
-			::unsetenv("FAKE_CHILD_GRANT_RECORD");
-			::unsetenv("FAKE_CHILD_STATUS_RECORD");
-			::unsetenv("FAKE_CHILD_MUTANT");
-			::unsetenv("FAKE_CHILD_REPLY_TO_MESSAGE");
+			clear_fake_child_environment();
 		}
 
 		void TearDown() override {
@@ -98,6 +102,7 @@ namespace {
 			for (uint8_t id = 1; id < MAX_MODULES; id++) {
 				settings::set_module_settings(module::ModuleId{id}, settings::ModuleSettings{});
 			}
+			clear_fake_child_environment();
 		}
 
 		// Grants the runtime a fixed amount of simulated time, one call per frame like the main loop.
