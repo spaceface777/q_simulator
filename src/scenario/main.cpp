@@ -162,6 +162,7 @@ int main(int argc, char const* argv[]) {
 		return EXIT_SUCCESS;
 	}
 	const Options& options = *parsed;
+	sim::pin_to_one_cpu();
 
 	events::Schedule schedule;
 	try {

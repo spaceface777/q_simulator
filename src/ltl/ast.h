@@ -52,6 +52,41 @@ namespace ltl {
 			MEMBER,
 		};
 
+		enum class Symbol : uint8_t {
+			NONE,
+			PRESENT,
+			AT_MODULE,
+			AT_POSITION,
+			APPEARED,
+			DISAPPEARED,
+			ENTERED,
+			LEFT,
+			CHANGED,
+			ID,
+			CALL_ID,
+			MODULE,
+			CMD,
+			PAYLOAD,
+			CONFIRMABLE,
+			REQUEST,
+			STATUS,
+			KIND,
+			BIG_BELT_SPEED,
+			SMALL_BELT_SPEED,
+			SERVO_ANGLE,
+			SERVO_PHYSICAL_ANGLE,
+			LED_COLOR,
+			LEFT_LASER_ENABLED,
+			RIGHT_LASER_ENABLED,
+			LEFT_LASER_BLOCKED,
+			RIGHT_LASER_BLOCKED,
+			RFID_ACTIVE,
+			ENTRY,
+			CENTER,
+			LEFT_LASER,
+			RIGHT_LASER,
+		};
+
 		Kind                                kind = Kind::NAME;
 		Span                                span;
 		ValueType                           type = ValueType::UNKNOWN;
@@ -59,8 +94,10 @@ namespace ltl {
 		double                              number = 0.0;
 		uint32_t                            color  = 0;
 		std::vector<uint8_t>                bytes;
-		uint64_t                            entity_id = 0;
-		bool                                boolean   = false;
+		uint64_t                            entity_id  = 0;
+		int64_t                             enum_value = 0;
+		Symbol                              symbol     = Symbol::NONE;
+		bool                                boolean    = false;
 		std::unique_ptr<Value>              base;
 		std::vector<std::unique_ptr<Value>> arguments;
 		std::string                         binding;

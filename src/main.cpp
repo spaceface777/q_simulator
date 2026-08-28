@@ -131,6 +131,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
 	}
 
 	::signal(SIGTERM, handle_close);
+	sim::pin_to_one_cpu();
 
 	settings::parse_settings("settings.toml", "layout.toml");
 	const uint64_t         master_seed = static_cast<uint64_t>(settings::get_setting<int>("seed"));

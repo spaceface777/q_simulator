@@ -7,6 +7,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 #include "../module/types.h"
@@ -184,13 +185,13 @@ namespace ltl {
 		[[nodiscard]] const RpcEvent*    rpc_event(uint64_t id, uint64_t observation_tick) const;
 
 	private:
-		std::vector<module::ModuleId>      module_ids_;
-		std::map<uint16_t, ModuleSnapshot> previous_modules_;
-		std::map<uint16_t, TubSnapshot>    previous_tubs_;
-		std::set<uint16_t>                 seen_tubs_;
-		std::map<uint64_t, RpcRequest>     rpc_request_registry_;
-		std::map<uint64_t, RpcResponse>    rpc_response_registry_;
-		std::map<uint64_t, RpcEvent>       rpc_event_registry_;
+		std::vector<module::ModuleId>             module_ids_;
+		std::map<uint16_t, ModuleSnapshot>        previous_modules_;
+		std::map<uint16_t, TubSnapshot>           previous_tubs_;
+		std::set<uint16_t>                        seen_tubs_;
+		std::unordered_map<uint64_t, RpcRequest>  rpc_request_registry_;
+		std::unordered_map<uint64_t, RpcResponse> rpc_response_registry_;
+		std::unordered_map<uint64_t, RpcEvent>    rpc_event_registry_;
 	};
 
 } // namespace ltl

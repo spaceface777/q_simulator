@@ -1,7 +1,9 @@
 #include "observation.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -43,9 +45,10 @@ namespace ltl {
 			bool      operator==(const RecordRef&) const = default;
 		};
 
-		using EvaluatedValue = std::variant<bool, double, uint32_t, std::vector<uint8_t>, EnumRef, RecordRef, ModuleRef,
-											TubRef, PositionRef>;
-		using BindingMap     = std::unordered_map<std::string, uint64_t>;
+		using BytesRef = std::span<const uint8_t>;
+		using EvaluatedValue =
+			std::variant<bool, double, uint32_t, BytesRef, EnumRef, RecordRef, ModuleRef, TubRef, PositionRef>;
+		using BindingMap = std::unordered_map<std::string, uint64_t>;
 
 		ModuleSnapshot snapshot(const module::Module& hardware) {
 			return ModuleSnapshot{hardware.id().raw(),
@@ -84,26 +87,20 @@ namespace ltl {
 			return result;
 		}
 
-		std::optional<world::Position> position_named(const std::string& name) {
-			if (name == "entry") return world::Position::ENTRY;
-			if (name == "center") return world::Position::CENTER;
-			if (name == "left_laser") return world::Position::LEFT_LASER;
-			if (name == "right_laser") return world::Position::RIGHT_LASER;
-			return {};
-		}
-
-		std::optional<ModuleField> field_named(const std::string& name) {
-			if (name == "big_belt_speed") return ModuleField::BIG_BELT_SPEED;
-			if (name == "small_belt_speed") return ModuleField::SMALL_BELT_SPEED;
-			if (name == "servo_angle") return ModuleField::SERVO_ANGLE;
-			if (name == "servo_physical_angle") return ModuleField::SERVO_PHYSICAL_ANGLE;
-			if (name == "led_color") return ModuleField::LED_COLOR;
-			if (name == "left_laser_enabled") return ModuleField::LEFT_LASER_ENABLED;
-			if (name == "right_laser_enabled") return ModuleField::RIGHT_LASER_ENABLED;
-			if (name == "left_laser_blocked") return ModuleField::LEFT_LASER_BLOCKED;
-			if (name == "right_laser_blocked") return ModuleField::RIGHT_LASER_BLOCKED;
-			if (name == "rfid_active") return ModuleField::RFID_ACTIVE;
-			return {};
+		ModuleField module_field(Value::Symbol symbol) {
+			switch (symbol) {
+			case Value::Symbol::BIG_BELT_SPEED:       return ModuleField::BIG_BELT_SPEED;
+			case Value::Symbol::SMALL_BELT_SPEED:     return ModuleField::SMALL_BELT_SPEED;
+			case Value::Symbol::SERVO_ANGLE:          return ModuleField::SERVO_ANGLE;
+			case Value::Symbol::SERVO_PHYSICAL_ANGLE: return ModuleField::SERVO_PHYSICAL_ANGLE;
+			case Value::Symbol::LED_COLOR:            return ModuleField::LED_COLOR;
+			case Value::Symbol::LEFT_LASER_ENABLED:   return ModuleField::LEFT_LASER_ENABLED;
+			case Value::Symbol::RIGHT_LASER_ENABLED:  return ModuleField::RIGHT_LASER_ENABLED;
+			case Value::Symbol::LEFT_LASER_BLOCKED:   return ModuleField::LEFT_LASER_BLOCKED;
+			case Value::Symbol::RIGHT_LASER_BLOCKED:  return ModuleField::RIGHT_LASER_BLOCKED;
+			case Value::Symbol::RFID_ACTIVE:          return ModuleField::RFID_ACTIVE;
+			default:                                  throw std::logic_error("typed changed atom contains an unknown field");
+			}
 		}
 
 		const ModuleSnapshot& module_snapshot(const Observation& observation, uint16_t id) {
@@ -138,41 +135,39 @@ namespace ltl {
 		}
 
 		bool evaluate_call(const Value& value, const Observation& observation, BindingMap& bindings) {
-			if (value.text == "present") {
+			if (value.symbol == Value::Symbol::PRESENT) {
 				return observation.tubs().contains(evaluate_tub(*value.arguments[0], observation, bindings).id);
 			}
-			if (value.text == "at_module") {
+			if (value.symbol == Value::Symbol::AT_MODULE) {
 				const TubRef    tub    = evaluate_tub(*value.arguments[0], observation, bindings);
 				const ModuleRef module = evaluate_module(*value.arguments[1], observation, bindings);
 				const auto      found  = observation.tubs().find(tub.id);
 				return found != observation.tubs().end() && found->second.module == module.id;
 			}
-			if (value.text == "at_position") {
+			if (value.symbol == Value::Symbol::AT_POSITION) {
 				const TubRef      tub      = evaluate_tub(*value.arguments[0], observation, bindings);
 				const PositionRef position = evaluate_position(*value.arguments[1], observation, bindings);
 				const auto        found    = observation.tubs().find(tub.id);
 				return found != observation.tubs().end() && found->second.module == position.module &&
 					   found->second.position == position.position;
 			}
-			if (value.text == "appeared") {
+			if (value.symbol == Value::Symbol::APPEARED) {
 				return observation.appeared().contains(evaluate_tub(*value.arguments[0], observation, bindings).id);
 			}
-			if (value.text == "disappeared") {
+			if (value.symbol == Value::Symbol::DISAPPEARED) {
 				return observation.disappeared().contains(evaluate_tub(*value.arguments[0], observation, bindings).id);
 			}
-			if (value.text == "entered" || value.text == "left") {
+			if (value.symbol == Value::Symbol::ENTERED || value.symbol == Value::Symbol::LEFT) {
 				const TubRef      tub      = evaluate_tub(*value.arguments[0], observation, bindings);
 				const PositionRef position = evaluate_position(*value.arguments[1], observation, bindings);
 				const TubPosition edge{tub.id, position.module, position.position};
-				return value.text == "entered" ? observation.entered().contains(edge)
-											   : observation.left().contains(edge);
+				return value.symbol == Value::Symbol::ENTERED ? observation.entered().contains(edge)
+															  : observation.left().contains(edge);
 			}
-			if (value.text == "changed") {
-				const Value&                     member = *value.arguments[0];
-				const ModuleRef                  module = evaluate_module(*member.base, observation, bindings);
-				const std::optional<ModuleField> field  = field_named(member.text);
-				if (!field) throw std::logic_error("typed changed atom contains an unknown field");
-				return observation.changed().contains(ChangedField{module.id, *field});
+			if (value.symbol == Value::Symbol::CHANGED) {
+				const Value&    member = *value.arguments[0];
+				const ModuleRef module = evaluate_module(*member.base, observation, bindings);
+				return observation.changed().contains(ChangedField{module.id, module_field(member.symbol)});
 			}
 			throw std::logic_error("typed LTL atom contains an unknown call");
 		}
@@ -189,31 +184,29 @@ namespace ltl {
 
 		EvaluatedValue evaluate_value(const Value& value, const Observation& observation, BindingMap& bindings) {
 			switch (value.kind) {
-			case Value::Kind::BOOLEAN: return value.boolean;
-			case Value::Kind::NUMBER:  return value.number;
-			case Value::Kind::COLOR:   return value.color;
-			case Value::Kind::BYTES:   return value.bytes;
-			case Value::Kind::ENUM_LITERAL:
-				if (value.type == ValueType::RPC_COMMAND)
-					return EnumRef{value.type, *enum_value(rpc_commands(), value.text)};
-				if (value.type == ValueType::RPC_STATUS)
-					return EnumRef{value.type, *enum_value(rpc_statuses(), value.text)};
-				return EnumRef{value.type, *enum_value(rpc_event_kinds(), value.text)};
-			case Value::Kind::COUNT: return static_cast<double>(evaluate_count(value, observation, bindings));
+			case Value::Kind::BOOLEAN:      return value.boolean;
+			case Value::Kind::NUMBER:       return value.number;
+			case Value::Kind::COLOR:        return value.color;
+			case Value::Kind::BYTES:        return BytesRef{value.bytes};
+			case Value::Kind::ENUM_LITERAL: return EnumRef{value.type, value.enum_value};
+			case Value::Kind::COUNT:        return static_cast<double>(evaluate_count(value, observation, bindings));
 			case Value::Kind::NAME:
 				if (value.type == ValueType::RPC_REQUEST || value.type == ValueType::RPC_RESPONSE ||
 					value.type == ValueType::RPC_EVENT) {
-					const auto     found = bindings.find(value.text);
-					const uint64_t id =
-						value.entity_id != 0 ? value.entity_id : (found == bindings.end() ? 0 : found->second);
+					uint64_t id = value.entity_id;
+					if (id == 0) {
+						const auto found = bindings.find(value.text);
+						id               = found == bindings.end() ? 0 : found->second;
+					}
 					if (id == 0) throw std::logic_error("unresolved typed LTL binding '" + value.text + "'");
 					return RecordRef{value.type, id};
 				}
 				if (value.type == ValueType::MODULE || value.type == ValueType::TUB) {
-					const auto     found = bindings.find(value.text);
-					const uint16_t id    = value.entity_id != 0
-											   ? value.entity_id
-											   : static_cast<uint16_t>(found == bindings.end() ? 0 : found->second);
+					uint16_t id = static_cast<uint16_t>(value.entity_id);
+					if (id == 0) {
+						const auto found = bindings.find(value.text);
+						id               = static_cast<uint16_t>(found == bindings.end() ? 0 : found->second);
+					}
 					if (id == 0) throw std::logic_error("unresolved typed LTL binding '" + value.text + "'");
 					if (value.type == ValueType::MODULE) return ModuleRef{id};
 					return TubRef{id};
@@ -236,50 +229,70 @@ namespace ltl {
 					if (record.type == ValueType::RPC_REQUEST) {
 						const RpcRequest* request = observation.rpc_request(record.id);
 						if (!request) throw std::logic_error("unknown frozen RPC request");
-						if (value.text == "id") return static_cast<double>(request->id);
-						if (value.text == "call_id") return static_cast<double>(request->call_id);
-						if (value.text == "module") return ModuleRef{request->module};
-						if (value.text == "cmd") return EnumRef{ValueType::RPC_COMMAND, request->cmd};
-						if (value.text == "payload") return request->payload;
-						if (value.text == "confirmable") return request->confirmable;
+						switch (value.symbol) {
+						case Value::Symbol::ID:          return static_cast<double>(request->id);
+						case Value::Symbol::CALL_ID:     return static_cast<double>(request->call_id);
+						case Value::Symbol::MODULE:      return ModuleRef{request->module};
+						case Value::Symbol::CMD:         return EnumRef{ValueType::RPC_COMMAND, request->cmd};
+						case Value::Symbol::PAYLOAD:     return BytesRef{request->payload};
+						case Value::Symbol::CONFIRMABLE: return request->confirmable;
+						default:                         break;
+						}
 					}
 					if (record.type == ValueType::RPC_RESPONSE) {
-						const RpcRequest*  request  = observation.rpc_request(record.id);
-						const RpcResponse* response = observation.rpc_response_to(record.id);
+						const RpcRequest* request = observation.rpc_request(record.id);
 						if (!request) throw std::logic_error("unknown correlated RPC request");
-						if (value.text == "id") return static_cast<double>(record.id);
-						if (value.text == "request") return RecordRef{ValueType::RPC_REQUEST, record.id};
-						if (value.text == "module") return ModuleRef{request->module};
-						if (value.text == "cmd") return EnumRef{ValueType::RPC_COMMAND, request->cmd};
-						if (value.text == "status")
+						switch (value.symbol) {
+						case Value::Symbol::ID:      return static_cast<double>(record.id);
+						case Value::Symbol::REQUEST: return RecordRef{ValueType::RPC_REQUEST, record.id};
+						case Value::Symbol::MODULE:  return ModuleRef{request->module};
+						case Value::Symbol::CMD:     return EnumRef{ValueType::RPC_COMMAND, request->cmd};
+						case Value::Symbol::STATUS:  {
+							const RpcResponse* response = observation.rpc_response_to(record.id);
 							return EnumRef{ValueType::RPC_STATUS, response ? response->status : RPC_STATUS_UNDELIVERED};
-						if (value.text == "payload") return response ? response->payload : std::vector<uint8_t>{};
+						}
+						case Value::Symbol::PAYLOAD:
+							if (const RpcResponse* response = observation.rpc_response_to(record.id)) {
+								return BytesRef{response->payload};
+							}
+							return BytesRef{};
+						default: break;
+						}
 					}
 					if (record.type == ValueType::RPC_EVENT) {
 						const RpcEvent* event = observation.rpc_event(record.id);
 						if (!event) throw std::logic_error("unknown RPC event");
-						if (value.text == "id") return static_cast<double>(event->id);
-						if (value.text == "module") return ModuleRef{event->module};
-						if (value.text == "kind") return EnumRef{ValueType::RPC_EVENT_KIND, event->kind};
-						if (value.text == "payload") return event->payload;
+						switch (value.symbol) {
+						case Value::Symbol::ID:      return static_cast<double>(event->id);
+						case Value::Symbol::MODULE:  return ModuleRef{event->module};
+						case Value::Symbol::KIND:    return EnumRef{ValueType::RPC_EVENT_KIND, event->kind};
+						case Value::Symbol::PAYLOAD: return BytesRef{event->payload};
+						default:                     break;
+						}
 					}
 					break;
 				}
 				const ModuleRef module = evaluate_module(*value.base, observation, bindings);
-				if (const std::optional<world::Position> position = position_named(value.text)) {
-					return PositionRef{module.id, *position};
-				}
+				if (value.symbol == Value::Symbol::ENTRY) return PositionRef{module.id, world::Position::ENTRY};
+				if (value.symbol == Value::Symbol::CENTER) return PositionRef{module.id, world::Position::CENTER};
+				if (value.symbol == Value::Symbol::LEFT_LASER)
+					return PositionRef{module.id, world::Position::LEFT_LASER};
+				if (value.symbol == Value::Symbol::RIGHT_LASER)
+					return PositionRef{module.id, world::Position::RIGHT_LASER};
 				const ModuleSnapshot& state = module_snapshot(observation, module.id);
-				if (value.text == "big_belt_speed") return state.big_belt_speed;
-				if (value.text == "small_belt_speed") return state.small_belt_speed;
-				if (value.text == "servo_angle") return state.servo_angle;
-				if (value.text == "servo_physical_angle") return state.servo_physical_angle;
-				if (value.text == "led_color") return state.led_color;
-				if (value.text == "left_laser_enabled") return state.left_laser_enabled;
-				if (value.text == "right_laser_enabled") return state.right_laser_enabled;
-				if (value.text == "left_laser_blocked") return state.left_laser_blocked;
-				if (value.text == "right_laser_blocked") return state.right_laser_blocked;
-				if (value.text == "rfid_active") return state.rfid_active;
+				switch (value.symbol) {
+				case Value::Symbol::BIG_BELT_SPEED:       return state.big_belt_speed;
+				case Value::Symbol::SMALL_BELT_SPEED:     return state.small_belt_speed;
+				case Value::Symbol::SERVO_ANGLE:          return state.servo_angle;
+				case Value::Symbol::SERVO_PHYSICAL_ANGLE: return state.servo_physical_angle;
+				case Value::Symbol::LED_COLOR:            return state.led_color;
+				case Value::Symbol::LEFT_LASER_ENABLED:   return state.left_laser_enabled;
+				case Value::Symbol::RIGHT_LASER_ENABLED:  return state.right_laser_enabled;
+				case Value::Symbol::LEFT_LASER_BLOCKED:   return state.left_laser_blocked;
+				case Value::Symbol::RIGHT_LASER_BLOCKED:  return state.right_laser_blocked;
+				case Value::Symbol::RFID_ACTIVE:          return state.rfid_active;
+				default:                                  break;
+				}
 				break;
 			}
 			}
@@ -316,10 +329,24 @@ namespace ltl {
 		}
 
 		bool equal(const EvaluatedValue& left, const EvaluatedValue& right, ValueType type) {
-			if (type == ValueType::NUMBER) {
+			switch (type) {
+			case ValueType::BOOLEAN: return std::get<bool>(left) == std::get<bool>(right);
+			case ValueType::NUMBER:
 				return std::fabs(std::get<double>(left) - std::get<double>(right)) <= NUMERIC_TOLERANCE;
+			case ValueType::COLOR:          return std::get<uint32_t>(left) == std::get<uint32_t>(right);
+			case ValueType::MODULE:         return std::get<ModuleRef>(left) == std::get<ModuleRef>(right);
+			case ValueType::TUB:            return std::get<TubRef>(left) == std::get<TubRef>(right);
+			case ValueType::POSITION:       return std::get<PositionRef>(left) == std::get<PositionRef>(right);
+			case ValueType::BYTES:          return std::ranges::equal(std::get<BytesRef>(left), std::get<BytesRef>(right));
+			case ValueType::RPC_COMMAND:
+			case ValueType::RPC_STATUS:
+			case ValueType::RPC_EVENT_KIND: return std::get<EnumRef>(left) == std::get<EnumRef>(right);
+			case ValueType::RPC_REQUEST:
+			case ValueType::RPC_RESPONSE:
+			case ValueType::RPC_EVENT:      return std::get<RecordRef>(left) == std::get<RecordRef>(right);
+			case ValueType::UNKNOWN:        break;
 			}
-			return left == right;
+			throw std::logic_error("cannot compare untyped LTL values");
 		}
 
 		std::string render_value(const EvaluatedValue& value, ValueType type) {
@@ -337,7 +364,7 @@ namespace ltl {
 				}
 				return output.str();
 			}
-			if (const auto bytes = std::get_if<std::vector<uint8_t>>(&value)) {
+			if (const auto bytes = std::get_if<BytesRef>(&value)) {
 				output << '"';
 				for (const uint8_t byte : *bytes) {
 					if (byte == '"') output << "\\\"";

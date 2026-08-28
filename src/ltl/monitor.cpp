@@ -13,6 +13,7 @@
 namespace ltl {
 
 	namespace {
+		constexpr uint64_t MAINTENANCE_INTERVAL = 64;
 
 		enum class NodeKind : uint8_t {
 			FALSE,
@@ -404,6 +405,8 @@ namespace ltl {
 			result->color        = value.color;
 			result->bytes        = value.bytes;
 			result->entity_id    = value.entity_id;
+			result->enum_value   = value.enum_value;
+			result->symbol       = value.symbol;
 			result->boolean      = value.boolean;
 			result->binding      = value.binding;
 			result->binding_type = value.binding_type;
@@ -599,6 +602,20 @@ namespace ltl {
 			if (node->right) find_timed_obligation(node->right, result, visited);
 		}
 
+		void collect_formula_sources(const NodePtr& node, std::unordered_set<const Formula*>& sources,
+									 std::unordered_set<const Node*>& visited) {
+			if (!node || !visited.insert(node.get()).second) return;
+			if (node->source) sources.insert(node->source);
+			collect_formula_sources(node->left, sources, visited);
+			collect_formula_sources(node->right, sources, visited);
+		}
+
+		bool formula_tree_is_referenced(const Formula& formula, const std::unordered_set<const Formula*>& sources) {
+			if (sources.contains(&formula)) return true;
+			return (formula.left && formula_tree_is_referenced(*formula.left, sources)) ||
+				   (formula.right && formula_tree_is_referenced(*formula.right, sources));
+		}
+
 	} // namespace
 
 	namespace {
@@ -687,12 +704,11 @@ namespace ltl {
 		const uint64_t observation_tick = implementation_->activation_tick + implementation_->observations++;
 		implementation_->transient_formulas.clear();
 		implementation_->last_evaluations.clear();
-		std::unordered_set<const Formula*> seen;
 		implementation_->residual = progress(
 			implementation_->residual,
 			[&](const Formula& atom) {
 				const bool value = evaluate(atom);
-				if (seen.insert(&atom).second) implementation_->last_evaluations.emplace_back(&atom, value);
+				implementation_->last_evaluations.emplace_back(&atom, value);
 				return value;
 			},
 			implementation_->factory, evaluate_domain,
@@ -716,8 +732,11 @@ namespace ltl {
 		if (verdict() == Verdict::FALSE) {
 			std::vector<AtomFact> facts;
 			facts.reserve(implementation_->last_evaluations.size());
+			std::unordered_set<const Formula*> seen;
 			for (const auto& [atom, value] : implementation_->last_evaluations) {
-				facts.push_back({render_formula(*atom), value, render_actual ? render_actual(*atom) : std::nullopt});
+				if (seen.insert(atom).second)
+					facts.push_back(
+						{render_formula(*atom), value, render_actual ? render_actual(*atom) : std::nullopt});
 			}
 			FailureExplanation explanation{implementation_->formula, render_node(obligation), std::move(facts), {}, {}};
 			TimedObligation    timed;
@@ -729,7 +748,24 @@ namespace ltl {
 			}
 			implementation_->failure = std::move(explanation);
 		}
-		implementation_->factory.prune_expired();
+		if (implementation_->observations % MAINTENANCE_INTERVAL == 0U) {
+			implementation_->factory.prune_expired();
+			// Ground formulas only need to outlive the residual nodes and diagnostics that refer to them.
+			std::unordered_set<const Formula*> sources;
+			std::unordered_set<const Node*>    visited;
+			collect_formula_sources(implementation_->residual, sources, visited);
+			collect_formula_sources(obligation, sources, visited);
+			for (const auto& [formula, value] : implementation_->last_evaluations) {
+				(void)value;
+				sources.insert(formula);
+			}
+			for (const auto& [key, node] : implementation_->persistent_ground_nodes) {
+				sources.insert(key.first);
+				collect_formula_sources(node, sources, visited);
+			}
+			std::erase_if(implementation_->persistent_formulas,
+						  [&](const auto& formula) { return !formula_tree_is_referenced(*formula, sources); });
+		}
 		return verdict();
 	}
 
@@ -755,9 +791,11 @@ namespace ltl {
 			if (verdict() == Verdict::FALSE) {
 				std::vector<AtomFact> facts;
 				facts.reserve(implementation_->last_evaluations.size());
+				std::unordered_set<const Formula*> seen;
 				for (const auto& [atom, value] : implementation_->last_evaluations) {
-					facts.push_back(
-						{render_formula(*atom), value, render_actual ? render_actual(*atom) : std::nullopt});
+					if (seen.insert(atom).second)
+						facts.push_back(
+							{render_formula(*atom), value, render_actual ? render_actual(*atom) : std::nullopt});
 				}
 				FailureExplanation explanation{
 					implementation_->formula, render_node(obligation), std::move(facts), {}, {}};

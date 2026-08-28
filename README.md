@@ -100,6 +100,8 @@ cmake --build build -j && ./build/simulation
 
 The simulator reads `settings.toml`, `layout.toml`, and `events.toml`. It starts one application process for each active module. The GUI shows the world state and lets you pause the run, set its speed, and change the scale. Close the GUI to stop the run and all child processes.
 
+The simulator pins itself and all application processes to one CPU to avoid cross-core wakeup and cache-coherence overhead in the short lockstep tick. Use `taskset -c N` when starting it to choose that CPU explicitly; otherwise it uses the CPU on which it starts.
+
 Use `--no-gui` for a run without a window. Use `--timeout <sec>` to stop after a simulated-time limit. Use `--tick-batch <n>` to grant up to `n` child ticks per barrier. The default batch is 1.
 
 A larger tick batch trades timing accuracy for speed. With a batch of N, the simulator cannot observe or answer an application action until the batch boundary, so N ms becomes the smallest effective response step. A batch of 10 runs about seven times faster than a batch of 1. The result varies with the CPU, layout, scenario, and application.

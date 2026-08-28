@@ -309,6 +309,37 @@ forall request in rpc_requests(module(1)):
 	EXPECT_EQ(observe(monitor, response_tick), ltl::Verdict::TRUE);
 }
 
+TEST_F(LtlObservationTest, ReclaimsCompletedRpcGroundingsWithoutLosingLiveObligations) {
+	ltl::Observer observer(modules(), world_);
+	ltl::File     file = compile(R"(
+always (
+    forall request in rpc_requests(module(1)):
+        eventually[1ms, 2ms] (rpc_response_to(request).status == .ok)
+)
+)");
+	ltl::Monitor  monitor("grounding lifetime", *file.properties[0].formula);
+
+	for (uint64_t tick = 0; tick < 130; tick++) {
+		const uint64_t                id = 1000 + tick;
+		std::vector<ltl::RpcResponse> responses;
+		if (tick > 0) {
+			const uint64_t previous = id - 1;
+			responses.push_back(
+				{previous, previous, tick, MODULE, CMD_LASER_LEFT_GET, static_cast<uint16_t>(tick - 1), 0, {}});
+		}
+		const ltl::Observation observation = observer.observe(
+			tick, world_, {{id, tick, MODULE, CMD_LASER_LEFT_GET, static_cast<uint16_t>(tick), 0, true, {}}},
+			std::move(responses));
+		EXPECT_EQ(observe(monitor, observation), ltl::Verdict::PENDING);
+	}
+
+	const uint64_t last = 1129;
+	EXPECT_EQ(observe(monitor,
+					  observer.observe(130, world_, {}, {{last, last, 130, MODULE, CMD_LASER_LEFT_GET, 129, 0, {}}})),
+			  ltl::Verdict::PENDING);
+	EXPECT_EQ(monitor.finish(), ltl::Verdict::TRUE);
+}
+
 TEST_F(LtlObservationTest, CorrelatedDeadlineFailuresNameTheFrozenRequestAndItsFields) {
 	ltl::Observer observer(modules(), world_);
 	ltl::File     file = compile(R"(

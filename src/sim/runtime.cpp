@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <bit>
+#include <cerrno>
 #include <climits>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
+#include <sched.h>
 #include <stdexcept>
 #include <thread>
 #include <unistd.h>
@@ -72,6 +75,28 @@ namespace sim {
 		}
 
 	} // namespace
+
+	void pin_to_one_cpu() noexcept {
+		const int cpu = ::sched_getcpu();
+		if (cpu < 0) {
+			std::cerr << "Could not select a CPU for lockstep affinity: " << std::strerror(errno) << std::endl;
+			return;
+		}
+		if (cpu >= CPU_SETSIZE) {
+			std::cerr << "Could not pin lockstep simulation: CPU " << cpu << " is outside CPU_SETSIZE" << std::endl;
+			return;
+		}
+
+		cpu_set_t selected;
+		CPU_ZERO(&selected);
+		CPU_SET(cpu, &selected);
+		if (::sched_setaffinity(0, sizeof(selected), &selected) != 0) {
+			std::cerr << "Could not pin lockstep simulation to CPU " << cpu << ": " << std::strerror(errno)
+					  << std::endl;
+			return;
+		}
+		std::cout << "Pinned lockstep simulation to CPU " << cpu << std::endl;
+	}
 
 	Runtime::Runtime(uint64_t seed, std::chrono::milliseconds connect_timeout,
 					 std::chrono::milliseconds activation_timeout, uint32_t tick_batch)

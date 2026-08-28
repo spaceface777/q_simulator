@@ -177,6 +177,20 @@ let t = tub(7);
 	EXPECT_EQ(at_module.value->arguments[1]->entity_id, 1u);
 }
 
+TEST(LtlParser, ResolvesRuntimeSymbolsDuringTypeChecking) {
+	ltl::File file = compile(R"(
+prop resolved = forall response in rpc_responses(module(1)):
+    response.status != .try_again && changed(module(1).led_color);
+)");
+
+	const ltl::Formula& body = *file.properties[0].formula->left;
+	ASSERT_EQ(body.kind, ltl::Formula::Kind::AND);
+	EXPECT_EQ(body.left->value->symbol, ltl::Value::Symbol::STATUS);
+	EXPECT_EQ(body.left->compared->enum_value, -11);
+	EXPECT_EQ(body.right->value->symbol, ltl::Value::Symbol::CHANGED);
+	EXPECT_EQ(body.right->value->arguments[0]->symbol, ltl::Value::Symbol::LED_COLOR);
+}
+
 TEST(LtlParser, ExpandsGeneralAliasesAsGroupedSyntax) {
 	ltl::File file = compile(R"(
 let m = module(1);

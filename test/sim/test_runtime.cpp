@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <sched.h>
 #include <sstream>
 #include <string>
 
@@ -18,6 +19,20 @@
 namespace fs = std::filesystem;
 
 namespace {
+	TEST(Runtime, PinsLockstepToOneCpu) {
+		cpu_set_t original;
+		ASSERT_EQ(::sched_getaffinity(0, sizeof(original), &original), 0);
+
+		sim::pin_to_one_cpu();
+		cpu_set_t selected;
+		const int result = ::sched_getaffinity(0, sizeof(selected), &selected);
+		EXPECT_EQ(result, 0);
+		if (result == 0) {
+			EXPECT_EQ(CPU_COUNT(&selected), 1);
+		}
+
+		EXPECT_EQ(::sched_setaffinity(0, sizeof(original), &original), 0);
+	}
 
 	// Runs the whole simulation-side loop against real child processes and shared mailboxes.
 	class RuntimeTest : public ::testing::Test {

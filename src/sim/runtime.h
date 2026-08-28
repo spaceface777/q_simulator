@@ -27,6 +27,10 @@
 
 namespace sim {
 
+	// Short lockstep bursts run faster without cross-core wakeups and cache-line bouncing. Child
+	// processes and their Zephyr threads inherit this thread's affinity when they are launched.
+	void pin_to_one_cpu() noexcept;
+
 	// Strict mode barriers every tick; batched mode grants a fixed-size window at each barrier.
 
 	inline constexpr std::chrono::microseconds TICK_DURATION{1000};

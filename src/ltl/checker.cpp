@@ -102,11 +102,13 @@ namespace ltl {
 				}
 
 				if (value.text == "present") {
+					value.symbol = Value::Symbol::PRESENT;
 					require_arity(value, 1);
 					if (check(*value.arguments[0]) != ValueType::TUB) {
 						error(value.arguments[0]->span, "present expects a Tub");
 					}
 				} else if (value.text == "at_module") {
+					value.symbol = Value::Symbol::AT_MODULE;
 					require_arity(value, 2);
 					if (check(*value.arguments[0]) != ValueType::TUB)
 						error(value.arguments[0]->span, "at_module expects a Tub first");
@@ -114,6 +116,7 @@ namespace ltl {
 						error(value.arguments[1]->span, "at_module expects a Module second");
 					}
 				} else if (value.text == "at_position") {
+					value.symbol = Value::Symbol::AT_POSITION;
 					require_arity(value, 2);
 					if (check(*value.arguments[0]) != ValueType::TUB) {
 						error(value.arguments[0]->span, "at_position expects a Tub first");
@@ -122,11 +125,13 @@ namespace ltl {
 						error(value.arguments[1]->span, "at_position expects a Position second");
 					}
 				} else if (value.text == "appeared" || value.text == "disappeared") {
+					value.symbol = value.text == "appeared" ? Value::Symbol::APPEARED : Value::Symbol::DISAPPEARED;
 					require_arity(value, 1);
 					if (check(*value.arguments[0]) != ValueType::TUB) {
 						error(value.arguments[0]->span, value.text + " expects a Tub");
 					}
 				} else if (value.text == "entered" || value.text == "left") {
+					value.symbol = value.text == "entered" ? Value::Symbol::ENTERED : Value::Symbol::LEFT;
 					require_arity(value, 2);
 					if (check(*value.arguments[0]) != ValueType::TUB)
 						error(value.arguments[0]->span, value.text + " expects a Tub first");
@@ -134,6 +139,7 @@ namespace ltl {
 						error(value.arguments[1]->span, value.text + " expects a Position second");
 					}
 				} else if (value.text == "changed") {
+					value.symbol = Value::Symbol::CHANGED;
 					require_arity(value, 1);
 					Value& field = *value.arguments[0];
 					if (field.kind != Value::Kind::MEMBER) {
@@ -150,53 +156,64 @@ namespace ltl {
 				return value.type;
 			}
 
+			static ValueType resolve(Value& value, ValueType type, Value::Symbol symbol) {
+				value.type   = type;
+				value.symbol = symbol;
+				return type;
+			}
+
 			ValueType check_member(Value& value) {
 				const ValueType base = check(*value.base);
 				if (base == ValueType::RPC_REQUEST) {
-					if (value.text == "id" || value.text == "call_id") value.type = ValueType::NUMBER;
-					else if (value.text == "module") value.type = ValueType::MODULE;
-					else if (value.text == "cmd") value.type = ValueType::RPC_COMMAND;
-					else if (value.text == "payload") value.type = ValueType::BYTES;
-					else if (value.text == "confirmable") value.type = ValueType::BOOLEAN;
-					else error(value.span, "unknown RpcRequest member '" + value.text + "'");
-					return value.type;
+					if (value.text == "id") return resolve(value, ValueType::NUMBER, Value::Symbol::ID);
+					if (value.text == "call_id") return resolve(value, ValueType::NUMBER, Value::Symbol::CALL_ID);
+					if (value.text == "module") return resolve(value, ValueType::MODULE, Value::Symbol::MODULE);
+					if (value.text == "cmd") return resolve(value, ValueType::RPC_COMMAND, Value::Symbol::CMD);
+					if (value.text == "payload") return resolve(value, ValueType::BYTES, Value::Symbol::PAYLOAD);
+					if (value.text == "confirmable")
+						return resolve(value, ValueType::BOOLEAN, Value::Symbol::CONFIRMABLE);
+					error(value.span, "unknown RpcRequest member '" + value.text + "'");
 				}
 				if (base == ValueType::RPC_RESPONSE) {
-					if (value.text == "id") value.type = ValueType::NUMBER;
-					else if (value.text == "request") value.type = ValueType::RPC_REQUEST;
-					else if (value.text == "module") value.type = ValueType::MODULE;
-					else if (value.text == "cmd") value.type = ValueType::RPC_COMMAND;
-					else if (value.text == "status") value.type = ValueType::RPC_STATUS;
-					else if (value.text == "payload") value.type = ValueType::BYTES;
-					else error(value.span, "unknown RpcResponse member '" + value.text + "'");
-					return value.type;
+					if (value.text == "id") return resolve(value, ValueType::NUMBER, Value::Symbol::ID);
+					if (value.text == "request") return resolve(value, ValueType::RPC_REQUEST, Value::Symbol::REQUEST);
+					if (value.text == "module") return resolve(value, ValueType::MODULE, Value::Symbol::MODULE);
+					if (value.text == "cmd") return resolve(value, ValueType::RPC_COMMAND, Value::Symbol::CMD);
+					if (value.text == "status") return resolve(value, ValueType::RPC_STATUS, Value::Symbol::STATUS);
+					if (value.text == "payload") return resolve(value, ValueType::BYTES, Value::Symbol::PAYLOAD);
+					error(value.span, "unknown RpcResponse member '" + value.text + "'");
 				}
 				if (base == ValueType::RPC_EVENT) {
-					if (value.text == "id") value.type = ValueType::NUMBER;
-					else if (value.text == "module") value.type = ValueType::MODULE;
-					else if (value.text == "kind") value.type = ValueType::RPC_EVENT_KIND;
-					else if (value.text == "payload") value.type = ValueType::BYTES;
-					else error(value.span, "unknown RpcEvent member '" + value.text + "'");
-					return value.type;
+					if (value.text == "id") return resolve(value, ValueType::NUMBER, Value::Symbol::ID);
+					if (value.text == "module") return resolve(value, ValueType::MODULE, Value::Symbol::MODULE);
+					if (value.text == "kind") return resolve(value, ValueType::RPC_EVENT_KIND, Value::Symbol::KIND);
+					if (value.text == "payload") return resolve(value, ValueType::BYTES, Value::Symbol::PAYLOAD);
+					error(value.span, "unknown RpcEvent member '" + value.text + "'");
 				}
 				if (base != ValueType::MODULE) error(value.base->span, "only a Module or RPC record has members");
 
-				if (value.text == "big_belt_speed" || value.text == "small_belt_speed" || value.text == "servo_angle" ||
-					value.text == "servo_physical_angle") {
-					value.type = ValueType::NUMBER;
-				} else if (value.text == "led_color") {
-					value.type = ValueType::COLOR;
-				} else if (value.text == "left_laser_enabled" || value.text == "right_laser_enabled" ||
-						   value.text == "left_laser_blocked" || value.text == "right_laser_blocked" ||
-						   value.text == "rfid_active") {
-					value.type = ValueType::BOOLEAN;
-				} else if (value.text == "entry" || value.text == "center" || value.text == "left_laser" ||
-						   value.text == "right_laser") {
-					value.type = ValueType::POSITION;
-				} else {
-					error(value.span, "unknown Module member '" + value.text + "'");
-				}
-				return value.type;
+				if (value.text == "big_belt_speed")
+					return resolve(value, ValueType::NUMBER, Value::Symbol::BIG_BELT_SPEED);
+				if (value.text == "small_belt_speed")
+					return resolve(value, ValueType::NUMBER, Value::Symbol::SMALL_BELT_SPEED);
+				if (value.text == "servo_angle") return resolve(value, ValueType::NUMBER, Value::Symbol::SERVO_ANGLE);
+				if (value.text == "servo_physical_angle")
+					return resolve(value, ValueType::NUMBER, Value::Symbol::SERVO_PHYSICAL_ANGLE);
+				if (value.text == "led_color") return resolve(value, ValueType::COLOR, Value::Symbol::LED_COLOR);
+				if (value.text == "left_laser_enabled")
+					return resolve(value, ValueType::BOOLEAN, Value::Symbol::LEFT_LASER_ENABLED);
+				if (value.text == "right_laser_enabled")
+					return resolve(value, ValueType::BOOLEAN, Value::Symbol::RIGHT_LASER_ENABLED);
+				if (value.text == "left_laser_blocked")
+					return resolve(value, ValueType::BOOLEAN, Value::Symbol::LEFT_LASER_BLOCKED);
+				if (value.text == "right_laser_blocked")
+					return resolve(value, ValueType::BOOLEAN, Value::Symbol::RIGHT_LASER_BLOCKED);
+				if (value.text == "rfid_active") return resolve(value, ValueType::BOOLEAN, Value::Symbol::RFID_ACTIVE);
+				if (value.text == "entry") return resolve(value, ValueType::POSITION, Value::Symbol::ENTRY);
+				if (value.text == "center") return resolve(value, ValueType::POSITION, Value::Symbol::CENTER);
+				if (value.text == "left_laser") return resolve(value, ValueType::POSITION, Value::Symbol::LEFT_LASER);
+				if (value.text == "right_laser") return resolve(value, ValueType::POSITION, Value::Symbol::RIGHT_LASER);
+				error(value.span, "unknown Module member '" + value.text + "'");
 			}
 
 			void enter_binding(const std::string& name, ValueType type, const Span& span) {
@@ -239,13 +256,14 @@ namespace ltl {
 					   type == ValueType::RPC_EVENT_KIND;
 			}
 
-			void validate_enum(const Value& value) const {
+			void validate_enum(Value& value) const {
 				if (value.kind != Value::Kind::ENUM_LITERAL) return;
-				bool valid = false;
-				if (value.type == ValueType::RPC_COMMAND) valid = rpc_commands().contains(value.text);
-				else if (value.type == ValueType::RPC_STATUS) valid = rpc_statuses().contains(value.text);
-				else if (value.type == ValueType::RPC_EVENT_KIND) valid = rpc_event_kinds().contains(value.text);
-				if (!valid) error(value.span, "unknown " + type_name(value.type) + " literal '." + value.text + "'");
+				std::optional<int64_t> resolved;
+				if (value.type == ValueType::RPC_COMMAND) resolved = enum_value(rpc_commands(), value.text);
+				else if (value.type == ValueType::RPC_STATUS) resolved = enum_value(rpc_statuses(), value.text);
+				else if (value.type == ValueType::RPC_EVENT_KIND) resolved = enum_value(rpc_event_kinds(), value.text);
+				if (!resolved) error(value.span, "unknown " + type_name(value.type) + " literal '." + value.text + "'");
+				value.enum_value = *resolved;
 			}
 
 			ValueType check(Value& value, ValueType expected = ValueType::UNKNOWN) {
