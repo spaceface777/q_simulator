@@ -1,0 +1,110 @@
+# === Layout ===
+
+[module.1]
+active = true
+neighbors = [6, 0, 0]
+pos = [1, 5]
+angle = 90
+
+[module.2]
+active = true
+neighbors = [0, 3, 7]
+pos = [2, 5]
+angle = 270
+
+[module.3]
+active = true
+neighbors = [2, 0, 4]
+pos = [3, 5]
+angle = 0
+
+[module.4]
+active = true
+neighbors = [3, 0, 5]
+pos = [4, 5]
+angle = 0
+
+[module.5]
+active = true
+neighbors = [0, 8, 4]
+pos = [5, 5]
+angle = 180
+
+[module.6]
+active = true
+neighbors = [1, 7, 9]
+pos = [1, 4]
+angle = 270
+
+[module.7]
+active = true
+neighbors = [10, 6, 2]
+pos = [2, 4]
+angle = 90
+
+[module.8]
+active = true
+neighbors = [5, 0, 13]
+pos = [5, 4]
+angle = 270
+
+[module.9]
+active = true
+neighbors = [14, 0, 6]
+pos = [1, 3]
+angle = 90
+
+[module.10]
+active = true
+neighbors = [7, 11, 15]
+pos = [2, 3]
+angle = 270
+
+[module.11]
+active = true
+neighbors = [12, 16, 10]
+pos = [3, 3]
+angle = 180
+
+[module.12]
+active = true
+neighbors = [13, 0, 11]
+pos = [4, 3]
+angle = 180
+
+[module.13]
+active = true
+neighbors = [17, 12, 8]
+pos = [5, 3]
+angle = 90
+
+[module.14]
+active = true
+neighbors = [0, 9, 15]
+pos = [1, 2]
+angle = 0
+
+[module.15]
+active = true
+neighbors = [14, 10, 16]
+pos = [2, 2]
+angle = 0
+
+[module.16]
+active = true
+neighbors = [0, 15, 11]
+pos = [3, 2]
+angle = 90
+
+[module.17]
+active = true
+neighbors = [13, 0, 0]
+pos = [5, 2]
+angle = 270
+
+# The tower is not a conveyor module. It broadcasts the departure board, which is the only way flight data enters a run
+[module.255]
+active = true
+type = "tower"
+neighbors = [0, 0, 0]
+binary = "/home/student/Desktop/simulation/external/quercus_applets/out/atc_fixture.exe"
