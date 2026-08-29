@@ -485,129 +485,158 @@ namespace visualization {
 		if (settings::get_setting<bool>("debug")) draw_number(renderer_, x1 - 12, y1 - 8, angle.raw(), 2);
 	}
 
-	static void render_tubs(const world::State& world) {
-		for (const auto& [id, tub] : world.tubs()) {
-			const int64_t leg_length_um = world::calibration_for(tub.module).endpoint_to_junction_um;
-			if (leg_length_um <= 0) {
-				continue;
-			}
+	struct RenderedTub {
+		module::ModuleId module;
+		world::Belt      belt;
+		int64_t          position_um;
+	};
+	struct GhostTub {
+		uint8_t     id;
+		RenderedTub tub;
+	};
 
-			// The renderer measures a tub's progress outward from the junction, not on the belt axis.
-			ModuleLocation location;
-			double         progress = 0.0;
-			if (tub.belt == world::Belt::SMALL) {
-				location = ModuleLocation::MIDDLE;
-				progress = static_cast<double>(tub.position_um) / static_cast<double>(leg_length_um);
-			} else if (tub.position_um >= leg_length_um) {
-				location = ModuleLocation::LEFT;
-				progress = static_cast<double>(tub.position_um - leg_length_um) / static_cast<double>(leg_length_um);
-			} else {
-				location = ModuleLocation::RIGHT;
-				progress = static_cast<double>(leg_length_um - tub.position_um) / static_cast<double>(leg_length_um);
-			}
-			progress = std::clamp(progress, 0.0, 1.0);
+	static std::map<uint8_t, RenderedTub> last_tubs_;
+	static std::map<std::pair<uint8_t, ModuleLocation>, GhostTub> ghost_tubs_;
 
-			const settings::ModuleSettings module_settings = settings::get_module_settings(tub.module);
+	static ModuleLocation tub_location(const RenderedTub& tub, int64_t leg_length_um) {
+		if (tub.belt == world::Belt::SMALL) return ModuleLocation::MIDDLE;
+		return tub.position_um >= leg_length_um ? ModuleLocation::LEFT : ModuleLocation::RIGHT;
+	}
 
-			float module_x, module_y;
-			get_module_coords(tub.module, module_x, module_y);
+	static void render_tub(uint8_t id, const RenderedTub& tub, bool ghost) {
+		const int64_t leg_length_um = world::calibration_for(tub.module).endpoint_to_junction_um;
+		if (leg_length_um <= 0) return;
 
-			float rel_x = 0, rel_y = 0;
-			if (location == ModuleLocation::LEFT) {
-				switch (module_settings.angle) {
-				case settings::ModuleAngle::NORMAL:
-					rel_x = (1.0 - progress) * scale_within_module(90.0);
-					rel_y = scale_within_module(90.0);
-					break;
-				case settings::ModuleAngle::ROTATED_90:
-					rel_x = scale_within_module(90.0);
-					rel_y = (1.0 - progress) * scale_within_module(90.0);
-					break;
-				case settings::ModuleAngle::UPSIDE_DOWN:
-					rel_x = scale_within_module(90) + progress * scale_within_module(90.0);
-					rel_y = scale_within_module(90.0);
-					break;
-				case settings::ModuleAngle::ROTATED_270:
-					rel_x = scale_within_module(90.0);
-					rel_y = scale_within_module(90) + progress * scale_within_module(90.0);
-					break;
-
-				default:
-					throw std::invalid_argument(
-						"Invalid module angle " +
-						std::to_string(
-							static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
-				}
-			} else if (location == ModuleLocation::RIGHT) {
-				switch (module_settings.angle) {
-				case settings::ModuleAngle::NORMAL:
-					rel_x = scale_within_module(90) + progress * scale_within_module(90.0);
-					rel_y = scale_within_module(90.0);
-					break;
-				case settings::ModuleAngle::ROTATED_90:
-					rel_x = scale_within_module(90.0);
-					rel_y = scale_within_module(90) + progress * scale_within_module(90.0);
-					break;
-				case settings::ModuleAngle::UPSIDE_DOWN:
-					rel_x = (1.0 - progress) * scale_within_module(90.0);
-					rel_y = scale_within_module(90.0);
-					break;
-				case settings::ModuleAngle::ROTATED_270:
-					rel_x = scale_within_module(90.0);
-					rel_y = (1.0 - progress) * scale_within_module(90.0);
-					break;
-
-				default:
-					throw std::invalid_argument(
-						"Invalid module angle " +
-						std::to_string(
-							static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
-				}
-			} else {
-				switch (module_settings.angle) {
-				case settings::ModuleAngle::NORMAL:
-					rel_x = scale_within_module(90.0);
-					rel_y = scale_within_module(105.0) + progress * scale_within_module(75.0);
-					break;
-				case settings::ModuleAngle::ROTATED_90:
-					rel_x = scale_within_module(75.0) - progress * scale_within_module(75.0);
-					rel_y = scale_within_module(90.0);
-					break;
-				case settings::ModuleAngle::UPSIDE_DOWN:
-					rel_x = scale_within_module(90.0);
-					rel_y = scale_within_module(75.0) - progress * scale_within_module(75.0);
-					break;
-				case settings::ModuleAngle::ROTATED_270:
-					rel_x = scale_within_module(105.0) + progress * scale_within_module(75.0);
-					rel_y = scale_within_module(90.0);
-					break;
-
-				default:
-					throw std::invalid_argument(
-						"Invalid module angle " +
-						std::to_string(
-							static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
-				}
-			}
-
-			float x = module_x + rel_x;
-			float y = module_y + rel_y;
-
-			SDL_SetRenderDrawColor(renderer_, 255, 192, 203, 255);
-			const int radius =
-				static_cast<int>(std::lround(scale_within_module(180.0 * world::TUB_RADIUS_BIG_BELT_FRACTION)));
-			for (int w = -radius; w <= radius; w++) {
-				for (int h = -radius; h <= radius; h++) {
-					if (w * w + h * h <= radius * radius) {
-						SDL_RenderPoint(renderer_, x + w, y + h);
-					}
-				}
-			}
-
-			SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-			draw_number(renderer_, x - 4, y - 6, id, 2);
-			if (settings::get_setting<bool>("debug")) draw_number(renderer_, x - 4, y + 5, progress, 1);
+		// The renderer measures a tub's progress outward from the junction, not on the belt axis.
+		const ModuleLocation location = tub_location(tub, leg_length_um);
+		double         progress = 0.0;
+		if (tub.belt == world::Belt::SMALL) {
+			progress = static_cast<double>(tub.position_um) / static_cast<double>(leg_length_um);
+		} else if (tub.position_um >= leg_length_um) {
+			progress = static_cast<double>(tub.position_um - leg_length_um) / static_cast<double>(leg_length_um);
+		} else {
+			progress = static_cast<double>(leg_length_um - tub.position_um) / static_cast<double>(leg_length_um);
 		}
+		progress = std::clamp(progress, 0.0, 1.0);
+		if (ghost) progress += 20.0 / 90.0;
+
+		const settings::ModuleSettings module_settings = settings::get_module_settings(tub.module);
+
+		float module_x, module_y;
+		get_module_coords(tub.module, module_x, module_y);
+
+		float rel_x = 0, rel_y = 0;
+		if (location == ModuleLocation::LEFT) {
+			switch (module_settings.angle) {
+			case settings::ModuleAngle::NORMAL:
+				rel_x = (1.0 - progress) * scale_within_module(90.0);
+				rel_y = scale_within_module(90.0);
+				break;
+			case settings::ModuleAngle::ROTATED_90:
+				rel_x = scale_within_module(90.0);
+				rel_y = (1.0 - progress) * scale_within_module(90.0);
+				break;
+			case settings::ModuleAngle::UPSIDE_DOWN:
+				rel_x = scale_within_module(90) + progress * scale_within_module(90.0);
+				rel_y = scale_within_module(90.0);
+				break;
+			case settings::ModuleAngle::ROTATED_270:
+				rel_x = scale_within_module(90.0);
+				rel_y = scale_within_module(90) + progress * scale_within_module(90.0);
+				break;
+
+			default:
+				throw std::invalid_argument(
+					"Invalid module angle " +
+					std::to_string(static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
+			}
+		} else if (location == ModuleLocation::RIGHT) {
+			switch (module_settings.angle) {
+			case settings::ModuleAngle::NORMAL:
+				rel_x = scale_within_module(90) + progress * scale_within_module(90.0);
+				rel_y = scale_within_module(90.0);
+				break;
+			case settings::ModuleAngle::ROTATED_90:
+				rel_x = scale_within_module(90.0);
+				rel_y = scale_within_module(90) + progress * scale_within_module(90.0);
+				break;
+			case settings::ModuleAngle::UPSIDE_DOWN:
+				rel_x = (1.0 - progress) * scale_within_module(90.0);
+				rel_y = scale_within_module(90.0);
+				break;
+			case settings::ModuleAngle::ROTATED_270:
+				rel_x = scale_within_module(90.0);
+				rel_y = (1.0 - progress) * scale_within_module(90.0);
+				break;
+
+			default:
+				throw std::invalid_argument(
+					"Invalid module angle " +
+					std::to_string(static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
+			}
+		} else {
+			switch (module_settings.angle) {
+			case settings::ModuleAngle::NORMAL:
+				rel_x = scale_within_module(90.0);
+				rel_y = scale_within_module(105.0) + progress * scale_within_module(75.0);
+				break;
+			case settings::ModuleAngle::ROTATED_90:
+				rel_x = scale_within_module(75.0) - progress * scale_within_module(75.0);
+				rel_y = scale_within_module(90.0);
+				break;
+			case settings::ModuleAngle::UPSIDE_DOWN:
+				rel_x = scale_within_module(90.0);
+				rel_y = scale_within_module(75.0) - progress * scale_within_module(75.0);
+				break;
+			case settings::ModuleAngle::ROTATED_270:
+				rel_x = scale_within_module(105.0) + progress * scale_within_module(75.0);
+				rel_y = scale_within_module(90.0);
+				break;
+
+			default:
+				throw std::invalid_argument(
+					"Invalid module angle " +
+					std::to_string(static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
+			}
+		}
+
+		const float x = module_x + rel_x;
+		const float y = module_y + rel_y;
+
+		if (ghost) SDL_SetRenderDrawColor(renderer_, 150, 150, 150, 255);
+		else SDL_SetRenderDrawColor(renderer_, 255, 192, 203, 255);
+		const int radius =
+			static_cast<int>(std::lround(scale_within_module(180.0 * world::TUB_RADIUS_BIG_BELT_FRACTION)));
+		for (int w = -radius; w <= radius; w++) {
+			for (int h = -radius; h <= radius; h++) {
+				if (w * w + h * h <= radius * radius) SDL_RenderPoint(renderer_, x + w, y + h);
+			}
+		}
+
+		SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+		draw_number(renderer_, x - 4, y - 6, id, 2);
+		if (settings::get_setting<bool>("debug")) draw_number(renderer_, x - 4, y + 5, progress, 1);
+	}
+
+	static void render_tubs(const world::State& world) {
+		for (const auto& [id, tub] : last_tubs_) {
+			if (!world.tubs().contains(id) && world.removal_reason(id) == world::TubRemovalReason::YEETED) {
+				const int64_t leg_length_um = world::calibration_for(tub.module).endpoint_to_junction_um;
+				ghost_tubs_.insert_or_assign(std::make_pair(tub.module.raw(), tub_location(tub, leg_length_um)),
+										 GhostTub{id, tub});
+			}
+		}
+
+		last_tubs_.clear();
+		for (const auto& [id, tub] : world.tubs()) {
+			last_tubs_.emplace(id, RenderedTub{tub.module, tub.belt, tub.position_um});
+		}
+
+		for (const auto& [endpoint, ghost] : ghost_tubs_) {
+			(void)endpoint;
+			render_tub(ghost.id, ghost.tub, true);
+		}
+		for (const auto& [id, tub] : last_tubs_) render_tub(id, tub, false);
 	}
 
 	static void render_module(const world::State& world, const platform::Manager& platform, module::ModuleId module_id,
@@ -671,6 +700,8 @@ namespace visualization {
 	void init() {
 		if (running_) return;
 		running_ = true;
+		last_tubs_.clear();
+		ghost_tubs_.clear();
 
 		if (!SDL_Init(SDL_INIT_VIDEO)) {
 			std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
