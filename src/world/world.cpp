@@ -270,13 +270,21 @@ namespace world {
 		tub.uid         = uid;
 		tub.payload     = payload;
 
+		removal_reasons_.erase(id);
 		tubs_.emplace(id, std::move(tub));
 		update_sensors();
 	}
 
-	void State::remove(uint8_t id) {
-		tubs_.erase(id);
+	void State::remove(uint8_t id, TubRemovalReason reason) {
+		if (tubs_.erase(id) != 0) {
+			removal_reasons_[id] = reason;
+		}
 		update_sensors();
+	}
+
+	std::optional<TubRemovalReason> State::removal_reason(uint8_t id) const {
+		const auto found = removal_reasons_.find(id);
+		return found == removal_reasons_.end() ? std::optional<TubRemovalReason>{} : found->second;
 	}
 
 	bool State::write_rfid_page(module::ModuleId id, std::size_t page, const RfidPage& value) {
@@ -292,23 +300,39 @@ namespace world {
 
 	void State::clear() {
 		tubs_.clear();
+		removal_reasons_.clear();
 	}
 
 	void State::advance_tick() {
 		// std::map iterates in ascending key order, so two tubs contending for the same endpoint
 		// always resolve the same way rather than in whatever order they were created.
-		for (auto& entry : tubs_) {
-			Tub& tub = entry.second;
+		for (auto iterator = tubs_.begin(); iterator != tubs_.end();) {
+			const auto current = iterator++;
+			Tub&       tub     = current->second;
 
 			const module::Module* module_ptr = module(tub.module);
 			if (module_ptr == nullptr) {
+				tub.force_eject = 0;
 				continue;
 			}
 			const module::Module& module        = *module_ptr;
 			const Calibration&    calibration   = calibration_for(tub.module);
 			const int64_t         leg_length_um = calibration.endpoint_to_junction_um;
 			if (leg_length_um <= 0) {
+				tub.force_eject = 0;
 				continue;
+			}
+
+			const std::optional<ModuleLocation> port = exit_port(tub, module, leg_length_um);
+			if (port && !neighbour(tub.module, *port)) {
+				tub.force_eject++;
+				if (tub.force_eject >= TUB_OOB_YEET_MS) {
+					removal_reasons_[tub.id] = TubRemovalReason::YEETED;
+					tubs_.erase(current);
+					continue;
+				}
+			} else {
+				tub.force_eject = 0;
 			}
 
 			if (at_junction(tub, leg_length_um) && !resolve_junction(tub, leg_length_um)) {
@@ -723,6 +747,15 @@ namespace world {
 		case Position::RIGHT_LASER: return "right_laser";
 		}
 		return "center";
+	}
+
+	std::string to_string(TubRemovalReason reason) {
+		switch (reason) {
+		case TubRemovalReason::EXPLICIT:  return "explicit";
+		case TubRemovalReason::SCHEDULED: return "scheduled";
+		case TubRemovalReason::YEETED:    return "yeeted";
+		}
+		return "explicit";
 	}
 
 	std::optional<Position> position_from_string(const std::string& text) {

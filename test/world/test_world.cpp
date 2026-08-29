@@ -444,6 +444,79 @@ TEST_F(WorldTest, ATubIsNotHandedToAModuleThatWouldPushItBack) {
 
 	EXPECT_EQ(world_.tub(1)->module.raw(), FIRST);
 	EXPECT_EQ(position_um(1), 2 * LEG_UM);
+
+	advance(static_cast<int>(world::TUB_OOB_YEET_MS));
+	ASSERT_NE(world_.tub(1), nullptr);
+	EXPECT_EQ(world_.tub(1)->force_eject, 0u);
+}
+
+TEST_F(WorldTest, UnsupportedOutwardEndpointsYeetATubAfterTheDelay) {
+	settings::ModuleSettings isolated{};
+	isolated.active = true;
+	settings::set_module_settings(module::ModuleId{FIRST}, isolated);
+
+	const auto expect_yeeted = [this](uint8_t id) {
+		ASSERT_NE(world_.tub(id), nullptr);
+		EXPECT_EQ(world_.tub(id)->force_eject, 0u);
+		advance(static_cast<int>(world::TUB_OOB_YEET_MS - 1));
+		ASSERT_NE(world_.tub(id), nullptr);
+		EXPECT_EQ(world_.tub(id)->force_eject, world::TUB_OOB_YEET_MS - 1);
+		advance(1);
+		EXPECT_EQ(world_.tub(id), nullptr);
+		EXPECT_EQ(world_.removal_reason(id), world::TubRemovalReason::YEETED);
+	};
+
+	place(1, FIRST, world::Position::CENTER);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{0});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+	advance(1800);
+	ASSERT_EQ(position_um(1), 2 * LEG_UM);
+	expect_yeeted(1);
+
+	place(2, FIRST, world::Position::CENTER);
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{-100});
+	advance(1800);
+	ASSERT_EQ(position_um(2), 0);
+	expect_yeeted(2);
+
+	place(3, FIRST, world::Position::ENTRY);
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{0});
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{100});
+	while (position_um(3) < LEG_UM) advance(1);
+	ASSERT_EQ(position_um(3), LEG_UM);
+	hardware(FIRST)->set_small_belt_speed(module::BeltSpeed{0.1});
+	expect_yeeted(3);
+}
+
+TEST_F(WorldTest, LeavingTheOutwardPushResetsTheYeetCounter) {
+	settings::ModuleSettings isolated{};
+	isolated.active = true;
+	settings::set_module_settings(module::ModuleId{FIRST}, isolated);
+
+	place(1, FIRST, world::Position::CENTER);
+	hardware(FIRST)->set_servo_angle(module::ServoAngle{0});
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+	advance(1800 + 100);
+	ASSERT_EQ(world_.tub(1)->force_eject, 100u);
+
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{0});
+	advance(1);
+	EXPECT_EQ(world_.tub(1)->force_eject, 0u);
+
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{100});
+	advance(100);
+	ASSERT_EQ(world_.tub(1)->force_eject, 100u);
+	hardware(FIRST)->set_big_belt_speed(module::BeltSpeed{-100});
+	advance(1);
+	EXPECT_EQ(world_.tub(1)->force_eject, 0u);
+	EXPECT_LT(position_um(1), 2 * LEG_UM);
+}
+
+TEST_F(WorldTest, ExplicitRemovalRecordsItsReason) {
+	place(1, FIRST, world::Position::CENTER);
+	world_.remove(1);
+
+	EXPECT_EQ(world_.removal_reason(1), world::TubRemovalReason::EXPLICIT);
 }
 
 TEST_F(WorldTest, AnOccupiedEndpointRefusesAnArrival) {

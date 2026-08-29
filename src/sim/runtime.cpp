@@ -268,6 +268,14 @@ namespace sim {
 							 .field("belt", static_cast<uint64_t>(static_cast<int>(tub.belt)))
 							 .field("position_um", static_cast<int64_t>(tub.position_um)));
 		}
+		for (const uint16_t id : observation.disappeared()) {
+			const world::TubRemovalReason reason =
+				world_.removal_reason(static_cast<uint8_t>(id)).value_or(world::TubRemovalReason::EXPLICIT);
+			trace_.write(trace::Entry("tub_removed")
+							 .field("tick", observation.tick())
+							 .field("id", static_cast<uint64_t>(id))
+							 .field("reason", world::to_string(reason)));
+		}
 
 		for (const ltl::RpcRequest& request : observation.rpc_requests()) {
 			trace_.write(trace::Entry("rpc_request")
@@ -330,8 +338,9 @@ namespace sim {
 			}
 			const uint8_t id = tub.id;
 			queue_.schedule(*tub.removed_tick, engine::Priority::SCENARIO_EVENTS,
-							"tub/" + std::to_string(id) + "/removed",
-							[this, id](engine::TaskContext&) { world_.remove(id); });
+							"tub/" + std::to_string(id) + "/removed", [this, id](engine::TaskContext&) {
+								world_.remove(id, world::TubRemovalReason::SCHEDULED);
+							});
 		}
 	}
 

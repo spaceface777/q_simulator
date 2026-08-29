@@ -236,6 +236,57 @@ TEST_F(RuntimeTest, AppliesEarlyScenarioEventsWhileStartupSkewAdvancesTime) {
 	runtime.stop();
 }
 
+TEST_F(RuntimeTest, TracesScheduledAndYeetedTubRemovalsOnceWithTheirReason) {
+	const fs::path trace_path =
+		fs::temp_directory_path() / ("quercus_tub_removal_trace_" + std::to_string(::getpid()) + ".ndjson");
+	fs::remove(trace_path);
+
+	events::Schedule   schedule;
+	events::TubArrival scheduled;
+	scheduled.tick         = 0;
+	scheduled.removed_tick = 2;
+	scheduled.id           = 4;
+	scheduled.module       = module::ModuleId{FIRST};
+	schedule.tubs.push_back(scheduled);
+
+	sim::Runtime runtime(7);
+	runtime.load(schedule);
+	runtime.world().place(5, module::ModuleId{FIRST}, world::Position::CENTER, RfidPayload{});
+	runtime.world().module(module::ModuleId{FIRST})->set_servo_angle(module::ServoAngle{0});
+	runtime.world().module(module::ModuleId{FIRST})->set_big_belt_speed(module::BeltSpeed{100});
+	runtime.trace_to(trace_path.string(), {});
+	ASSERT_NO_THROW(runtime.start());
+	ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(3000), 1.0, std::chrono::seconds(10)));
+	EXPECT_EQ(runtime.world().tub(4), nullptr);
+	EXPECT_EQ(runtime.world().tub(5), nullptr);
+	runtime.stop();
+
+	const world::Calibration calibration = world::Calibration::nominal();
+	int64_t                  position_um  = calibration.endpoint_to_junction_um;
+	int64_t                  carry        = 0;
+	uint64_t                 travel_ticks = 0;
+	while (position_um < 2 * calibration.endpoint_to_junction_um) {
+		position_um += world::belt_step_um(100.0, calibration.mechanical.big_belt, carry);
+		travel_ticks++;
+	}
+	const uint64_t yeeted_tick = travel_ticks + world::TUB_OOB_YEET_MS - 1;
+
+	std::ifstream      input(trace_path);
+	std::ostringstream trace;
+	trace << input.rdbuf();
+	fs::remove(trace_path);
+	const std::string contents        = trace.str();
+	const std::string scheduled_event = "\"type\":\"tub_removed\",\"tick\":2,\"id\":4,\"reason\":\"scheduled\"";
+	const std::string yeeted_event =
+		"\"type\":\"tub_removed\",\"tick\":" + std::to_string(yeeted_tick) + ",\"id\":5,\"reason\":\"yeeted\"";
+	const std::size_t scheduled_at = contents.find(scheduled_event);
+	const std::size_t yeeted_at    = contents.find(yeeted_event);
+	ASSERT_NE(scheduled_at, std::string::npos);
+	ASSERT_NE(yeeted_at, std::string::npos);
+	EXPECT_EQ(contents.find(scheduled_event, scheduled_at + 1), std::string::npos);
+	EXPECT_EQ(contents.find(yeeted_event, yeeted_at + 1), std::string::npos);
+}
+
 TEST_F(RuntimeTest, RejectsScenariosLoadedAfterLogicalTimeStarts) {
 	sim::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());

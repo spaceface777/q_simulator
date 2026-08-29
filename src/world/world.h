@@ -18,6 +18,7 @@ namespace world {
 	// corresponding belt length. These preserve the established 20-pixel GUI tub/reader geometry.
 	inline constexpr double TUB_RADIUS_BIG_BELT_FRACTION  = 5.0 / 63.0;
 	inline constexpr double RFID_HALF_SMALL_BELT_FRACTION = 4.0 / 21.0;
+	inline constexpr uint64_t TUB_OOB_YEET_MS = 500;
 
 	// The physical world: where every tub is, and what that means for the sensors. Positions are
 	// integer micrometres and time is an integer tick, so a run's outcome never depends on
@@ -29,6 +30,12 @@ namespace world {
 	enum class Belt : uint8_t {
 		BIG,
 		SMALL,
+	};
+
+	enum class TubRemovalReason : uint8_t {
+		EXPLICIT,
+		SCHEDULED,
+		YEETED,
 	};
 
 	// Where a tub sits relative to a module's fixed points.
@@ -54,6 +61,9 @@ namespace world {
 		// one stable seeded routing threshold for the whole encounter rather than rerolling every tick.
 		uint64_t junction_encounter = 0;
 
+		// Consecutive ticks spent at an unsupported endpoint while its belt drives outward.
+		uint64_t force_eject = 0;
+
 		RfidUid     uid{};
 		RfidPayload payload{};
 	};
@@ -72,6 +82,7 @@ namespace world {
 	private:
 		std::map<uint8_t, module::Module> modules_;
 		std::map<uint8_t, Tub>            tubs_;
+		std::map<uint8_t, TubRemovalReason> removal_reasons_;
 
 		// Decides how a tub sitting on the junction proceeds. Returns whether it may move this tick.
 		bool resolve_junction(Tub& tub, int64_t leg_length_um);
@@ -103,7 +114,9 @@ namespace world {
 			place(id, module, position, RfidUid{}, payload);
 		}
 
-		void remove(uint8_t id);
+		void remove(uint8_t id, TubRemovalReason reason = TubRemovalReason::EXPLICIT);
+
+		[[nodiscard]] std::optional<TubRemovalReason> removal_reason(uint8_t id) const;
 
 		// Persists an RFID write into the tub whose centre is within this module's reader footprint. The
 		// module's sensor buffer is only a projection of world state and is refreshed every tick,
@@ -141,6 +154,7 @@ namespace world {
 	void command_servo(module::Module& module, module::ServoAngle target);
 
 	[[nodiscard]] std::string to_string(Position position);
+	[[nodiscard]] std::string to_string(TubRemovalReason reason);
 
 	[[nodiscard]] std::optional<Position> position_from_string(const std::string& text);
 
