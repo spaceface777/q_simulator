@@ -261,7 +261,7 @@ TEST_F(RuntimeTest, TracesScheduledAndYeetedTubRemovalsOnceWithTheirReason) {
 	EXPECT_EQ(runtime.world().tub(5), nullptr);
 	runtime.stop();
 
-	const world::Calibration calibration = world::Calibration::nominal();
+	const world::Calibration calibration  = world::Calibration::nominal();
 	int64_t                  position_um  = calibration.endpoint_to_junction_um;
 	int64_t                  carry        = 0;
 	uint64_t                 travel_ticks = 0;

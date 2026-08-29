@@ -16,9 +16,9 @@
 namespace world {
 	// Physical dimensions shared by the world model and renderer, expressed against the full
 	// corresponding belt length. These preserve the established 20-pixel GUI tub/reader geometry.
-	inline constexpr double TUB_RADIUS_BIG_BELT_FRACTION  = 5.0 / 63.0;
-	inline constexpr double RFID_HALF_SMALL_BELT_FRACTION = 4.0 / 21.0;
-	inline constexpr uint64_t TUB_OOB_YEET_MS = 500;
+	inline constexpr double   TUB_RADIUS_BIG_BELT_FRACTION  = 5.0 / 63.0;
+	inline constexpr double   RFID_HALF_SMALL_BELT_FRACTION = 4.0 / 21.0;
+	inline constexpr uint64_t TUB_OOB_YEET_MS               = 500;
 
 	// The physical world: where every tub is, and what that means for the sensors. Positions are
 	// integer micrometres and time is an integer tick, so a run's outcome never depends on
@@ -80,8 +80,8 @@ namespace world {
 
 	class State {
 	private:
-		std::map<uint8_t, module::Module> modules_;
-		std::map<uint8_t, Tub>            tubs_;
+		std::map<uint8_t, module::Module>   modules_;
+		std::map<uint8_t, Tub>              tubs_;
 		std::map<uint8_t, TubRemovalReason> removal_reasons_;
 
 		// Decides how a tub sitting on the junction proceeds. Returns whether it may move this tick.

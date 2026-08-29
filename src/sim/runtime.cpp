@@ -337,10 +337,9 @@ namespace sim {
 				continue;
 			}
 			const uint8_t id = tub.id;
-			queue_.schedule(*tub.removed_tick, engine::Priority::SCENARIO_EVENTS,
-							"tub/" + std::to_string(id) + "/removed", [this, id](engine::TaskContext&) {
-								world_.remove(id, world::TubRemovalReason::SCHEDULED);
-							});
+			queue_.schedule(
+				*tub.removed_tick, engine::Priority::SCENARIO_EVENTS, "tub/" + std::to_string(id) + "/removed",
+				[this, id](engine::TaskContext&) { world_.remove(id, world::TubRemovalReason::SCHEDULED); });
 		}
 	}
 

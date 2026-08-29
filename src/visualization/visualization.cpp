@@ -490,12 +490,13 @@ namespace visualization {
 		world::Belt      belt;
 		int64_t          position_um;
 	};
+
 	struct GhostTub {
 		uint8_t     id;
 		RenderedTub tub;
 	};
 
-	static std::map<uint8_t, RenderedTub> last_tubs_;
+	static std::map<uint8_t, RenderedTub>                         last_tubs_;
 	static std::map<std::pair<uint8_t, ModuleLocation>, GhostTub> ghost_tubs_;
 
 	static ModuleLocation tub_location(const RenderedTub& tub, int64_t leg_length_um) {
@@ -509,7 +510,7 @@ namespace visualization {
 
 		// The renderer measures a tub's progress outward from the junction, not on the belt axis.
 		const ModuleLocation location = tub_location(tub, leg_length_um);
-		double         progress = 0.0;
+		double               progress = 0.0;
 		if (tub.belt == world::Belt::SMALL) {
 			progress = static_cast<double>(tub.position_um) / static_cast<double>(leg_length_um);
 		} else if (tub.position_um >= leg_length_um) {
@@ -548,7 +549,8 @@ namespace visualization {
 			default:
 				throw std::invalid_argument(
 					"Invalid module angle " +
-					std::to_string(static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
+					std::to_string(
+						static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
 			}
 		} else if (location == ModuleLocation::RIGHT) {
 			switch (module_settings.angle) {
@@ -572,7 +574,8 @@ namespace visualization {
 			default:
 				throw std::invalid_argument(
 					"Invalid module angle " +
-					std::to_string(static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
+					std::to_string(
+						static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
 			}
 		} else {
 			switch (module_settings.angle) {
@@ -596,7 +599,8 @@ namespace visualization {
 			default:
 				throw std::invalid_argument(
 					"Invalid module angle " +
-					std::to_string(static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
+					std::to_string(
+						static_cast<std::underlying_type<settings::ModuleAngle>::type>(module_settings.angle)));
 			}
 		}
 
@@ -623,7 +627,7 @@ namespace visualization {
 			if (!world.tubs().contains(id) && world.removal_reason(id) == world::TubRemovalReason::YEETED) {
 				const int64_t leg_length_um = world::calibration_for(tub.module).endpoint_to_junction_um;
 				ghost_tubs_.insert_or_assign(std::make_pair(tub.module.raw(), tub_location(tub, leg_length_um)),
-										 GhostTub{id, tub});
+											 GhostTub{id, tub});
 			}
 		}
 
