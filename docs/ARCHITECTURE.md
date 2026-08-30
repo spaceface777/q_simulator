@@ -123,7 +123,7 @@ simulation/
 │
 ├── test/                         # Unit, integration, and scenario tests
 ├── editors/vscode-ltlf/         # VS Code support for the LTLf property language
-├── external/                     # Pinned quercus_applets and quercus_sdk
+├── external/                     # Pinned q_applets and q_sdk
 ├── layouts/                      # Example layouts
 ├── scenarios/                    # Scenario TOML files and LTLf property files
 ├── CMakeLists.txt                # Application and test build

@@ -124,4 +124,4 @@ angle = 270
 active = true
 type = "tower"
 neighbors = [0, 0, 0]
-binary = "/home/student/Desktop/simulation/external/quercus_applets/out/atc_fixture.exe"
+binary = "/home/student/Desktop/simulation/external/q_applets/out/atc_fixture.exe"

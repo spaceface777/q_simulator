@@ -67,8 +67,8 @@ sudo apt-get install lcov build-essential git make pkg-config cmake ninja-build 
 4. Build the pinned applications for Zephyr `native_sim`.
 
 ```sh
-cd external/quercus_applets
-./quercus_sdk/qbuild sim
+cd external/q_applets
+./q_sdk/qbuild sim
 cd ../..
 ```
 

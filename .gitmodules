@@ -1,6 +1,6 @@
-[submodule "external/quercus_sdk"]
-	path = external/quercus_sdk
+[submodule "external/q_sdk"]
+	path = external/q_sdk
 	url = https://gitlab.tue.nl/2irr70-capstone-quercus-airport/system/q_sdk.git
-[submodule "external/quercus_applets"]
-	path = external/quercus_applets
+[submodule "external/q_applets"]
+	path = external/q_applets
 	url = https://gitlab.tue.nl/2irr70-capstone-quercus-airport/system/q_applets.git

@@ -1,6 +1,6 @@
 # Quercus RPC
 
-This document defines the RPC frame and shared-memory exchange between each Quercus application process and the simulation process. The simulator and applications compile the wire types from the pinned `quercus_sdk` headers.
+This document defines the RPC frame and shared-memory exchange between each Quercus application process and the simulation process. The simulator and applications compile the wire types from the pinned `q_sdk` headers.
 
 ## Format
 

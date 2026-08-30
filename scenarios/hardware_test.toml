@@ -3,7 +3,7 @@
 #
 # Run it with:
 #   ./build/simulation-scenario -l layouts/one_module.toml \
-#       -b external/quercus_applets/out/hardware_test.exe scenarios/hardware_test.toml
+#       -b external/q_applets/out/hardware_test.exe scenarios/hardware_test.toml
 #
 # The diagnostic takes about 116 simulated seconds. Its externally observable stage progress and
 # failure-safety requirements are declared in the sibling LTLf property file.

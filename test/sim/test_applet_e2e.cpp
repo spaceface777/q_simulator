@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 namespace {
 
 	std::string applet_path(const std::string& applet) {
-		const fs::path path = fs::path(REPO_ROOT) / "external" / "quercus_applets" / "out" / (applet + ".exe");
+		const fs::path path = fs::path(REPO_ROOT) / "external" / "q_applets" / "out" / (applet + ".exe");
 		if (!fs::exists(path)) {
 			return "";
 		}
@@ -70,7 +70,7 @@ TEST_F(AppletTest, LaserAlignmentDrivesTheServoAndLedFromLaserState) {
 	const std::string binary = applet_path("laser_alignment");
 	if (binary.empty()) {
 		GTEST_SKIP()
-			<< "No laser_alignment applet built; run (cd external/quercus_applets && ./quercus_sdk/qbuild sim)";
+			<< "No laser_alignment applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 	settings::set_setting<std::string>("application_path", binary);
 
@@ -101,7 +101,7 @@ TEST_F(AppletTest, ApplicationsActivateAndKeepTheirHeartbeatUp) {
 	const std::string binary = applet_path("laser_alignment");
 	if (binary.empty()) {
 		GTEST_SKIP()
-			<< "No laser_alignment applet built; run (cd external/quercus_applets && ./quercus_sdk/qbuild sim)";
+			<< "No laser_alignment applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 	settings::set_setting<std::string>("application_path", binary);
 

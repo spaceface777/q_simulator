@@ -30,10 +30,10 @@ namespace {
 		return value != nullptr && std::strcmp(value, "0") != 0 && std::strcmp(value, "") != 0;
 	}
 
-	// Skips unless a real applet binary is built; see external/quercus_applets, built via
-	// `(cd external/quercus_applets && ./quercus_sdk/qbuild sim)`.
+	// Skips unless a real applet binary is built; see external/q_applets, built via
+	// `(cd external/q_applets && ./q_sdk/qbuild sim)`.
 	std::string applet_path(const std::string& applet) {
-		const fs::path path = fs::path(REPO_ROOT) / "external" / "quercus_applets" / "out" / (applet + ".exe");
+		const fs::path path = fs::path(REPO_ROOT) / "external" / "q_applets" / "out" / (applet + ".exe");
 		if (!fs::exists(path)) {
 			return "";
 		}
@@ -245,7 +245,7 @@ TEST_P(SpeedInvarianceTest, ProducesTheSameTraceRegardlessOfSpeed) {
 	const std::string   binary   = applet_path(scenario.applet);
 	if (binary.empty()) {
 		GTEST_SKIP() << "No " << scenario.applet
-					 << " applet built; run (cd external/quercus_applets && ./quercus_sdk/qbuild sim)";
+					 << " applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 
 	const fs::path    root(REPO_ROOT);

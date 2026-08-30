@@ -5,7 +5,7 @@
 # === General ===
 # The path to the Core 1 application built for Zephyr native_sim. Used for every module that
 # does not override it with a per-module "binary" in layout.toml.
-application_path = "/home/user/quercus_applets/build/module_movement/zephyr/zephyr.exe"
+application_path = "/home/user/q_applets/build/module_movement/zephyr/zephyr.exe"
 
 # The speed at which the simulation will be run.
 # Must be above 0.

@@ -59,8 +59,8 @@ option(TESTING_CONSOLE_BUILD "Enable console-only testing build" OFF)
 # The simulation is built against the same headers as the Core 1 applications, so that the
 # RPC wire contract cannot drift between the two sides. QUERCUS_SDK_ROOT may point at an SDK
 # checkout elsewhere; by default the pinned submodule is used.
-set(QUERCUS_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/quercus_sdk"
-    CACHE PATH "Path to a quercus_sdk checkout")
+set(QUERCUS_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/q_sdk"
+    CACHE PATH "Path to a q_sdk checkout")
 
 if(NOT EXISTS "${QUERCUS_SDK_ROOT}/include/quercus/rpc_wire.h")
     message(FATAL_ERROR

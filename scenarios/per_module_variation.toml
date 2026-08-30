@@ -4,7 +4,7 @@
 #
 # Run it with:
 #   ./build/simulation-scenario -l layouts/default.toml \
-#       -b external/quercus_applets/out/module_movement.exe scenarios/per_module_variation.toml
+#       -b external/q_applets/out/module_movement.exe scenarios/per_module_variation.toml
 #
 # Every module draws its own belt curves, electrical figures, and servo pace from the physical
 # populations. Which module is faster is a property of the seed, so the properties require both

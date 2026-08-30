@@ -118,4 +118,4 @@ angle = 90
 #
 # [module.255]
 # active = true
-# binary = "/home/user/quercus_applets/build/atc_tower/zephyr/zephyr.exe"
+# binary = "/home/user/q_applets/build/atc_tower/zephyr/zephyr.exe"

@@ -17,6 +17,6 @@ build:
     - sudo apt-get update && sudo apt-get install -y clang-format-22
     - cmake --build build -j --target format-check
     - cmake --build build -j --target all
-    - (cd external/quercus_applets && ./quercus_sdk/qbuild sim)
+    - (cd external/q_applets && ./q_sdk/qbuild sim)
     - ./build/tests --gtest_shuffle --gtest_repeat=10
     - RUN_SLOW_TESTS=1 ./build/tests

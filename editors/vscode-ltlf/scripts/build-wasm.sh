@@ -10,7 +10,7 @@ em++ \
   "$repository_dir/src/ltl/lexer.cpp" \
   "$repository_dir/src/ltl/parser.cpp" \
   "$repository_dir/src/ltl/checker.cpp" \
-  -I"$repository_dir/external/quercus_sdk/include" \
+  -I"$repository_dir/external/q_sdk/include" \
   -std=c++23 -O3 -flto -fexceptions \
   -sDISABLE_EXCEPTION_CATCHING=0 \
   -sALLOW_MEMORY_GROWTH=1 \

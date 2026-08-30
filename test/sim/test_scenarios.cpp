@@ -22,10 +22,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
-	// Skips unless a real applet binary is built; see external/quercus_applets, built via
-	// `(cd external/quercus_applets && ./quercus_sdk/qbuild sim)`.
+	// Skips unless a real applet binary is built; see external/q_applets, built via
+	// `(cd external/q_applets && ./q_sdk/qbuild sim)`.
 	std::string applet_path(const std::string& applet) {
-		const fs::path path = fs::path(REPO_ROOT) / "external" / "quercus_applets" / "out" / (applet + ".exe");
+		const fs::path path = fs::path(REPO_ROOT) / "external" / "q_applets" / "out" / (applet + ".exe");
 		if (!fs::exists(path)) {
 			return "";
 		}
@@ -35,7 +35,7 @@ namespace {
 	struct ScenarioCase {
 		std::string           scenario; // file under scenarios/
 		std::string           layout;   // file under layouts/, matching the -l the scenario's header documents
-		std::string           applet;   // applet name under external/quercus_applets/out
+		std::string           applet;   // applet name under external/q_applets/out
 		uint32_t              tick_batch;
 		std::optional<double> tick_skip_ppm;
 	};
@@ -98,7 +98,7 @@ TEST_P(ScenarioTest, AllLtlPropertiesHold) {
 	const std::string   binary   = applet_path(scenario.applet);
 	if (binary.empty()) {
 		GTEST_SKIP() << "No " << scenario.applet
-					 << " applet built; run (cd external/quercus_applets && ./quercus_sdk/qbuild sim)";
+					 << " applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 
 	const fs::path    root(REPO_ROOT);
@@ -168,7 +168,7 @@ TEST(ScenarioSeedCorpus, ModuleMovementPassesTheStableV01SeedsWithoutSpecEdits) 
 	const std::string binary = applet_path("module_movement");
 	if (binary.empty()) {
 		GTEST_SKIP()
-			<< "No module_movement applet built; run (cd external/quercus_applets && ./quercus_sdk/qbuild sim)";
+			<< "No module_movement applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 
 	// The short corpus runs on every commit. The documented large corpus is selected by scheduled CI

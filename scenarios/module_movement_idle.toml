@@ -4,7 +4,7 @@
 #
 # Run it with:
 #   ./build/simulation-scenario -l layouts/one_module.toml \
-#       -b external/quercus_applets/out/module_movement.exe scenarios/module_movement_idle.toml
+#       -b external/q_applets/out/module_movement.exe scenarios/module_movement_idle.toml
 #
 # The applet subscribes to three detector events but starts on only one of them. `wait_for_event`
 # discards every event id other than the one it is waiting for, so a laser going dark must not

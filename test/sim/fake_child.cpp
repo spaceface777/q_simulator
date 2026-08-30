@@ -1,5 +1,5 @@
 // A stand-in Core 1 application, speaking the same contract as
-// quercus_sdk/native_sim/lockstep_transport.c, for tests that cannot build a real applet.
+// q_sdk/native_sim/lockstep_transport.c, for tests that cannot build a real applet.
 
 #include <climits>
 #include <cstdio>

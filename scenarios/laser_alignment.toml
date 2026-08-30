@@ -3,7 +3,7 @@
 #
 # Run it with:
 #   ./build/simulation-scenario -l layouts/one_module.toml \
-#       -b external/quercus_applets/out/laser_alignment.exe scenarios/laser_alignment.toml
+#       -b external/q_applets/out/laser_alignment.exe scenarios/laser_alignment.toml
 
 [scenario]
 duration = "16s"
