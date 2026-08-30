@@ -7,9 +7,14 @@ let servo_left = servo == 0.0;
 let servo_center = servo == 90.0;
 let green_dim = led == 0x003f00;
 let green_bright = led == 0x00ff00;
+let yellow_dim = led == 0x3f3f00;
+let yellow_bright = led == 0xffff00;
 let blue_bright = led == 0x0000ff;
 let aligned_dim = servo_center && green_dim;
 let aligned_bright = servo_center && green_bright;
+let recovering_dim = servo_center && yellow_dim;
+let recovering_bright = servo_center && yellow_bright;
+let recovering = recovering_dim || recovering_bright;
 let left_blocked_bright = servo_left && blue_bright;
 let confirmable_request_succeeds = !q.confirmable || (F[0ms, 50ms] (rpc_response_to(q).status == .ok));
 
@@ -22,8 +27,9 @@ prop physical_servo_stays_inside_its_hardware_range =
 
 prop alignment_outputs_stay_in_the_documented_table = G (
     (servo_left || servo_center || servo == 180.0)
-    && (led == 0x000000 || green_dim || green_bright || led == 0x00003f || blue_bright || led == 0x3f0000
-        || led == 0xff0000 || led == 0x3f3f3f || led == 0xffffff)
+    && (led == 0x000000 || green_dim || green_bright || yellow_dim || yellow_bright
+        || led == 0x00003f || blue_bright || led == 0x3f0000 || led == 0xff0000
+        || led == 0x3f3f3f || led == 0xffffff)
 );
 
 prop scenario_tubs_stay_at_their_observation_points = G (
@@ -50,10 +56,20 @@ prop detector_responses_contain_exactly_one_boolean_byte = G (
         -> (r.payload == "\x00" || r.payload == "\x01")
 );
 
-prop alignment_does_not_subscribe_to_platform_events = G (
-    (# e in rpc_events(m) where (true) == 0)
-    && (\A q in rpc_requests(m): q.cmd != .rpc_cmd_subscribe_to_event)
-);
+prop alignment_subscribes_to_both_laser_events =
+    (F (\E q in rpc_requests(m):
+        q.cmd == .rpc_cmd_subscribe_to_event && q.payload == "\x03\x00\x00\x00"))
+    && (G (\A q in rpc_requests(m):
+        q.cmd == .rpc_cmd_subscribe_to_event -> q.payload == "\x03\x00\x00\x00"))
+    && (G (\A e in rpc_events(m):
+        e.module == m
+        && (e.kind == .rpc_event_laser_left_detect || e.kind == .rpc_event_laser_right_detect)
+        && (e.kind == .rpc_event_laser_left_detect -> m.left_laser_blocked)
+        && (e.kind == .rpc_event_laser_right_detect -> m.right_laser_blocked)))
+    && (G (
+        appeared(obstruction)
+        -> (F[0ms, 250ms] (\E e in rpc_events(m): e.kind == .rpc_event_laser_left_detect))
+    ));
 
 // === Liveness: every input change produces its corresponding output and recovery ===
 
@@ -64,7 +80,7 @@ prop starts_all_three_periodic_rpc_streams =
     && (F (\E q in rpc_requests(m): q.cmd == .rpc_cmd_rfid_check_tag))
     && (F (\E q in rpc_requests(m): q.cmd == .rpc_cmd_laser_left_detect));
 
-// Each step is looked for from one observation after the step before it matched, so the five
+// Each step is looked for from one observation after the step before it matched, so the six
 // display states are required to occur in order and on distinct ticks. The steps carry no bounds:
 // the gaps between them are however long the scenario waits before moving a tub, and the reaction
 // budget belongs to the edges below rather than between two states.
@@ -72,15 +88,22 @@ prop follows_alignment_and_brightness_changes_in_order = sequence {
     aligned_dim;
     aligned_bright;
     left_blocked_bright;
-    aligned_bright;
+    recovering_bright;
+    recovering_dim;
     aligned_dim;
 };
 
 prop responds_to_each_scenario_edge = G (
     (appeared(tag) -> (F[0ms, 250ms] aligned_bright))
     && (appeared(obstruction) -> (F[0ms, 250ms] left_blocked_bright))
-    && (disappeared(obstruction) -> (F[0ms, 250ms] aligned_bright))
-    && (disappeared(tag) -> (F[0ms, 250ms] aligned_dim))
+    && (disappeared(obstruction) -> (
+        (F[0ms, 250ms] recovering_bright)
+        && (G[250ms, 30s] recovering)
+        // The timer uses the applet clock. The 40-second global bound includes the scenario's
+        // 20% skipped-tick variant while the lower bound still enforces 30 seconds of recovery.
+        && (F[30s, 40s] aligned_dim)
+    ))
+    && (disappeared(tag) -> (F[0ms, 250ms] recovering_dim))
 );
 
 // RPC read errors are deliberately collapsed into the same booleans as blocked beams. The

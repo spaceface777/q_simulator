@@ -675,7 +675,7 @@ TEST(LtlParser, CompilesTheLaserAlignmentScenario) {
 	source << input.rdbuf();
 
 	ltl::File file = ltl::parse(source.str(), path);
-	EXPECT_NO_THROW(ltl::type_check(file, ltl::TypeEnvironment{{1}, 16000}, path));
+	EXPECT_NO_THROW(ltl::type_check(file, ltl::TypeEnvironment{{1}, 60000}, path));
 	EXPECT_EQ(file.properties.size(), 13u);
 }
 
