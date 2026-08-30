@@ -244,8 +244,7 @@ TEST_P(SpeedInvarianceTest, ProducesTheSameTraceRegardlessOfSpeed) {
 	const ScenarioCase& scenario = GetParam();
 	const std::string   binary   = applet_path(scenario.applet);
 	if (binary.empty()) {
-		GTEST_SKIP() << "No " << scenario.applet
-					 << " applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
+		GTEST_SKIP() << "No " << scenario.applet << " applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 
 	const fs::path    root(REPO_ROOT);

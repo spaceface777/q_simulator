@@ -69,8 +69,7 @@ namespace {
 TEST_F(AppletTest, LaserAlignmentDrivesTheServoAndLedFromLaserState) {
 	const std::string binary = applet_path("laser_alignment");
 	if (binary.empty()) {
-		GTEST_SKIP()
-			<< "No laser_alignment applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
+		GTEST_SKIP() << "No laser_alignment applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 	settings::set_setting<std::string>("application_path", binary);
 
@@ -100,8 +99,7 @@ TEST_F(AppletTest, LaserAlignmentDrivesTheServoAndLedFromLaserState) {
 TEST_F(AppletTest, ApplicationsActivateAndKeepTheirHeartbeatUp) {
 	const std::string binary = applet_path("laser_alignment");
 	if (binary.empty()) {
-		GTEST_SKIP()
-			<< "No laser_alignment applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
+		GTEST_SKIP() << "No laser_alignment applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 	settings::set_setting<std::string>("application_path", binary);
 

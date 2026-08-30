@@ -97,8 +97,7 @@ TEST_P(ScenarioTest, AllLtlPropertiesHold) {
 	const ScenarioCase& scenario = GetParam();
 	const std::string   binary   = applet_path(scenario.applet);
 	if (binary.empty()) {
-		GTEST_SKIP() << "No " << scenario.applet
-					 << " applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
+		GTEST_SKIP() << "No " << scenario.applet << " applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 
 	const fs::path    root(REPO_ROOT);
@@ -167,8 +166,7 @@ INSTANTIATE_TEST_SUITE_P(AllScenarios, ScenarioTest, ::testing::ValuesIn(kScenar
 TEST(ScenarioSeedCorpus, ModuleMovementPassesTheStableV01SeedsWithoutSpecEdits) {
 	const std::string binary = applet_path("module_movement");
 	if (binary.empty()) {
-		GTEST_SKIP()
-			<< "No module_movement applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
+		GTEST_SKIP() << "No module_movement applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 
 	// The short corpus runs on every commit. The documented large corpus is selected by scheduled CI
