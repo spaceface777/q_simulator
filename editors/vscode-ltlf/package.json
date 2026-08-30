@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://gitlab.tue.nl/2irr70-capstone-quercus-airport/simulation"
+    "url": "https://gitlab.tue.nl/2irr70-capstone-quercus-airport/q_simulator.git"
   },
   "files": [
     "extension.js",

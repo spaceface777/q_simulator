@@ -125,7 +125,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
 		std::cout << "operator, use ./simulation-scenario instead." << std::endl;
 		std::cout << std::endl;
 		std::cout << "Report bugs and provide suggestions at "
-					 "<https://gitlab.tue.nl/2irr70-capstone-quercus-airport/simulation/-/work_items>"
+					 "<https://gitlab.tue.nl/2irr70-capstone-quercus-airport/q_simulator/-/work_items>"
 				  << std::endl;
 		return help ? EXIT_SUCCESS : EXIT_FAILURE;
 	}

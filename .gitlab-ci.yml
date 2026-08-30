@@ -1,4 +1,4 @@
-image: $CI_REGISTRY/2irr70-capstone-quercus-airport/quercus_dev_env/ci
+image: $CI_REGISTRY/2irr70-capstone-quercus-airport/system/q_vm_builder/ci
 
 default:
   tags:
