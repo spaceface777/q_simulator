@@ -4,9 +4,12 @@ default:
   tags:
     - docker # use runner 2 since runner 1 has disk space problems
 
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  GIT_SUBMODULE_FORCE_HTTPS: "true"
+
 build:
   script:
-    - git submodule update --init --recursive
     - cp settings_example.toml settings.toml
     - cp layout_example.toml layout.toml
     - cp events_example.toml events.toml
