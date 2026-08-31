@@ -97,6 +97,33 @@ namespace events {
 
 	} // namespace
 
+	ScenarioFiles parse_scenario_files(const fs::path& file) {
+		util::require(fs::exists(file), "No scenario file found at " + file.string());
+
+		const toml::table table = toml::parse_file(file.string());
+		ScenarioFiles     files;
+		const toml::node* node = table.get("scenario");
+		if (node == nullptr) return files;
+
+		const toml::table* scenario = node->as_table();
+		util::require(scenario != nullptr, "scenario must be a TOML table");
+
+		auto read_path = [&](const std::string_view key) -> std::optional<fs::path> {
+			const toml::node* value_node = scenario->get(key);
+			if (value_node == nullptr) return std::nullopt;
+
+			const std::optional<std::string> value = value_node->value<std::string>();
+			util::require(value.has_value() && !value->empty(), "[scenario]." + std::string(key) + " must name a file");
+			fs::path path(*value);
+			if (path.is_relative()) path = file.parent_path() / path;
+			return path.lexically_normal();
+		};
+
+		files.layout = read_path("layout");
+		files.binary = read_path("binary");
+		return files;
+	}
+
 	uint64_t Schedule::last_tick() const noexcept {
 		uint64_t last = 0;
 		for (const TubArrival& tub : tubs) {

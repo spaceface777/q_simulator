@@ -39,7 +39,8 @@ namespace settings {
 		std::string binary;
 	};
 
-	void parse_settings(fs::path settings, fs::path layout);
+	void parse_settings(fs::path settings, fs::path layout,
+						std::optional<fs::path> application_path_override = std::nullopt);
 
 	// Only returns generic types that are also in TOML. Throws if the setting is not found.
 	template <typename T> [[nodiscard]] T get_setting(std::string_view setting);

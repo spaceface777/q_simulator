@@ -190,6 +190,27 @@ TEST_F(EventsTest, ParsesPropertyConfigurationWithTheLtlDurationSyntax) {
 	EXPECT_EQ(schedule.properties->property_file, path.parent_path() / "route.spec");
 }
 
+TEST_F(EventsTest, ResolvesScenarioLayoutAndBinaryFromTheScenarioFolder) {
+	write("[scenario]\nlayout = \"../layouts/one.toml\"\nbinary = \"bin/application.exe\"\n");
+	const events::ScenarioFiles files = events::parse_scenario_files(path);
+	ASSERT_TRUE(files.layout.has_value());
+	ASSERT_TRUE(files.binary.has_value());
+	EXPECT_EQ(*files.layout, (path.parent_path() / "../layouts/one.toml").lexically_normal());
+	EXPECT_EQ(*files.binary, (path.parent_path() / "bin/application.exe").lexically_normal());
+}
+
+TEST_F(EventsTest, ScenarioLayoutAndBinaryAreOptionalButMustBeNonEmptyStrings) {
+	write("");
+	const events::ScenarioFiles files = events::parse_scenario_files(path);
+	EXPECT_FALSE(files.layout.has_value());
+	EXPECT_FALSE(files.binary.has_value());
+
+	write("[scenario]\nlayout = \"\"\n");
+	EXPECT_THROW((void)events::parse_scenario_files(path), std::invalid_argument);
+	write("[scenario]\nbinary = 42\n");
+	EXPECT_THROW((void)events::parse_scenario_files(path), std::invalid_argument);
+}
+
 TEST_F(EventsTest, RequiresValidPropertyConfiguration) {
 	write("[scenario]\nduration = 1.5\nproperties = \"route.spec\"\n");
 	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);

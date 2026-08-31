@@ -40,7 +40,7 @@ namespace {
 		std::optional<double> tick_skip_ppm;
 	};
 
-	// Mirrors the "Run it with" comment at the top of each file in scenarios/.
+	// Records the expected self-contained configuration of each bundled scenario.
 	const std::vector<ScenarioCase> kScenarios = [] {
 		const ScenarioCase base[] = {
 			{"hardware_test.toml", "one_module.toml", "hardware_test", 1, std::nullopt},
@@ -100,16 +100,23 @@ TEST_P(ScenarioTest, AllLtlPropertiesHold) {
 		GTEST_SKIP() << "No " << scenario.applet << " applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
 	}
 
-	const fs::path    root(REPO_ROOT);
-	const std::string settings_path = settings_with_binary(root / "settings_example.toml", binary);
-	settings::parse_settings(settings_path, root / "layouts" / scenario.layout);
+	const fs::path              root(REPO_ROOT);
+	const fs::path              scenario_path = root / "scenarios" / scenario.scenario;
+	const events::ScenarioFiles files         = events::parse_scenario_files(scenario_path);
+	ASSERT_TRUE(files.layout.has_value());
+	ASSERT_TRUE(files.binary.has_value());
+	EXPECT_EQ(*files.layout, root / "layouts" / scenario.layout);
+	EXPECT_EQ(*files.binary, root / "external" / "q_applets" / "out" / (scenario.applet + ".exe"));
+
+	const std::string settings_path = settings_with_binary(root / "settings_example.toml", files.binary->string());
+	settings::parse_settings(settings_path, *files.layout);
 	if (scenario.tick_skip_ppm) {
 		settings::set_setting("module_tick_skip_mean_ppm", *scenario.tick_skip_ppm);
 		settings::set_setting("module_tick_skip_sd_ppm", 0.0);
 	}
 
 	const uint64_t         seed     = static_cast<uint64_t>(settings::get_setting<int>("seed"));
-	const events::Schedule schedule = events::parse_events(root / "scenarios" / scenario.scenario, seed);
+	const events::Schedule schedule = events::parse_events(scenario_path, seed);
 	ASSERT_TRUE(schedule.properties.has_value());
 	ltl::File properties = parse_properties(schedule.properties->property_file);
 

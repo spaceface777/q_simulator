@@ -2,10 +2,11 @@
 # Exercises alignment, RFID brightness, misalignment, and the 30-second recovery state without a GUI.
 #
 # Run it with:
-#   ./build/simulation-scenario -l layouts/one_module.toml \
-#       -b external/q_applets/out/laser_alignment.exe scenarios/laser_alignment.toml
+#   ./build/simulation-scenario scenarios/laser_alignment.toml
 
 [scenario]
+layout = "../layouts/one_module.toml"
+binary = "../external/q_applets/out/laser_alignment.exe"
 duration = "60s"
 properties = "laser_alignment.spec"
 

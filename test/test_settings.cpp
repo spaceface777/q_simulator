@@ -117,6 +117,14 @@ angle = 90
 			  std::vector<module::ModuleId>({module::ModuleId{1}, module::ModuleId{2}}));
 }
 
+TEST_F(SettingsTest, ApplicationOverrideIsAppliedBeforeSettingsValidation) {
+	write_settings("application_path = \"/path/that/does/not/exist\"\nseed = 1\n" +
+				   std::string("simulation_speed = 1.0\nscale = 1.0\n"));
+
+	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path, temp_application_path));
+	EXPECT_EQ(settings::get_setting<std::string>("application_path"), temp_application_path.string());
+}
+
 TEST_F(SettingsTest, ParseSettingsAcceptsFiniteHardwarePositionSettings) {
 	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(

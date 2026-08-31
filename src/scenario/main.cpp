@@ -39,8 +39,9 @@ namespace {
 		std::string             trace;
 		std::optional<uint64_t> seed;
 		std::optional<double>   timeout;
-		uint32_t                tick_batch = 1;
-		bool                    quiet      = false;
+		uint32_t                tick_batch   = 1;
+		bool                    quiet        = false;
+		bool                    layout_given = false;
 	};
 
 	void usage() {
@@ -50,9 +51,9 @@ namespace {
 				  << "exits non-zero if any temporal property does not hold.\n"
 				  << "\n"
 				  << "Options:\n"
-				  << "  -b, --binary <path>     The application to run, overriding application_path\n"
+				  << "  -b, --binary <path>     The application to run (default: scenario or settings)\n"
 				  << "  -s, --settings <path>   The settings file (default: settings.toml)\n"
-				  << "  -l, --layout <path>     The layout file (default: layout.toml)\n"
+				  << "  -l, --layout <path>     The layout file (default: scenario or layout.toml)\n"
 				  << "      --seed <n>          The master seed, overriding the one in settings\n"
 				  << "      --timeout <sec>     Override the scenario's simulated-time limit\n"
 				  << "      --tick-batch <n>    Run up to n child ticks per barrier (default: 1)\n"
@@ -60,6 +61,9 @@ namespace {
 				  << "  -q, --quiet             Print only failures\n"
 				  << "  -h, --help              Print all options\n"
 				  << "  -v, --version           Print version\n"
+				  << "\n"
+				  << "A scenario may set [scenario].layout and [scenario].binary. Relative paths\n"
+				  << "are resolved from the scenario's folder; command-line options override them.\n"
 				  << "\n"
 				  << "Exit codes:\n"
 				  << "  0  every property held\n"
@@ -97,7 +101,8 @@ namespace {
 			} else if (argument == "-s" || argument == "--settings") {
 				options.settings = take_value(argc, argv, index, argument);
 			} else if (argument == "-l" || argument == "--layout") {
-				options.layout = take_value(argc, argv, index, argument);
+				options.layout       = take_value(argc, argv, index, argument);
+				options.layout_given = true;
 			} else if (argument == "--trace") {
 				options.trace = take_value(argc, argv, index, argument);
 			} else if (argument == "--seed") {
@@ -164,12 +169,15 @@ int main(int argc, char const* argv[]) {
 	const Options& options = *parsed;
 	sim::pin_to_one_cpu();
 
-	events::Schedule schedule;
+	std::filesystem::path                layout_file = options.layout;
+	std::optional<std::filesystem::path> binary_file;
+	events::Schedule                     schedule;
 	try {
-		settings::parse_settings(options.settings, options.layout);
-		if (!options.binary.empty()) {
-			settings::set_setting<std::string>("application_path", options.binary);
-		}
+		const events::ScenarioFiles files = events::parse_scenario_files(options.scenario);
+		if (!options.layout_given && files.layout) layout_file = *files.layout;
+		binary_file = options.binary.empty() ? files.binary : std::optional<std::filesystem::path>(options.binary);
+
+		settings::parse_settings(options.settings, layout_file, binary_file);
 		if (options.seed) {
 			settings::set_setting<int>("seed", static_cast<int>(*options.seed));
 		}
@@ -219,7 +227,7 @@ int main(int argc, char const* argv[]) {
 	}
 
 	try {
-		runtime.trace_to(options.trace, {options.settings, options.layout, options.scenario,
+		runtime.trace_to(options.trace, {options.settings, layout_file.string(), options.scenario,
 										 schedule.properties->property_file.string()});
 		runtime.start(timeout_tick);
 	} catch (const std::exception& error) {

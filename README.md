@@ -92,13 +92,16 @@ cmake -B build -S . -G Ninja
 
 #### Running
 
-Build and start the interactive simulator.
+Build and start the interactive simulator with a self-contained scenario.
 
 ```sh
-cmake --build build -j && ./build/simulation
+cmake --build build -j
+./build/simulation scenarios/laser_alignment.toml
 ```
 
-The simulator reads `settings.toml`, `layout.toml`, and `events.toml`. It starts one application process for each active module. The GUI shows the world state and lets you pause the run, set its speed, and change the scale. Close the GUI to stop the run and all child processes.
+The scenario's `[scenario]` table may set `layout` and `binary`; relative paths start from the scenario file's folder. It starts one application process for each active module. The GUI shows the world state and lets you pause the run, set its speed, and change the scale. Close the GUI to stop the run and all child processes.
+
+Without a scenario argument, the simulator retains the original behavior and reads `settings.toml`, `layout.toml`, and `events.toml`. In `simulation-scenario`, `--layout` and `--binary` still work and override values from the scenario.
 
 The simulator pins itself and all application processes to one CPU to avoid cross-core wakeup and cache-coherence overhead in the short lockstep tick. Use `taskset -c N` when starting it to choose that CPU explicitly; otherwise it uses the CPU on which it starts.
 
@@ -111,6 +114,18 @@ Run a finite scenario and its LTLf properties with the headless runner.
 ```sh
 ./build/simulation-scenario scenarios/hardware_test.toml
 ```
+
+A complete scenario header looks like this:
+
+```toml
+[scenario]
+layout = "../layouts/one_module.toml"
+binary = "../external/q_applets/out/laser_alignment.exe"
+duration = "60s"
+properties = "laser_alignment.spec"
+```
+
+The `layout`, `binary`, and `properties` paths are relative to the scenario file. `layout` and `binary` are optional for compatibility with existing scenarios; when absent, the commands use `layout.toml` and `application_path` from `settings.toml`.
 
 Use `./build/simulation --help` and `./build/simulation-scenario --help` for all options. The scenario runner returns 0 when all properties hold, 1 when a property fails or the run cannot finish, and 2 when its input is invalid.
 

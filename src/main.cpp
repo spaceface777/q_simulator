@@ -1,8 +1,10 @@
 #include <chrono>
 #include <csignal>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -63,9 +65,11 @@ static void handle_close(int code) {
 	::_exit(code);
 }
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
-	std::chrono::milliseconds timeout    = std::chrono::milliseconds(std::numeric_limits<int64_t>::max());
-	uint32_t                  tick_batch = 1;
+int main(int argc, char const* argv[]) {
+	std::chrono::milliseconds timeout        = std::chrono::milliseconds(std::numeric_limits<int64_t>::max());
+	uint32_t                  tick_batch     = 1;
+	std::filesystem::path     scenario_file  = "events.toml";
+	bool                      scenario_given = false;
 
 	for (int i = 1; i < argc; i++) {
 		const std::string_view arg(argv[i]);
@@ -103,6 +107,14 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
 			}
 			std::cout << "Missing <n> for option '--tick-batch'" << std::endl;
 			return EXIT_FAILURE;
+		} else if (!arg.empty() && arg.front() != '-') {
+			if (scenario_given) {
+				std::cout << "More than one scenario given" << std::endl;
+				return EXIT_FAILURE;
+			}
+			scenario_file  = arg;
+			scenario_given = true;
+			continue;
 		}
 
 		// Asking for help is not an error and an unknown option is, so the two cannot share an
@@ -113,13 +125,16 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
 			std::cout << "Invalid option: " << arg << std::endl;
 		}
 
-		std::cout << "Use: ./simulation [options]" << std::endl;
+		std::cout << "Use: ./simulation [options] [scenario.toml]" << std::endl;
 		std::cout << "Options:" << std::endl;
 		std::cout << "  -h, --help              Prints all options" << std::endl;
 		std::cout << "  --no-gui                Runs without a window" << std::endl;
 		std::cout << "  --timeout <sec>         Closes the simulation after <sec> seconds" << std::endl;
 		std::cout << "  --tick-batch <n>        Runs up to n child ticks per barrier" << std::endl;
 		std::cout << "  -v, --version           Prints version" << std::endl;
+		std::cout << std::endl;
+		std::cout << "A scenario may select its layout and application with [scenario].layout" << std::endl;
+		std::cout << "and [scenario].binary. Relative paths start from the scenario's folder." << std::endl;
 		std::cout << std::endl;
 		std::cout << "To run a scenario to a pass or fail verdict with no window and no" << std::endl;
 		std::cout << "operator, use ./simulation-scenario instead." << std::endl;
@@ -133,9 +148,24 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
 	::signal(SIGTERM, handle_close);
 	sim::pin_to_one_cpu();
 
-	settings::parse_settings("settings.toml", "layout.toml");
-	const uint64_t         master_seed = static_cast<uint64_t>(settings::get_setting<int>("seed"));
-	const events::Schedule schedule    = events::parse_events("events.toml", master_seed);
+	std::filesystem::path                layout_file = "layout.toml";
+	std::optional<std::filesystem::path> binary_file;
+	events::Schedule                     schedule;
+	uint64_t                             master_seed = 0;
+	try {
+		if (scenario_given) {
+			const events::ScenarioFiles files = events::parse_scenario_files(scenario_file);
+			if (files.layout) layout_file = *files.layout;
+			binary_file = files.binary;
+		}
+
+		settings::parse_settings("settings.toml", layout_file, binary_file);
+		master_seed = static_cast<uint64_t>(settings::get_setting<int>("seed"));
+		schedule    = events::parse_events(scenario_file, master_seed);
+	} catch (const std::exception& error) {
+		std::cerr << "Could not read the simulation configuration: " << error.what() << std::endl;
+		return EXIT_FAILURE;
+	}
 
 	// An interactive run is a run of the platform, not of one reference module, so every module
 	// gets its own calibration drawn from the physical population. The master seed makes that
@@ -148,7 +178,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char const* argv[]) {
 	try {
 		runtime.load(schedule);
 		runtime.trace_to(settings::get_setting<std::string>("trace_path"),
-						 {"settings.toml", "layout.toml", "events.toml"});
+						 {"settings.toml", layout_file.string(), scenario_file.string()});
 		runtime.start();
 	} catch (const std::exception& ex) {
 		std::cerr << "Failed to start the simulation: " << ex.what() << std::endl;

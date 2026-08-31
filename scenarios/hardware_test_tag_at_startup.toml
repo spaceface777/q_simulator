@@ -4,11 +4,11 @@
 # encoded and latched.
 #
 # Run it with:
-#   ./build/simulation-scenario -l layouts/one_module.toml \
-#       -b external/q_applets/out/hardware_test.exe \
-#       scenarios/hardware_test_tag_at_startup.toml
+#   ./build/simulation-scenario scenarios/hardware_test_tag_at_startup.toml
 
 [scenario]
+layout = "../layouts/one_module.toml"
+binary = "../external/q_applets/out/hardware_test.exe"
 duration = "7s"
 properties = "hardware_test_tag_at_startup.spec"
 

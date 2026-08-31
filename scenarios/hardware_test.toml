@@ -2,13 +2,14 @@
 # Runs the complete synchronous diagnostic against a healthy, empty module.
 #
 # Run it with:
-#   ./build/simulation-scenario -l layouts/one_module.toml \
-#       -b external/q_applets/out/hardware_test.exe scenarios/hardware_test.toml
+#   ./build/simulation-scenario scenarios/hardware_test.toml
 #
 # The diagnostic takes about 116 simulated seconds. Its externally observable stage progress and
 # failure-safety requirements are declared in the sibling LTLf property file.
 
 [scenario]
+layout = "../layouts/one_module.toml"
+binary = "../external/q_applets/out/hardware_test.exe"
 # Includes deployment skew and missed local ticks; the diagnostic itself is paced by local uptime.
 duration = "120s"
 properties = "hardware_test.spec"

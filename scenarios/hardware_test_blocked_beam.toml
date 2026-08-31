@@ -3,10 +3,11 @@
 # left beam from startup and checks that the laser failure is detected, encoded, and latched.
 #
 # Run it with:
-#   ./build/simulation-scenario -l layouts/one_module.toml \
-#       -b external/q_applets/out/hardware_test.exe scenarios/hardware_test_blocked_beam.toml
+#   ./build/simulation-scenario scenarios/hardware_test_blocked_beam.toml
 
 [scenario]
+layout = "../layouts/one_module.toml"
+binary = "../external/q_applets/out/hardware_test.exe"
 duration = "6s"
 properties = "hardware_test_blocked_beam.spec"
 

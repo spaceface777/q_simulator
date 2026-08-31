@@ -240,9 +240,9 @@ namespace settings {
 		parse_optional_setting("rfid_position_sd", calibration_defaults.rfid_position_sd, valid_position_sd);
 	}
 
-	void parse_settings(fs::path settings, fs::path layout) {
-		util::require(fs::exists(settings), "No settings.toml found in same folder as simulation executable");
-		util::require(fs::exists(layout), "No layout.toml found in same folder as simulation executable");
+	void parse_settings(fs::path settings, fs::path layout, std::optional<fs::path> application_path_override) {
+		util::require(fs::exists(settings), "No settings file found at " + settings.string());
+		util::require(fs::exists(layout), "No layout file found at " + layout.string());
 
 		reset_state();
 
@@ -251,6 +251,12 @@ namespace settings {
 			layout_table   = toml::parse_file(layout.string());
 		} catch (const toml::parse_error& err) {
 			throw err;
+		}
+
+		// Apply a CLI or scenario binary before validation. An explicit override must be sufficient
+		// even when the application_path stored in settings.toml belongs to another machine.
+		if (application_path_override) {
+			settings_table.insert_or_assign("application_path", application_path_override->string());
 		}
 
 		parse_setting("application_path", "", [](std::string value) {

@@ -138,7 +138,7 @@ The simulator reads timed input from `events.toml` or from a scenario TOML file.
 
 An event changes the physical world. It does not send a message to an application. The application observes a tub through the laser and RFID RPC services when the tub reaches those instruments.
 
-A finite scenario also has a `[scenario]` table. Its `duration` sets the inclusive end of the trace. Its `properties` value names the LTLf file. The runtime applies tick-zero events before it starts the child processes, and it applies later events in tick order.
+A finite scenario also has a `[scenario]` table. Its optional `layout` and `binary` values make the scenario directly runnable by either simulator executable; paths are relative to the scenario file. Its `duration` sets the inclusive end of the trace. Its `properties` value names the LTLf file. The runtime applies tick-zero events before it starts the child processes, and it applies later events in tick order.
 
 ## 5. World
 

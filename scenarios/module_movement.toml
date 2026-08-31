@@ -2,8 +2,7 @@
 # Checks the `module_movement` applet against the route its own source drives, leg by leg.
 #
 # Run it with:
-#   ./build/simulation-scenario -l layouts/one_module.toml \
-#       -b external/q_applets/out/module_movement.exe scenarios/module_movement.toml
+#   ./build/simulation-scenario scenarios/module_movement.toml
 #
 # The applet enables both emitters, subscribes to the RFID and both laser detectors, and waits
 # for a tag. A tag already at the reader at startup is turned into a synthetic start event, so
@@ -24,6 +23,8 @@
 # progressively wider clock windows.
 
 [scenario]
+layout = "../layouts/one_module.toml"
+binary = "../external/q_applets/out/module_movement.exe"
 duration = "45s"
 properties = "module_movement.spec"
 
