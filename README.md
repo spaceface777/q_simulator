@@ -180,3 +180,6 @@ All C++ code must follow `.clang-format`. Add unit or integration tests for chan
 ## License
 
 (c) Eindhoven University of Technology, Rens Verstappen, and contributors (2025-2026).
+
+## Credits
+Repository icons courtesy of [Magnific](https://www.magnific.com/) and [fancykeith](https://www.flaticon.com/authors/fancykeith).
