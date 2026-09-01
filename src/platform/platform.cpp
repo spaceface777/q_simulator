@@ -696,9 +696,11 @@ namespace platform {
 
 		if (broadcast) {
 			// Broadcast to all modules, except for back to the
-			data       = request.payload;
-			recipients = modules_ | std::ranges::views::filter([sender](module::ModuleId id) { return id != sender; }) |
-						 std::ranges::to<std::vector>();
+			data = request.payload;
+			recipients.reserve(modules_.size());
+			for (const module::ModuleId id : modules_) {
+				if (id != sender) recipients.push_back(id);
+			}
 		} else {
 			if (request.payload.empty()) {
 				return false;
