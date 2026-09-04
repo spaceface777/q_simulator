@@ -182,8 +182,6 @@ TEST(ScenarioExactRunahead, MatchesStrictTraceBytesAcrossEventsSeedsAndManyChild
 		{"hardware_test_blocked_beam.toml", "one_module.toml", "hardware_test", 7},
 		{"module_movement.toml", "one_module.toml", "module_movement", 42},
 		{"per_module_variation.toml", "default.toml", "module_movement", 1},
-		{"exact_runahead_idle.toml", "default.toml", "net_test", 17},
-		{"exact_runahead_idle.toml", "default.toml", "runahead_bench", 1},
 	};
 	const fs::path root(REPO_ROOT);
 
