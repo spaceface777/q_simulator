@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -85,6 +86,11 @@ namespace engine {
 		[[nodiscard]] bool empty() const noexcept { return buckets_.empty(); }
 
 		[[nodiscard]] std::size_t size() const noexcept { return buckets_.size(); }
+
+		[[nodiscard]] std::optional<uint64_t> next_due_tick() const noexcept {
+			if (buckets_.empty()) return std::nullopt;
+			return buckets_.begin()->first.due_tick;
+		}
 	};
 
 } // namespace engine

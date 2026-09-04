@@ -68,6 +68,8 @@ static void handle_close(int code) {
 int main(int argc, char const* argv[]) {
 	std::chrono::milliseconds timeout        = std::chrono::milliseconds(std::numeric_limits<int64_t>::max());
 	uint32_t                  tick_batch     = 1;
+	uint32_t                  runahead_cap   = 0;
+	bool                      selective_sync = true;
 	std::filesystem::path     scenario_file  = "events.toml";
 	bool                      scenario_given = false;
 
@@ -107,6 +109,30 @@ int main(int argc, char const* argv[]) {
 			}
 			std::cout << "Missing <n> for option '--tick-batch'" << std::endl;
 			return EXIT_FAILURE;
+		} else if (arg == "--exact-runahead") {
+			runahead_cap   = sim::DEFAULT_RUNAHEAD_TICKS;
+			selective_sync = false;
+			continue;
+		} else if (arg == "--runahead-cap") {
+			if (i + 1 < argc) {
+				const auto cap = util::parse_int(argv[i + 1]);
+				if (cap && *cap > 0 && static_cast<uint32_t>(*cap) <= sim::MAX_RUNAHEAD_TICKS) {
+					runahead_cap   = static_cast<uint32_t>(*cap);
+					selective_sync = false;
+					i++;
+					continue;
+				}
+				std::cout << "Runahead cap must be between 1 and " << sim::MAX_RUNAHEAD_TICKS << std::endl;
+				return EXIT_FAILURE;
+			}
+			std::cout << "Missing <n> for option '--runahead-cap'" << std::endl;
+			return EXIT_FAILURE;
+		} else if (arg == "--selective-sync") {
+			selective_sync = true;
+			continue;
+		} else if (arg == "--all-child-sync") {
+			selective_sync = false;
+			continue;
 		} else if (!arg.empty() && arg.front() != '-') {
 			if (scenario_given) {
 				std::cout << "More than one scenario given" << std::endl;
@@ -131,6 +157,10 @@ int main(int argc, char const* argv[]) {
 		std::cout << "  --no-gui                Runs without a window" << std::endl;
 		std::cout << "  --timeout <sec>         Closes the simulation after <sec> seconds" << std::endl;
 		std::cout << "  --tick-batch <n>        Runs up to n child ticks per barrier" << std::endl;
+		std::cout << "  --exact-runahead        Enables reference all-child exact runahead" << std::endl;
+		std::cout << "  --selective-sync        Uses selective synchronization (default)" << std::endl;
+		std::cout << "  --all-child-sync        Uses the reference all-child barrier" << std::endl;
+		std::cout << "  --runahead-cap <n>      Enables exact runahead with a cap up to 100 ticks" << std::endl;
 		std::cout << "  -v, --version           Prints version" << std::endl;
 		std::cout << std::endl;
 		std::cout << "A scenario may select its layout and application with [scenario].layout" << std::endl;
@@ -173,7 +203,17 @@ int main(int argc, char const* argv[]) {
 	world::configure_calibration_from_settings();
 	world::set_calibration_seed(master_seed);
 
-	sim::Runtime runtime(master_seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, tick_batch);
+	if (selective_sync && runahead_cap != 0) {
+		std::cerr << "--selective-sync and --exact-runahead are separate execution paths" << std::endl;
+		return EXIT_FAILURE;
+	}
+	if (runahead_cap != 0 && tick_batch != 1) {
+		std::cerr << "Exact runahead requires --tick-batch 1" << std::endl;
+		return EXIT_FAILURE;
+	}
+
+	sim::Runtime runtime(master_seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, tick_batch, runahead_cap,
+						 selective_sync);
 
 	try {
 		runtime.load(schedule);

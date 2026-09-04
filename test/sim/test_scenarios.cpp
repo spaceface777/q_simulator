@@ -170,6 +170,83 @@ TEST_P(ScenarioTest, AllLtlPropertiesHold) {
 
 INSTANTIATE_TEST_SUITE_P(AllScenarios, ScenarioTest, ::testing::ValuesIn(kScenarios), scenario_name);
 
+TEST(ScenarioExactRunahead, MatchesStrictTraceBytesAcrossEventsSeedsAndManyChildren) {
+	struct ExactCase {
+		const char* scenario;
+		const char* layout;
+		const char* applet;
+		uint64_t    seed;
+	};
+
+	const ExactCase cases[] = {
+		{"hardware_test_blocked_beam.toml", "one_module.toml", "hardware_test", 7},
+		{"module_movement.toml", "one_module.toml", "module_movement", 42},
+		{"per_module_variation.toml", "default.toml", "module_movement", 1},
+		{"exact_runahead_idle.toml", "default.toml", "net_test", 17},
+		{"exact_runahead_idle.toml", "default.toml", "runahead_bench", 1},
+	};
+	const fs::path root(REPO_ROOT);
+
+	for (const ExactCase& test_case : cases) {
+		const std::string binary = applet_path(test_case.applet);
+		if (binary.empty()) {
+			GTEST_SKIP() << "No " << test_case.applet << " applet built; run qbuild sim";
+		}
+
+		const fs::path scenario_path = root / "scenarios" / test_case.scenario;
+		const fs::path layout_path   = root / "layouts" / test_case.layout;
+		const auto     execute       = [&](uint32_t runahead_cap, const std::string& mode) {
+			const std::string settings_path = settings_with_binary(root / "settings_example.toml", binary);
+			settings::parse_settings(settings_path, layout_path);
+			settings::set_setting("seed", static_cast<int>(test_case.seed));
+			const events::Schedule schedule = events::parse_events(scenario_path, test_case.seed);
+			if (!schedule.properties) {
+				ADD_FAILURE() << test_case.scenario << " has no properties";
+				return std::string{};
+			}
+
+			world::configure_calibration_from_settings();
+			world::set_calibration_seed(test_case.seed);
+			ltl::File      properties = parse_properties(schedule.properties->property_file);
+			const fs::path trace_path =
+				fs::temp_directory_path() /
+				("quercus_exact_scenario_" + std::to_string(::getpid()) + "_" + test_case.scenario + "_" + mode);
+			fs::remove(trace_path);
+
+			sim::Runtime runtime(test_case.seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, runahead_cap);
+			runtime.load(schedule);
+			runtime.load_properties(std::move(properties), schedule.properties->duration_tick,
+									schedule.properties->property_file.string());
+			runtime.trace_to(trace_path.string(), {});
+			runtime.start(schedule.properties->duration_tick);
+			while (!runtime.failed() && runtime.properties_pending() > 0) {
+				const uint64_t before     = runtime.tick();
+				const uint64_t ticks_left = schedule.properties->duration_tick - before + 1;
+				const uint64_t ticks      = std::min<uint64_t>(50, ticks_left);
+				runtime.advance(std::chrono::microseconds(ticks * sim::TICK_DURATION.count()), 1.0,
+								std::chrono::seconds(5));
+				if (runtime.tick() == before) {
+					ADD_FAILURE() << test_case.scenario << " stopped at tick " << before;
+					break;
+				}
+			}
+			runtime.stop();
+			fs::remove(settings_path);
+
+			std::ifstream      input(trace_path, std::ios::binary);
+			std::ostringstream contents;
+			contents << input.rdbuf();
+			fs::remove(trace_path);
+			return contents.str();
+		};
+
+		const std::string strict = execute(0, "strict");
+		const std::string exact  = execute(sim::DEFAULT_RUNAHEAD_TICKS, "exact");
+		EXPECT_FALSE(strict.empty()) << test_case.scenario;
+		EXPECT_EQ(exact, strict) << test_case.scenario << " changed strict trace bytes";
+	}
+}
+
 TEST(ScenarioSeedCorpus, ModuleMovementPassesTheStableV01SeedsWithoutSpecEdits) {
 	const std::string binary = applet_path("module_movement");
 	if (binary.empty()) {

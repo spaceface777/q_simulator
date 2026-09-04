@@ -33,6 +33,13 @@ namespace childsync {
 	// Wakes up to count waiters. Returns how many were woken, or -1 on failure.
 	int futex_wake(uint32_t& word, int count) noexcept;
 
+	// Bitset futex operations use an absolute CLOCK_MONOTONIC timeout. The bit mask is notification
+	// routing only; callers must always use a separate state word as their progress predicate.
+	int futex_wake_bitset(uint32_t& word, int count, uint32_t mask) noexcept;
+
+	bool futex_wait_bitset(uint32_t& word, uint32_t expected, uint32_t mask,
+						   std::chrono::microseconds timeout) noexcept;
+
 	// Returns false if the wait timed out. A mismatch against expected returns true immediately,
 	// which is the caller's cue to re-read the word rather than to assume progress.
 	bool futex_wait(uint32_t& word, uint32_t expected, std::chrono::microseconds timeout) noexcept;

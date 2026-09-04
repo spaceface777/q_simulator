@@ -158,11 +158,29 @@ Each physical module has an independent start offset, fixed clock rate, and loca
 
 ## 7. Shared memory transport
 
-The simulator and SDK use the same `quercus/lockstep_shm.h` layout. One control mapping holds the ABI, barrier generation, completion state, per-module tick index, tick duration, batch size, active flags, and ready flags. Each child has a separate segment with inbound and outbound mailboxes for every tick in a batch.
+The simulator and SDK use the same `quercus/lockstep_shm.h` layout. The control mapping contains the barrier and per-module wake state. Each child has a separate segment with inbound and outbound mailboxes for each batch tick.
 
 A mailbox is one 4096-byte page. It has four frame slots and 4088 data bytes. A frame can use at most 1024 bytes. The simulator validates every slot offset before it reads child data. It returns busy or no-memory status when a frame cannot fit.
 
-The barrier uses acquire and release operations and Linux futex waits. The parent writes mailboxes only while children are blocked. A child writes its outbound mailbox only while the parent is blocked. The final child increments the release word and wakes the parent.
+The reference barrier uses acquire and release operations with Linux futex waits. The parent writes mailboxes while the children are blocked. The children write outbound mailboxes while the parent is blocked. The final participating child writes the release word and wakes the parent.
+
+Selective synchronization gives each child an authoritative wake sequence. A child does not use the global generation as its wait predicate. The futex banks route notifications to 32 compact scheduler indices. Thus, module IDs do not have a 32-module limit. A child reads its wake sequence before and after it reads the bank sequence. This order prevents a missed wake.
+
+A selective grant contains a quiet prefix and one normal batch suffix. The quiet prefix catches up a child after earlier epochs. The suffix retains the reference mailbox slots and logical timestamps. The parent includes only selected children in the expected completion count.
+
+Exact runahead uses a separate grant mode and keeps the legacy batch mode unchanged. Each child publishes its next possible Zephyr execution time.
+
+The transport removes its priority-999 event before it queries the native_sim scheduler. Known silent system-timer events do not limit the certificate.
+
+The parent maps each certificate through the exact grant, skip, clock-drift, and `delta_us` sequence. An event boundary is not part of the quiet interval.
+
+The parent copies the world, platform, network, and deterministic random state for lookahead. This copy does not write traces or application output.
+
+The first parent-to-child handoff limits the quiet interval. A queued engine task also limits lookahead before its due tick.
+
+The parent sends one compact grant for the proven prefix. Then it commits each logical tick through the normal task queue and observation path.
+
+If a proof is missing or stale, the parent sends one strict tick. `sim_ipc_send()` stops the child if an RPC occurs inside runahead.
 
 `docs/PROTOCOL.md` defines the RPC frame. Requests cross the next application handoff and enter one of three deterministic Core0 handler lanes owned by that module. Lane assignment follows seeded intake order. A confirmable request keeps its lane through response handoff even when it is waiting for that module's per-category mutex. Different categories on one module and matching categories on separate modules can therefore run concurrently, while one module's category remains serialized. Responses and events return on an executed local tick. Laser events have a configurable additional delay. RFID events use a configurable seeded delay distribution. Module packets, logs, and panic reports use the configured deterministic network delay and loss model.
 

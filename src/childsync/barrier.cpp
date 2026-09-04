@@ -13,8 +13,9 @@ namespace childsync {
 
 	namespace {
 
-		long futex(uint32_t* word, int op, uint32_t value, const struct timespec* timeout) noexcept {
-			return ::syscall(SYS_futex, word, op, value, timeout, nullptr, 0);
+		long futex(uint32_t* word, int op, uint32_t value, const struct timespec* timeout,
+				   uint32_t bitset = 0) noexcept {
+			return ::syscall(SYS_futex, word, op, value, timeout, nullptr, bitset);
 		}
 
 	} // namespace
@@ -23,6 +24,22 @@ namespace childsync {
 	// child sharing the mapping would compute different keys and never see each other's waits.
 	int futex_wake(uint32_t& word, int count) noexcept {
 		return static_cast<int>(futex(&word, FUTEX_WAKE, static_cast<uint32_t>(count), nullptr));
+	}
+
+	int futex_wake_bitset(uint32_t& word, int count, uint32_t mask) noexcept {
+		return static_cast<int>(futex(&word, FUTEX_WAKE_BITSET, static_cast<uint32_t>(count), nullptr, mask));
+	}
+
+	bool futex_wait_bitset(uint32_t& word, uint32_t expected, uint32_t mask,
+						   std::chrono::microseconds timeout) noexcept {
+		struct timespec now{};
+		(void)::clock_gettime(CLOCK_MONOTONIC, &now);
+		const int64_t   nanos = static_cast<int64_t>(now.tv_nsec) + timeout.count() * 1000;
+		struct timespec deadline{};
+		deadline.tv_sec   = now.tv_sec + nanos / 1000000000;
+		deadline.tv_nsec  = nanos % 1000000000;
+		const long result = futex(&word, FUTEX_WAIT_BITSET, expected, &deadline, mask);
+		return !(result < 0 && errno == ETIMEDOUT);
 	}
 
 	bool futex_wait(uint32_t& word, uint32_t expected, std::chrono::microseconds timeout) noexcept {

@@ -275,6 +275,13 @@ namespace platform {
 		rebuild_topology();
 	}
 
+	Manager Manager::clone_for_lookahead(world::State& world) const {
+		Manager clone                  = *this;
+		clone.world_                   = &world;
+		clone.emit_application_output_ = false;
+		return clone;
+	}
+
 	void Manager::add_module(module::ModuleId id) {
 		known_modules_.insert(id.raw());
 		if (find(id) != nullptr) {
@@ -767,8 +774,10 @@ namespace platform {
 			} else {
 				runtime->logs.emplace_back(delivery.payload.begin() + 1, delivery.payload.end());
 			}
-			print_application_output(delivery.recipient, delivery.payload.data() + 1,
-									 delivery.payload.data() + delivery.payload.size());
+			if (emit_application_output_) {
+				print_application_output(delivery.recipient, delivery.payload.data() + 1,
+										 delivery.payload.data() + delivery.payload.size());
+			}
 		}
 	}
 

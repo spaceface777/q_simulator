@@ -143,16 +143,22 @@ int main() {
 	const bool        reply_to_message   = env_number("FAKE_CHILD_REPLY_TO_MESSAGE", 0) != 0 && id == 1;
 	const char*       record_path        = ::getenv("FAKE_CHILD_RECORD"); // File to append observed commands to.
 	const bool        record_ticks       = env_number("FAKE_CHILD_RECORD_TICKS", 0) != 0;
+	const bool        certify_quiet      = env_number("FAKE_CHILD_CERTIFY_QUIET", 0) != 0;
 	const char*       grant_record_path  = ::getenv("FAKE_CHILD_GRANT_RECORD");
 	const char*       status_record_path = id == 1 ? ::getenv("FAKE_CHILD_STATUS_RECORD") : nullptr;
 	const std::string mutant = ::getenv("FAKE_CHILD_MUTANT") == nullptr ? "" : ::getenv("FAKE_CHILD_MUTANT");
 
-	uint16_t call_id                = 0x8000;
-	unsigned ticks                  = 0;
-	uint32_t last_seen              = 0;
-	bool     startup_rpc_sent       = false;
-	bool     startup_rpc_done       = !startup_rpc;
-	bool     startup_heartbeat_sent = false;
+	uint16_t       call_id                = 0x8000;
+	unsigned       ticks                  = 0;
+	uint32_t       last_seen              = 0;
+	uint64_t       local_time_us          = 0;
+	const bool     selective_mode         = childsync::load_acquire(control.selective_enabled) != 0;
+	const uint32_t scheduler_index        = control.scheduler_index[id];
+	const uint32_t futex_bank             = scheduler_index / QUERCUS_FUTEX_BANK_SIZE;
+	const uint32_t futex_mask             = UINT32_C(1) << (scheduler_index % QUERCUS_FUTEX_BANK_SIZE);
+	bool           startup_rpc_sent       = false;
+	bool           startup_rpc_done       = !startup_rpc;
+	bool           startup_heartbeat_sent = false;
 
 	// Announced only once the mapping is in place, so the parent never ticks an unmapped child.
 	if (childsync::load_acquire(control.abi) != QUERCUS_SHM_ABI) {
@@ -163,12 +169,61 @@ int main() {
 	control.ready[id] = 1;
 
 	while (true) {
-		while (childsync::load_acquire(control.generation) == last_seen) {
-			(void)childsync::futex_wait(control.generation, last_seen, PATIENT);
+		if (selective_mode) {
+			while (childsync::load_acquire(control.wake_seq[id]) == last_seen) {
+				const uint32_t bank_seen = childsync::load_acquire(control.futex_bank[futex_bank]);
+				if (childsync::load_acquire(control.wake_seq[id]) != last_seen) break;
+				(void)childsync::futex_wait_bitset(control.futex_bank[futex_bank], bank_seen, futex_mask, PATIENT);
+			}
+			last_seen = childsync::load_acquire(control.wake_seq[id]);
+		} else {
+			while (childsync::load_acquire(control.generation) == last_seen) {
+				(void)childsync::futex_wait(control.generation, last_seen, PATIENT);
+			}
+			last_seen = childsync::load_acquire(control.generation);
 		}
-		last_seen = childsync::load_acquire(control.generation);
 
-		const uint32_t batch_ticks = control.batch_ticks;
+		if (selective_mode) {
+			const quercus_selective_grant_t& selective = control.selective[id];
+			if (selective.prefix_ticks > QUERCUS_RUNAHEAD_MAX_TICKS || selective.batch_ticks == 0 ||
+				selective.batch_ticks > childsync::MAX_BATCH_TICKS)
+				return 3;
+			for (uint32_t index = 0; index < selective.prefix_ticks; index++) {
+				if ((selective.prefix_active[index / 64U] & (UINT64_C(1) << (index % 64U))) == 0) continue;
+				local_time_us += selective.prefix_delta_us[index];
+				ticks++;
+			}
+		}
+
+		if (!selective_mode && control.grant_mode == QUERCUS_GRANT_EXACT_RUNAHEAD) {
+			const uint32_t runahead_ticks = control.runahead_ticks;
+			if (!certify_quiet || runahead_ticks == 0 || runahead_ticks > QUERCUS_RUNAHEAD_MAX_TICKS) return 3;
+			if (grant_record_path != nullptr && id == 1) {
+				std::ofstream file(grant_record_path, std::ios::app);
+				file << "R" << runahead_ticks << "\n";
+			}
+			for (uint32_t index = 0; index < runahead_ticks; index++) {
+				const uint64_t word = control.runahead[id].active[index / 64U];
+				if ((word & (UINT64_C(1) << (index % 64U))) == 0) continue;
+				local_time_us += control.runahead[id].delta_us[index];
+				ticks++;
+			}
+
+			quercus_runahead_certificate_t& certificate = control.certificate[id];
+			certificate.now_us                          = local_time_us;
+			certificate.next_event_us                   = UINT64_MAX;
+			certificate.generation                      = last_seen;
+			childsync::store_release(certificate.valid, 1);
+
+			const uint32_t before = childsync::fetch_add_release(control.done_count, 1);
+			if (before + 1 == childsync::load_acquire(control.expected)) {
+				childsync::store_release(control.release, last_seen);
+				(void)childsync::futex_wake(control.release, 1);
+			}
+			continue;
+		}
+
+		const uint32_t batch_ticks = selective_mode ? control.selective[id].batch_ticks : control.batch_ticks;
 		if (batch_ticks == 0 || batch_ticks > childsync::MAX_BATCH_TICKS) return 3;
 		const uint16_t active_mask = control.active_mask[id];
 		if (grant_record_path != nullptr && id == 1) {
@@ -178,6 +233,7 @@ int main() {
 
 		for (uint32_t batch_index = 0; batch_index < batch_ticks; batch_index++) {
 			if ((active_mask & static_cast<uint16_t>(1U << batch_index)) != 0) {
+				local_time_us += control.delta_us[id][batch_index];
 				bool corrupt          = false;
 				bool message_received = false;
 				for (const rpc::Frame& frame : take_inbound(pages.to_child[batch_index], corrupt)) {
@@ -277,9 +333,18 @@ int main() {
 			}
 		}
 
+		if (certify_quiet) {
+			quercus_runahead_certificate_t& certificate = control.certificate[id];
+			certificate.now_us                          = local_time_us;
+			certificate.next_event_us                   = UINT64_MAX;
+			certificate.generation                      = last_seen;
+			childsync::store_release(certificate.valid, 1);
+		}
+
 		const uint32_t before = childsync::fetch_add_release(control.done_count, 1);
 		if (before + 1 == childsync::load_acquire(control.expected)) {
-			childsync::store_release(control.release, last_seen);
+			const uint32_t release_generation = selective_mode ? control.selective[id].generation : last_seen;
+			childsync::store_release(control.release, release_generation);
 			(void)childsync::futex_wake(control.release, 1);
 		}
 

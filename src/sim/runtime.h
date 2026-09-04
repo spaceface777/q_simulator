@@ -34,7 +34,9 @@ namespace sim {
 	// Strict mode barriers every tick; batched mode grants a fixed-size window at each barrier.
 
 	inline constexpr std::chrono::microseconds TICK_DURATION{1000};
-	inline constexpr uint32_t                  MAX_TICK_BATCH = static_cast<uint32_t>(childsync::MAX_BATCH_TICKS);
+	inline constexpr uint32_t                  MAX_TICK_BATCH     = static_cast<uint32_t>(childsync::MAX_BATCH_TICKS);
+	inline constexpr uint32_t                  MAX_RUNAHEAD_TICKS = QUERCUS_RUNAHEAD_MAX_TICKS;
+	inline constexpr uint32_t                  DEFAULT_RUNAHEAD_TICKS = 100;
 
 	// These delays count ticks executed by the requesting module, not global simulation ticks.
 	inline constexpr uint64_t RPC_RX_DELAY_LOCAL_TICKS = 1;
@@ -81,6 +83,11 @@ namespace sim {
 			rpc::Frame frame;
 		};
 
+		struct DeferredGrant {
+			bool     granted  = false;
+			uint32_t delta_us = 0;
+		};
+
 		struct Child {
 			module::ModuleId                       id;
 			childproc::Handle                      process;
@@ -102,12 +109,56 @@ namespace sim {
 			std::deque<PendingRpcResponse>         pending_responses;
 			platform::RpcWorkerPool                rpc_workers;
 			std::map<uint64_t, PendingRpcRequest>  rpc_work;
+			std::deque<DeferredGrant>              deferred_grants;
+			uint32_t                               wake_seq        = 0;
+			uint8_t                                scheduler_index = 0;
+			bool                                   selected        = false;
+		};
+
+		struct FutureGrant {
+			std::array<bool, MAX_RUNAHEAD_TICKS>     granted{};
+			std::array<bool, MAX_RUNAHEAD_TICKS>     skipped{};
+			std::array<uint32_t, MAX_RUNAHEAD_TICKS> delta_us{};
+		};
+
+		enum class BoundaryLimit : uint8_t {
+			CHILD_WAKE,
+			ENGINE_DELIVERY,
+			HARD_LOOKAHEAD_CAP,
+			CONSERVATIVE_FALLBACK,
+			COUNT,
+		};
+
+		struct BoundaryProbe {
+			uint32_t                                probed_ticks = 0;
+			BoundaryLimit                           limit        = BoundaryLimit::CONSERVATIVE_FALLBACK;
+			std::array<uint32_t, MODULE_TABLE_SIZE> child_horizon{};
+			std::array<bool, MODULE_TABLE_SIZE>     child_proven{};
+			std::array<bool, MODULE_TABLE_SIZE>     child_wake{};
+			std::array<bool, MODULE_TABLE_SIZE>     engine_delivery{};
+			std::array<bool, MODULE_TABLE_SIZE>     active{};
+
+			BoundaryProbe() { child_horizon.fill(UINT32_MAX); }
+		};
+
+		struct SynchronizationStats {
+			uint64_t                                                             logical_ticks          = 0;
+			uint64_t                                                             boundaries             = 0;
+			uint64_t                                                             current_child_wakeups  = 0;
+			uint64_t                                                             required_child_wakeups = 0;
+			std::array<uint64_t, MAX_RUNAHEAD_TICKS + 1>                         ticks_per_boundary{};
+			std::array<uint64_t, MODULE_TABLE_SIZE + 1>                          required_wake_set_sizes{};
+			std::array<uint64_t, static_cast<std::size_t>(BoundaryLimit::COUNT)> limits{};
+			std::array<uint64_t, MODULE_TABLE_SIZE>                              current_module_wakes{};
+			std::array<uint64_t, MODULE_TABLE_SIZE>                              required_module_wakes{};
 		};
 
 		uint64_t                      seed_;
 		std::chrono::milliseconds     connect_timeout_;
 		std::chrono::milliseconds     activation_timeout_;
 		uint32_t                      tick_batch_;
+		uint32_t                      runahead_cap_;
+		bool                          selective_sync_;
 		std::vector<module::ModuleId> active_modules_;
 		std::vector<Child>            children_;
 
@@ -128,8 +179,17 @@ namespace sim {
 		// fields are outbound snapshots; neither is ever read back to reconstruct time.
 		uint64_t                                global_tick_ = 0;
 		std::array<uint64_t, MODULE_TABLE_SIZE> module_ticks_{};
-		int64_t                                 budget_us_ = 0;
-		bool                                    running_   = false;
+		int64_t                                 budget_us_           = 0;
+		bool                                    running_             = false;
+		uint64_t                                runahead_windows_    = 0;
+		uint64_t                                runahead_ticks_      = 0;
+		uint64_t                                runahead_fallbacks_  = 0;
+		bool                                    sync_stats_enabled_  = false;
+		bool                                    sync_stats_modules_  = false;
+		bool                                    sync_stats_reported_ = false;
+		SynchronizationStats                    sync_stats_;
+		std::optional<BoundaryProbe>            pending_strict_probe_;
+		uint32_t                                selective_ticks_since_sync_ = 0;
 
 		// Smoothed simulated-over-real time: one slow frame is normal, a sustained shortfall is not.
 		double effective_speed_      = 0.0;
@@ -181,6 +241,15 @@ namespace sim {
 
 		void grant_tick(uint32_t batch_ticks);
 
+		[[nodiscard]] std::vector<FutureGrant> plan_future_grants(uint32_t ticks) const;
+
+		[[nodiscard]] uint32_t child_safe_horizon(const std::vector<FutureGrant>& grants, uint32_t max_ticks,
+												  BoundaryProbe* probe = nullptr) const;
+
+		[[nodiscard]] uint32_t parent_safe_horizon(uint32_t max_ticks, BoundaryProbe* probe = nullptr) const;
+
+		void grant_runahead(const std::vector<FutureGrant>& grants, uint32_t ticks);
+
 		// Blocks until every child has answered the barrier. A child that never answers is waited
 		// for, not killed, because skipping its tick would change the run.
 		void collect_acknowledgements();
@@ -189,12 +258,31 @@ namespace sim {
 
 		uint32_t step(uint32_t batch_ticks);
 
+		uint32_t step_exact(uint32_t max_ticks);
+
+		uint32_t step_selective(uint32_t batch_ticks);
+
+		void grant_selective(const std::vector<FutureGrant>& grants, uint32_t batch_ticks,
+							 const std::vector<bool>& selected);
+
+		[[nodiscard]] bool selective_child_due(const Child& child, const FutureGrant& grant,
+											   uint32_t batch_ticks) const;
+
+		void capture_active_modules(BoundaryProbe& probe) const;
+
+		void mark_required_child_wakes(BoundaryProbe& probe, uint32_t boundary_ticks) const;
+
+		void record_synchronization(uint32_t logical_ticks, BoundaryProbe probe);
+
+		void report_synchronization_stats();
+
 		void report_pacing(std::chrono::microseconds elapsed, double speed, uint64_t ticks_advanced);
 
 	public:
 		// Governs every ordering decision, and is handed to every application at launch.
 		explicit Runtime(uint64_t seed, std::chrono::milliseconds connect_timeout = CONNECT_TIMEOUT,
-						 std::chrono::milliseconds activation_timeout = ACTIVATION_TIMEOUT, uint32_t tick_batch = 1);
+						 std::chrono::milliseconds activation_timeout = ACTIVATION_TIMEOUT, uint32_t tick_batch = 1,
+						 uint32_t runahead_cap = 0, bool selective_sync = false);
 
 		~Runtime();
 
@@ -223,6 +311,12 @@ namespace sim {
 		[[nodiscard]] uint64_t tick() const noexcept { return global_tick_; }
 
 		[[nodiscard]] uint64_t module_tick(module::ModuleId id) const noexcept { return module_ticks_[id.raw()]; }
+
+		[[nodiscard]] uint64_t runahead_windows() const noexcept { return runahead_windows_; }
+
+		[[nodiscard]] uint64_t runahead_ticks() const noexcept { return runahead_ticks_; }
+
+		[[nodiscard]] uint64_t runahead_fallbacks() const noexcept { return runahead_fallbacks_; }
 
 		// Once true, the run grants no further ticks, so the world stays in the state that failed.
 		[[nodiscard]] bool failed() const noexcept;

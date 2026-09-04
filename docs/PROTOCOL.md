@@ -24,6 +24,14 @@ A request uses a unique `call_id`. A confirmable request receives one response w
 
 The simulator supplies one inbound and one outbound mailbox for each relative tick in the granted batch. The sender writes only while the other process is blocked at the lockstep barrier.
 
+Exact runahead does not use intermediate mailboxes. Its grant contains a 100-tick bit mask and one exact clock delta for each global tick.
+
+At each barrier, the child publishes the current local time and the next possible Zephyr execution time. The certificate names the completed barrier generation.
+
+The parent accepts only a current certificate. It sends a runahead grant only when all child and parent boundaries are later than the grant.
+
+An application must not send an RPC during an exact-runahead grant. The native_sim transport treats this condition as a certificate error.
+
 ## Receiving
 
 The receiver validates the mailbox slot offsets before it reads frame bytes. It then validates the header and waits for the complete payload. An invalid mailbox or frame stops the run because the two processes no longer share a valid protocol state.

@@ -25,6 +25,7 @@ add_executable(tests
     sim/test_applet_e2e.cpp
     sim/test_determinism.cpp
     sim/test_runtime.cpp
+	    sim/test_runahead.cpp
     sim/test_scenarios.cpp
     sim/test_speed_invariance.cpp
     world/test_world.cpp

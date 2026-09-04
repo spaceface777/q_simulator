@@ -174,7 +174,8 @@ namespace platform {
 		std::map<std::pair<uint8_t, uint32_t>, uint64_t> hardware_event_draw_ordinals_;
 		std::vector<PendingHardwareEvent>                pending_hardware_events_;
 
-		world::State* world_ = nullptr;
+		world::State* world_                   = nullptr;
+		bool          emit_application_output_ = true;
 
 		std::vector<Diagnostic> diagnostics_;
 
@@ -208,6 +209,10 @@ namespace platform {
 
 	public:
 		explicit Manager(world::State& world);
+
+		// Makes a deterministic parent-side lookahead copy. It has independent world, network, event,
+		// and RNG state and suppresses console output while it is advanced speculatively.
+		[[nodiscard]] Manager clone_for_lookahead(world::State& world) const;
 
 		// Exposed for tests; parse_settings drives this normally.
 		void add_module(module::ModuleId id);

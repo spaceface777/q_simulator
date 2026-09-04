@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <climits>
+#include <csignal>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
@@ -108,6 +111,51 @@ namespace {
 			ASSERT_EQ(::waitpid(pid, &status, 0), pid);
 			EXPECT_TRUE(WIFEXITED(status));
 			EXPECT_EQ(WEXITSTATUS(status), 0);
+		}
+	}
+
+	TEST(Barrier, SelectiveWakeSequenceIgnoresUnrelatedBankNotifications) {
+		constexpr uint32_t            CHILDREN = 40;
+		const std::array<uint32_t, 4> selected{0, 7, 32, 39};
+		childsync::SharedControl      shared;
+		childsync::Control&           control = shared.get();
+		std::vector<pid_t>            pids;
+		for (uint32_t index = 0; index < CHILDREN; index++) {
+			control.scheduler_index[index] = static_cast<uint8_t>(index);
+			const pid_t pid                = ::fork();
+			ASSERT_GE(pid, 0);
+			if (pid == 0) {
+				const uint32_t bank = index / 32U;
+				const uint32_t mask = UINT32_C(1) << (index % 32U);
+				while (childsync::load_acquire(control.wake_seq[index]) == 0) {
+					const uint32_t observed = childsync::load_acquire(control.futex_bank[bank]);
+					if (childsync::load_acquire(control.wake_seq[index]) != 0) break;
+					(void)childsync::futex_wait_bitset(control.futex_bank[bank], observed, mask, PATIENT);
+				}
+				(void)childsync::fetch_add_release(control.done_count, 1);
+				::_exit(0);
+			}
+			pids.push_back(pid);
+		}
+
+		std::array<uint32_t, 2> masks{};
+		for (const uint32_t index : selected) {
+			childsync::store_release(control.wake_seq[index], 1);
+			masks[index / 32U] |= UINT32_C(1) << (index % 32U);
+		}
+		for (uint32_t bank = 0; bank < masks.size(); bank++) {
+			childsync::store_release(control.futex_bank[bank], 1);
+			ASSERT_GE(childsync::futex_wake_bitset(control.futex_bank[bank], INT_MAX, masks[bank]), 0);
+		}
+		for (uint32_t attempt = 0; attempt < 1000 && childsync::load_acquire(control.done_count) != selected.size();
+			 attempt++)
+			::usleep(1000);
+		EXPECT_EQ(childsync::load_acquire(control.done_count), selected.size());
+
+		for (uint32_t index = 0; index < CHILDREN; index++) {
+			if (std::ranges::find(selected, index) == selected.end()) (void)::kill(pids[index], SIGKILL);
+			int status = 0;
+			ASSERT_EQ(::waitpid(pids[index], &status, 0), pids[index]);
 		}
 	}
 

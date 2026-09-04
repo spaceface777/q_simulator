@@ -59,10 +59,13 @@ namespace {
 			::unsetenv("FAKE_CHILD_STARTUP_RPC");
 			::unsetenv("FAKE_CHILD_RECORD");
 			::unsetenv("FAKE_CHILD_RECORD_TICKS");
+			::unsetenv("FAKE_CHILD_CERTIFY_QUIET");
 			::unsetenv("FAKE_CHILD_GRANT_RECORD");
 			::unsetenv("FAKE_CHILD_STATUS_RECORD");
 			::unsetenv("FAKE_CHILD_MUTANT");
 			::unsetenv("FAKE_CHILD_REPLY_TO_MESSAGE");
+			::unsetenv("QSIM_RUNAHEAD_STATS");
+			::unsetenv("QSIM_RUNAHEAD_STATS_MODULES");
 		}
 
 		void SetUp() override {
@@ -424,6 +427,153 @@ TEST_F(RuntimeTest, GrantsMultipleTicksInOneBarrierWhenClockSkipsAreDisabled) {
 	fs::remove(record);
 }
 
+TEST_F(RuntimeTest, ExactRunaheadUsesOneCompactGrantAndCommitsEveryLogicalTick) {
+	const fs::path record = fs::temp_directory_path() / ("quercus_runahead_grants_" + std::to_string(::getpid()));
+	fs::remove(record);
+	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
+	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
+	::setenv("FAKE_CHILD_GRANT_RECORD", record.c_str(), 1);
+
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, 100);
+	ASSERT_NO_THROW(runtime.start());
+	fs::remove(record);
+	const uint64_t global_before = runtime.tick();
+	const uint64_t local_before  = runtime.module_tick(module::ModuleId{FIRST});
+	runtime.advance(std::chrono::milliseconds(100), 1.0, std::chrono::seconds(5));
+	runtime.stop();
+
+	EXPECT_EQ(runtime.tick() - global_before, 100u);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{FIRST}) - local_before, 100u);
+	EXPECT_EQ(runtime.runahead_windows(), 1u);
+	EXPECT_GE(runtime.runahead_ticks(), 90u);
+
+	std::ifstream grants(record);
+	std::string   line;
+	bool          saw_compact_grant = false;
+	while (std::getline(grants, line)) {
+		if (!line.empty() && line.front() == 'R') saw_compact_grant = true;
+	}
+	EXPECT_TRUE(saw_compact_grant);
+	fs::remove(record);
+}
+
+TEST_F(RuntimeTest, ExactRunaheadInstrumentationIsDisabledByDefault) {
+	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
+	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, 100);
+	ASSERT_NO_THROW(runtime.start());
+	runtime.advance(std::chrono::milliseconds(10), 1.0, std::chrono::seconds(5));
+	testing::internal::CaptureStderr();
+	runtime.stop();
+	EXPECT_EQ(testing::internal::GetCapturedStderr().find("synchronization performance:"), std::string::npos);
+}
+
+TEST_F(RuntimeTest, ExactRunaheadInstrumentationReportsBoundaryAndWakeDistributions) {
+	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
+	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
+	::setenv("QSIM_RUNAHEAD_STATS", "1", 1);
+	::setenv("QSIM_RUNAHEAD_STATS_MODULES", "1", 1);
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, 100);
+	ASSERT_NO_THROW(runtime.start());
+	runtime.advance(std::chrono::milliseconds(10), 1.0, std::chrono::seconds(5));
+	testing::internal::CaptureStderr();
+	runtime.stop();
+	const std::string report = testing::internal::GetCapturedStderr();
+	EXPECT_NE(report.find("logical_ticks="), std::string::npos);
+	EXPECT_NE(report.find("sync_boundaries="), std::string::npos);
+	EXPECT_NE(report.find("ticks_between_sync_histogram="), std::string::npos);
+	EXPECT_NE(report.find("required_wake_set_histogram="), std::string::npos);
+	EXPECT_NE(report.find("wake_amplification_ratio="), std::string::npos);
+	EXPECT_NE(report.find("boundary_limit_hard_lookahead_cap="), std::string::npos);
+	EXPECT_NE(report.find("per_module_wakes="), std::string::npos);
+}
+
+TEST_F(RuntimeTest, ExactRunaheadFallsBackToStrictWhenAChildHasNoCertificate) {
+	const fs::path record = fs::temp_directory_path() / ("quercus_runahead_fallback_" + std::to_string(::getpid()));
+	fs::remove(record);
+	::setenv("FAKE_CHILD_GRANT_RECORD", record.c_str(), 1);
+
+	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, 100);
+	ASSERT_NO_THROW(runtime.start());
+	fs::remove(record);
+	runtime.advance(std::chrono::milliseconds(4), 1.0, std::chrono::seconds(5));
+	runtime.stop();
+
+	EXPECT_EQ(runtime.runahead_windows(), 0u);
+	EXPECT_EQ(runtime.runahead_fallbacks(), 4u);
+	std::ifstream grants(record);
+	std::string   line;
+	for (int tick = 0; tick < 4; tick++) {
+		ASSERT_TRUE(std::getline(grants, line));
+		EXPECT_EQ(line, "1:1");
+	}
+	EXPECT_FALSE(std::getline(grants, line));
+	fs::remove(record);
+}
+
+TEST_F(RuntimeTest, ExactRunaheadAndStrictModeProduceByteIdenticalSkippedTickTraces) {
+	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
+	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
+	settings::set_setting("module_tick_skip_mean_ppm", 300'000.0);
+	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
+	settings::set_setting("module_clock_drift_sd_ppm", 137.0);
+
+	const auto execute = [](uint32_t runahead_cap, const std::string& suffix) {
+		const fs::path path =
+			fs::temp_directory_path() / ("quercus_exact_skip_" + std::to_string(::getpid()) + suffix + ".ndjson");
+		fs::remove(path);
+		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, runahead_cap);
+		runtime.trace_to(path.string(), {});
+		runtime.start();
+		runtime.advance(std::chrono::milliseconds(300), 1.0, std::chrono::seconds(5));
+		runtime.stop();
+		std::ifstream      input(path, std::ios::binary);
+		std::ostringstream contents;
+		contents << input.rdbuf();
+		fs::remove(path);
+		return contents.str();
+	};
+
+	const std::string strict = execute(0, "_strict");
+	const std::string exact  = execute(100, "_exact");
+	EXPECT_FALSE(strict.empty());
+	EXPECT_EQ(exact, strict);
+}
+
+TEST_F(RuntimeTest, LtlFailureInsideExactRunaheadStopsAtTheStrictTickAndKeepsTheTraceIdentical) {
+	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
+	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
+
+	const auto execute = [](uint32_t runahead_cap, const std::string& suffix) {
+		const fs::path path =
+			fs::temp_directory_path() / ("quercus_exact_ltl_" + std::to_string(::getpid()) + suffix + ".ndjson");
+		fs::remove(path);
+		ltl::File    properties = ltl::parse("prop fails during [10ms, 20ms] = always false;", "exact.spec");
+		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, runahead_cap);
+		runtime.load_properties(std::move(properties), 20, "exact.spec");
+		runtime.trace_to(path.string(), {});
+		runtime.start();
+		runtime.advance(std::chrono::milliseconds(50), 1.0, std::chrono::seconds(5));
+		const auto results = runtime.property_results();
+		EXPECT_TRUE(runtime.failed());
+		EXPECT_EQ(runtime.tick(), 11u);
+		EXPECT_EQ(results.size(), 1u);
+		if (!results.empty()) {
+			EXPECT_EQ(results.front().decisive_tick, 10u);
+		}
+		runtime.stop();
+		std::ifstream      input(path, std::ios::binary);
+		std::ostringstream contents;
+		contents << input.rdbuf();
+		fs::remove(path);
+		return contents.str();
+	};
+
+	const std::string strict = execute(0, "_strict");
+	const std::string exact  = execute(100, "_exact");
+	EXPECT_EQ(exact, strict);
+}
+
 TEST_F(RuntimeTest, UsesRequestedBatchWhenClockSkipsAreEnabled) {
 	settings::set_setting("module_tick_skip_mean_ppm", 500'000.0);
 	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
@@ -457,6 +607,35 @@ TEST_F(RuntimeTest, UsesRequestedBatchWhenClockSkipsAreEnabled) {
 	EXPECT_EQ(grant.substr(0, 2), "5:");
 	EXPECT_NE(grant, "5:31");
 	fs::remove(grant_path);
+}
+
+TEST_F(RuntimeTest, SelectiveSynchronizationMatchesReferenceForEveryBatchSize) {
+	settings::set_setting("module_tick_skip_mean_ppm", 250'000.0);
+	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
+	settings::set_setting("module_clock_drift_sd_ppm", 137.0);
+	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
+	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
+
+	const auto execute = [](uint32_t batch, bool selective) {
+		const fs::path path =
+			fs::temp_directory_path() / ("quercus_selective_" + std::to_string(::getpid()) + "_" +
+										 std::to_string(batch) + (selective ? "_new" : "_v0") + ".ndjson");
+		fs::remove(path);
+		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch, 0, selective);
+		runtime.start();
+		runtime.trace_to(path.string(), {});
+		runtime.advance(std::chrono::milliseconds(batch * 12), 1.0, std::chrono::seconds(10));
+		runtime.stop();
+		std::ifstream      input(path, std::ios::binary);
+		std::ostringstream bytes;
+		bytes << input.rdbuf();
+		fs::remove(path);
+		return bytes.str();
+	};
+
+	for (uint32_t batch = 1; batch <= sim::MAX_TICK_BATCH; batch++) {
+		EXPECT_EQ(execute(batch, true), execute(batch, false)) << "batch " << batch;
+	}
 }
 
 TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossBatchSizes) {
