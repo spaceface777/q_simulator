@@ -7,7 +7,6 @@ let big_belt = m.big_belt_speed;
 let left_emitter = m.left_laser_enabled;
 let cyan_led = led == 0x00ffff;
 let black_led = led == 0x000000;
-let response_to_request = rpc_response_to(request);
 
 // === Safety: the detected failure is latched and leaves the mechanism safe ===
 
@@ -42,7 +41,7 @@ prop every_confirmable_request_receives_its_correlated_response_promptly =
     always (
         forall request in rpc_requests(m):
             request.confirmable
-            -> (eventually[0ms, 50ms] (response_to_request.status == .ok))
+            -> (eventually[0ms, 50ms] (rpc_response_to(request).status == .ok))
     );
 
 prop laser_failure_latches_and_parks_the_module =
@@ -88,7 +87,7 @@ prop blocked_beam_is_classified_from_a_successful_detector_read =
         exists request in rpc_requests(m):
             request.cmd == .rpc_cmd_laser_left_detect
             && (eventually[0ms, 50ms] (
-                response_to_request.status == .ok
-                && response_to_request.payload == "\x00"
+                rpc_response_to(request).status == .ok
+                && rpc_response_to(request).payload == "\x00"
             ))
     );

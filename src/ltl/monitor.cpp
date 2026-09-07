@@ -161,12 +161,34 @@ namespace ltl {
 
 		std::string render_formula(const Formula& formula);
 
+		const char* value_operator(Value::Operator operation) {
+			switch (operation) {
+			case Value::Operator::NEGATE:      return "-";
+			case Value::Operator::BIT_NOT:     return "~";
+			case Value::Operator::ADD:         return "+";
+			case Value::Operator::SUBTRACT:    return "-";
+			case Value::Operator::MULTIPLY:    return "*";
+			case Value::Operator::DIVIDE:      return "/";
+			case Value::Operator::MODULO:      return "%";
+			case Value::Operator::SHIFT_LEFT:  return "<<";
+			case Value::Operator::SHIFT_RIGHT: return ">>";
+			case Value::Operator::BIT_AND:     return "&";
+			case Value::Operator::BIT_XOR:     return "^";
+			case Value::Operator::BIT_OR:      return "|";
+			case Value::Operator::NONE:        break;
+			}
+			return "?";
+		}
+
 		void append_value_key(std::ostringstream& output, const Value& value) {
 			output << static_cast<unsigned>(value.kind) << ':' << static_cast<unsigned>(value.type) << ':';
 			switch (value.kind) {
 			case Value::Kind::BOOLEAN: output << value.boolean; break;
-			case Value::Kind::NUMBER:  output << std::setprecision(17) << value.number; break;
-			case Value::Kind::COLOR:   output << value.color; break;
+			case Value::Kind::NUMBER:
+				if (value.is_integer) output << value.integer;
+				else output << std::setprecision(17) << value.number;
+				break;
+			case Value::Kind::COLOR: output << value.color; break;
 			case Value::Kind::BYTES:
 				output << value.bytes.size() << ':';
 				for (const uint8_t byte : value.bytes) output << static_cast<unsigned>(byte) << ',';
@@ -189,6 +211,31 @@ namespace ltl {
 			case Value::Kind::MEMBER:
 				append_value_key(output, *value.base);
 				output << '.' << value.text;
+				break;
+			case Value::Kind::INDEX:
+				append_value_key(output, *value.base);
+				output << '[';
+				append_value_key(output, *value.arguments[0]);
+				output << ']';
+				break;
+			case Value::Kind::SLICE:
+				append_value_key(output, *value.base);
+				output << '[';
+				append_value_key(output, *value.arguments[0]);
+				output << ':';
+				append_value_key(output, *value.arguments[1]);
+				output << ']';
+				break;
+			case Value::Kind::UNARY:
+				output << value_operator(value.operation);
+				append_value_key(output, *value.base);
+				break;
+			case Value::Kind::BINARY:
+				output << '(';
+				append_value_key(output, *value.base);
+				output << value_operator(value.operation);
+				append_value_key(output, *value.arguments[0]);
+				output << ')';
 				break;
 			}
 		}
@@ -229,7 +276,10 @@ namespace ltl {
 		void render_value(std::ostringstream& output, const Value& value) {
 			switch (value.kind) {
 			case Value::Kind::BOOLEAN: output << (value.boolean ? "true" : "false"); break;
-			case Value::Kind::NUMBER:  output << std::setprecision(17) << value.number; break;
+			case Value::Kind::NUMBER:
+				if (value.is_integer) output << value.integer;
+				else output << std::setprecision(17) << value.number;
+				break;
 			case Value::Kind::COLOR:
 				output << "0x" << std::hex << std::setw(6) << std::setfill('0') << value.color << std::dec;
 				break;
@@ -267,6 +317,31 @@ namespace ltl {
 			case Value::Kind::MEMBER:
 				render_value(output, *value.base);
 				output << '.' << value.text;
+				break;
+			case Value::Kind::INDEX:
+				render_value(output, *value.base);
+				output << '[';
+				render_value(output, *value.arguments[0]);
+				output << ']';
+				break;
+			case Value::Kind::SLICE:
+				render_value(output, *value.base);
+				output << '[';
+				render_value(output, *value.arguments[0]);
+				output << ':';
+				render_value(output, *value.arguments[1]);
+				output << ']';
+				break;
+			case Value::Kind::UNARY:
+				output << value_operator(value.operation);
+				render_value(output, *value.base);
+				break;
+			case Value::Kind::BINARY:
+				output << '(';
+				render_value(output, *value.base);
+				output << ' ' << value_operator(value.operation) << ' ';
+				render_value(output, *value.arguments[0]);
+				output << ')';
 				break;
 			}
 		}
@@ -402,11 +477,14 @@ namespace ltl {
 			result->type         = value.type;
 			result->text         = value.text;
 			result->number       = value.number;
+			result->integer      = value.integer;
+			result->is_integer   = value.is_integer;
 			result->color        = value.color;
 			result->bytes        = value.bytes;
 			result->entity_id    = value.entity_id;
 			result->enum_value   = value.enum_value;
 			result->symbol       = value.symbol;
+			result->operation    = value.operation;
 			result->boolean      = value.boolean;
 			result->binding      = value.binding;
 			result->binding_type = value.binding_type;

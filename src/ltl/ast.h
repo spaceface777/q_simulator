@@ -50,6 +50,26 @@ namespace ltl {
 			NAME,
 			CALL,
 			MEMBER,
+			INDEX,
+			SLICE,
+			UNARY,
+			BINARY,
+		};
+
+		enum class Operator : uint8_t {
+			NONE,
+			NEGATE,
+			BIT_NOT,
+			ADD,
+			SUBTRACT,
+			MULTIPLY,
+			DIVIDE,
+			MODULO,
+			SHIFT_LEFT,
+			SHIFT_RIGHT,
+			BIT_AND,
+			BIT_XOR,
+			BIT_OR,
 		};
 
 		enum class Symbol : uint8_t {
@@ -59,6 +79,15 @@ namespace ltl {
 			AT_POSITION,
 			APPEARED,
 			DISAPPEARED,
+			PHYSICAL_EXIT,
+			EXIT_CAUSE,
+			EXIT_ENDPOINT,
+			EXIT_MODULE,
+			EXIT_TIME,
+			EXIT_DATA,
+			EXIT_UID,
+			INITIAL_DATA,
+			INITIAL_UID,
 			ENTERED,
 			LEFT,
 			CHANGED,
@@ -67,6 +96,9 @@ namespace ltl {
 			MODULE,
 			CMD,
 			PAYLOAD,
+			DATA,
+			UID,
+			LENGTH,
 			CONFIRMABLE,
 			REQUEST,
 			STATUS,
@@ -91,12 +123,15 @@ namespace ltl {
 		Span                                span;
 		ValueType                           type = ValueType::UNKNOWN;
 		std::string                         text;
-		double                              number = 0.0;
-		uint32_t                            color  = 0;
+		double                              number     = 0.0;
+		int64_t                             integer    = 0;
+		bool                                is_integer = false;
+		uint32_t                            color      = 0;
 		std::vector<uint8_t>                bytes;
 		uint64_t                            entity_id  = 0;
 		int64_t                             enum_value = 0;
 		Symbol                              symbol     = Symbol::NONE;
+		Operator                            operation  = Operator::NONE;
 		bool                                boolean    = false;
 		std::unique_ptr<Value>              base;
 		std::vector<std::unique_ptr<Value>> arguments;

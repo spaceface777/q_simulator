@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <sstream>
@@ -155,6 +156,50 @@ break" == "";)")
 	EXPECT_NE(error_from(R"(prop p = "\q" == "";)").find("unknown byte escape"), std::string::npos);
 	EXPECT_NE(error_from(R"(prop p = "\x0" == "";)").find("requires exactly two hexadecimal digits"),
 			  std::string::npos);
+}
+
+TEST(LtlParser, LoadsImportsFromTheTopOfTheFile) {
+	const std::filesystem::path directory = std::filesystem::temp_directory_path() / "q_simulator_ltl_import_test";
+	std::filesystem::remove_all(directory);
+	std::filesystem::create_directories(directory);
+	{
+		std::ofstream common(directory / "common.spec");
+		common << "let valid_header(request) = request.payload[0:4] == \"QFB2\";\n";
+	}
+
+	const std::string source = R"(import "common.spec";
+prop framed = forall request in rpc_requests(module(1)): valid_header(request);
+)";
+	ltl::File         file   = ltl::parse(source, (directory / "scenario.spec").string());
+	ltl::type_check(file, ltl::TypeEnvironment{{1}}, (directory / "scenario.spec").string());
+	EXPECT_EQ(file.properties.size(), 1u);
+
+	try {
+		(void)ltl::parse("prop first = true; import \"common.spec\";", (directory / "late.spec").string());
+		FAIL() << "expected a late import error";
+	} catch (const std::invalid_argument& error) {
+		EXPECT_NE(std::string(error.what()).find("imports must be at the top"), std::string::npos);
+	}
+	std::filesystem::remove_all(directory);
+}
+
+TEST(LtlParser, SupportsParameterizedAliasesAndCValuePrecedence) {
+	ltl::File file = compile(R"(
+let kind = 3;
+let sequence(payload) = payload[2] | (payload[3] << 8);
+let matches(req, event) = req.payload.length >= 4
+    && event.payload.length >= 4
+    && event.payload[0] == kind
+    && sequence(event.payload) == sequence(req.payload);
+prop p = forall req in rpc_requests(module(1)):
+    exists event in rpc_events(module(1)): matches(req, event);
+prop precedence = (4 & 12 >> 2) == 0 && ((4 & 12) >> 2) == 1;
+prop integer_hex = (0xffu << 8) == 65280;
+)");
+	EXPECT_EQ(file.properties.size(), 3u);
+	EXPECT_NE(error_from("let bad = request.payload; prop p = true;").find("explicit parameter"), std::string::npos);
+	EXPECT_NE(error_from("let f(a, a) = true; prop p = true;").find("duplicate alias parameter"), std::string::npos);
+	EXPECT_NE(error_from("let f(a) = a; prop p = f();").find("expects 1 arguments"), std::string::npos);
 }
 
 TEST(LtlParser, ParsesAliasesFieldsAndPredicates) {

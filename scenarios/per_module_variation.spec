@@ -13,10 +13,8 @@ prop each_tub_remains_on_its_own_module =
     always (at_module(t5, m5) && at_module(t12, m12));
 
 prop every_present_tub_belongs_to_a_layout_module =
-    always (
-        forall tub: Tub:
-            present(tub)
-            -> (exists owner: Module: at_module(tub, owner))
+    always (forall tub: Tub:
+        present(tub) -> (exists owner: Module: at_module(tub, owner))
     );
 
 prop exactly_the_two_scheduled_tubs_remain_present =
@@ -25,38 +23,35 @@ prop exactly_the_two_scheduled_tubs_remain_present =
     );
 
 prop every_module_keeps_both_laser_emitters_enabled_while_moving =
-    always (
-        forall module: Module:
-            (module.small_belt_speed != 0.0 || module.big_belt_speed != 0.0)
-            -> (module.left_laser_enabled && module.right_laser_enabled)
+    always (forall module: Module:
+        (module.small_belt_speed != 0.0 || module.big_belt_speed != 0.0)
+        -> (module.left_laser_enabled && module.right_laser_enabled)
     );
 
 prop every_module_uses_only_the_applets_command_set =
-    always (
-        forall module: Module:
-            (
-                (module.small_belt_speed == -100.0
-                    || module.small_belt_speed == 0.0
-                    || module.small_belt_speed == 100.0)
-                && (module.big_belt_speed == -100.0
-                    || module.big_belt_speed == 0.0
-                    || module.big_belt_speed == 100.0)
-                && (module.servo_angle == 0.0
-                    || module.servo_angle == 60.0
-                    || module.servo_angle == 120.0)
-                && module.servo_physical_angle >= 0.0
-                && module.servo_physical_angle <= 120.0
-            )
+    always (forall module: Module:
+        (
+            (module.small_belt_speed == -100.0
+                || module.small_belt_speed == 0.0
+                || module.small_belt_speed == 100.0)
+            && (module.big_belt_speed == -100.0
+                || module.big_belt_speed == 0.0
+                || module.big_belt_speed == 100.0)
+            && (module.servo_angle == 0.0
+                || module.servo_angle == 60.0
+                || module.servo_angle == 120.0)
+            && module.servo_physical_angle >= 0.0
+            && module.servo_physical_angle <= 120.0
+        )
     );
 
 prop every_delivered_response_is_successful_and_correlated =
-    always (
-        forall module: Module:
-            (forall response in rpc_responses(module):
-                response.status == .ok
-                && response.module == module
-                && response.request.module == module
-                && response.cmd == response.request.cmd)
+    always (forall module: Module:
+        (forall response in rpc_responses(module):
+            response.status == .ok
+            && response.module == module
+            && response.request.module == module
+            && response.cmd == response.request.cmd)
     );
 
 prop every_route_event_matches_the_modules_physical_input =

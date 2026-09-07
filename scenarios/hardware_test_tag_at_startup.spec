@@ -6,7 +6,6 @@ let left_off = !left_emitter;
 let magenta_led = led == 0xff00ff;
 let black_led = led == 0x000000;
 let white_led = led == 0xffffff;
-let response_to_request = rpc_response_to(request);
 
 // === Safety: the startup violation is latched and leaves the mechanism safe ===
 
@@ -31,7 +30,7 @@ prop every_confirmable_request_receives_its_correlated_response_promptly =
     always (
         forall request in rpc_requests(m):
             request.confirmable
-            -> (eventually[0ms, 50ms] (response_to_request.status == .ok))
+            -> (eventually[0ms, 50ms] (rpc_response_to(request).status == .ok))
     );
 
 prop rfid_failure_latches_and_parks_the_module =
@@ -86,7 +85,7 @@ prop startup_tag_is_classified_from_a_successful_rfid_read =
         exists request in rpc_requests(m):
             request.cmd == .rpc_cmd_rfid_get_uid
             && (eventually[0ms, 50ms] (
-                response_to_request.status == .ok
-                && response_to_request.payload == "\x01\x00\x00\x00\x00\x00\x00"
+                rpc_response_to(request).status == .ok
+                && rpc_response_to(request).payload == "\x01\x00\x00\x00\x00\x00\x00"
             ))
     );

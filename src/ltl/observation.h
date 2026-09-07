@@ -51,8 +51,20 @@ namespace ltl {
 		world::Belt                    belt        = world::Belt::BIG;
 		int64_t                        position_um = 0;
 		std::optional<world::Position> position;
+		std::vector<uint8_t>           uid;
+		std::vector<uint8_t>           data;
 
 		bool operator==(const TubSnapshot&) const = default;
+	};
+
+	struct TubExit {
+		uint16_t                tub           = 0;
+		uint16_t                source_module = 0;
+		int8_t                  endpoint      = -1; // 0 left, 1 middle, 2 right; unavailable for non-physical removal.
+		world::TubRemovalReason cause         = world::TubRemovalReason::EXPLICIT;
+		uint64_t                tick          = 0;
+		std::vector<uint8_t>    uid;
+		std::vector<uint8_t>    data;
 	};
 
 	struct TubPosition {
@@ -141,6 +153,8 @@ namespace ltl {
 		[[nodiscard]] const RpcRequest*  rpc_request(uint64_t id) const;
 		[[nodiscard]] const RpcResponse* rpc_response_to(uint64_t request_id) const;
 		[[nodiscard]] const RpcEvent*    rpc_event(uint64_t id) const;
+		[[nodiscard]] const TubExit*     tub_exit(uint16_t id) const;
+		[[nodiscard]] const TubSnapshot* initial_tub(uint16_t id) const;
 
 		// Evaluates a typed ground atom or comparison. This is suitable for Monitor::observe().
 		[[nodiscard]] bool evaluate(const Formula& atom) const;
@@ -183,6 +197,8 @@ namespace ltl {
 		[[nodiscard]] const RpcRequest*  rpc_request(uint64_t id) const;
 		[[nodiscard]] const RpcResponse* rpc_response_to(uint64_t request_id, uint64_t observation_tick) const;
 		[[nodiscard]] const RpcEvent*    rpc_event(uint64_t id, uint64_t observation_tick) const;
+		[[nodiscard]] const TubExit*     tub_exit(uint16_t id, uint64_t observation_tick) const;
+		[[nodiscard]] const TubSnapshot* initial_tub(uint16_t id) const;
 
 	private:
 		std::vector<module::ModuleId>             module_ids_;
@@ -192,6 +208,8 @@ namespace ltl {
 		std::unordered_map<uint64_t, RpcRequest>  rpc_request_registry_;
 		std::unordered_map<uint64_t, RpcResponse> rpc_response_registry_;
 		std::unordered_map<uint64_t, RpcEvent>    rpc_event_registry_;
+		std::unordered_map<uint16_t, TubExit>     tub_exit_registry_;
+		std::unordered_map<uint16_t, TubSnapshot> initial_tub_registry_;
 	};
 
 } // namespace ltl

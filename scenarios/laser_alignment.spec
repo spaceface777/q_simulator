@@ -16,7 +16,7 @@ let recovering_dim = servo_center && yellow_dim;
 let recovering_bright = servo_center && yellow_bright;
 let recovering = recovering_dim || recovering_bright;
 let left_blocked_bright = servo_left && blue_bright;
-let confirmable_request_succeeds = !q.confirmable || (F[0ms, 50ms] (rpc_response_to(q).status == .ok));
+let confirmable_request_succeeds(q) = q.confirmable -> (F[0ms, 50ms] (rpc_response_to(q).status == .ok));
 
 // === Safety: this diagnostic only observes tubs and drives display actuators ===
 
@@ -47,7 +47,7 @@ prop every_response_is_successful_and_correlated_to_this_module = G (
 );
 
 prop every_confirmable_request_receives_its_response_promptly =
-    G (\A q in rpc_requests(m): confirmable_request_succeeds);
+    G (\A q in rpc_requests(m): confirmable_request_succeeds(q));
 
 prop detector_responses_contain_exactly_one_boolean_byte = G (
     \A r in rpc_responses(m):

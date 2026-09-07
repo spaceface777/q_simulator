@@ -14,9 +14,7 @@ let left_off = !left_emitter;
 let belts_stopped = small_stopped && big_stopped;
 let actuators_parked = belts_stopped && servo_home;
 let emitters_enabled = left_emitter && right_emitter;
-let response_to_request = rpc_response_to(request);
-let response_to_retry = rpc_response_to(retry);
-let periodic_request =
+let periodic_request(request) =
     request.cmd == .rpc_cmd_heartbeat
     || request.cmd == .rpc_cmd_laser_left_detect
     || request.cmd == .rpc_cmd_laser_right_detect
@@ -84,7 +82,7 @@ prop every_confirmable_request_is_initially_undelivered =
     always (
         forall request in rpc_requests(m):
             request.confirmable
-            -> (response_to_request.status == .undelivered)
+            -> (rpc_response_to(request).status == .undelivered)
     );
 
 // The async phase intentionally runs heartbeat, detector, and RFID requests through the finite
@@ -93,9 +91,9 @@ prop every_confirmable_request_is_initially_undelivered =
 prop every_non_periodic_confirmable_request_receives_a_response_promptly =
     always (
         forall request in rpc_requests(m):
-            (request.confirmable && !periodic_request)
+            (request.confirmable && !periodic_request(request))
             -> (eventually[0ms, 50ms] (
-                response_to_request.status != .undelivered
+                rpc_response_to(request).status != .undelivered
             ))
     );
 
@@ -107,7 +105,7 @@ prop every_retryable_response_is_followed_by_a_successful_same_command_retry =
                 exists retry in rpc_requests(m):
                     retry.cmd == response.cmd
                     && (eventually[0ms, 50ms] (
-                        response_to_retry.status == .ok
+                        rpc_response_to(retry).status == .ok
                     ))
             ))
     );

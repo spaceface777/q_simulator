@@ -77,7 +77,14 @@ namespace ltl {
 						take();
 						digits++;
 					}
-					if (digits != 6) error("RGB colours must contain exactly six hexadecimal digits");
+					if (peek() == 'u' || peek() == 'U') {
+						if (digits == 0 || digits > 16) error("hexadecimal integer must contain 1 through 16 digits");
+						take();
+						add(TokenKind::NUMBER, begin);
+						return;
+					}
+					if (digits != 6)
+						error("RGB colours must contain exactly six hexadecimal digits; add 'u' for an integer");
 					add(TokenKind::HEX_COLOR, begin);
 					return;
 				}
@@ -177,19 +184,29 @@ namespace ltl {
 						if (!pair('=', TokenKind::NOT_EQUAL, begin)) add(TokenKind::BANG, begin);
 						break;
 					case '<':
-						if (!pair('=', TokenKind::LESS_EQUAL, begin)) add(TokenKind::LESS, begin);
+						if (pair('=', TokenKind::LESS_EQUAL, begin)) break;
+						if (pair('<', TokenKind::SHIFT_LEFT, begin)) break;
+						add(TokenKind::LESS, begin);
 						break;
 					case '>':
-						if (!pair('=', TokenKind::GREATER_EQUAL, begin)) add(TokenKind::GREATER, begin);
+						if (pair('=', TokenKind::GREATER_EQUAL, begin)) break;
+						if (pair('>', TokenKind::SHIFT_RIGHT, begin)) break;
+						add(TokenKind::GREATER, begin);
 						break;
+					case '+': add(TokenKind::PLUS, begin); break;
 					case '-':
 						if (!pair('>', TokenKind::ARROW, begin)) add(TokenKind::MINUS, begin);
 						break;
+					case '*': add(TokenKind::STAR, begin); break;
+					case '/': add(TokenKind::SLASH, begin); break;
+					case '%': add(TokenKind::PERCENT, begin); break;
+					case '^': add(TokenKind::CARET, begin); break;
+					case '~': add(TokenKind::TILDE, begin); break;
 					case '&':
-						if (!pair('&', TokenKind::AND_AND, begin)) error("expected '&' after '&'");
+						if (!pair('&', TokenKind::AND_AND, begin)) add(TokenKind::AMPERSAND, begin);
 						break;
 					case '|':
-						if (!pair('|', TokenKind::OR_OR, begin)) error("expected '|' after '|'");
+						if (!pair('|', TokenKind::OR_OR, begin)) add(TokenKind::PIPE, begin);
 						break;
 					case '\\':
 						if (peek() == 'A') {

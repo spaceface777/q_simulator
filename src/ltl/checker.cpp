@@ -130,6 +130,42 @@ namespace ltl {
 					if (check(*value.arguments[0]) != ValueType::TUB) {
 						error(value.arguments[0]->span, value.text + " expects a Tub");
 					}
+				} else if (value.text == "physical_exit" || value.text == "exit_cause" ||
+						   value.text == "exit_endpoint" || value.text == "exit_module" || value.text == "exit_time" ||
+						   value.text == "exit_data" || value.text == "exit_uid" || value.text == "initial_data" ||
+						   value.text == "initial_uid") {
+					require_arity(value, 1);
+					if (check(*value.arguments[0]) != ValueType::TUB)
+						error(value.arguments[0]->span, value.text + " expects a Tub");
+					if (value.text == "physical_exit") {
+						value.symbol = Value::Symbol::PHYSICAL_EXIT;
+						value.type   = ValueType::BOOLEAN;
+					} else if (value.text == "exit_cause") {
+						value.symbol = Value::Symbol::EXIT_CAUSE;
+						value.type   = ValueType::NUMBER;
+					} else if (value.text == "exit_endpoint") {
+						value.symbol = Value::Symbol::EXIT_ENDPOINT;
+						value.type   = ValueType::NUMBER;
+					} else if (value.text == "exit_module") {
+						value.symbol = Value::Symbol::EXIT_MODULE;
+						value.type   = ValueType::NUMBER;
+					} else if (value.text == "exit_time") {
+						value.symbol = Value::Symbol::EXIT_TIME;
+						value.type   = ValueType::NUMBER;
+					} else if (value.text == "exit_data") {
+						value.symbol = Value::Symbol::EXIT_DATA;
+						value.type   = ValueType::BYTES;
+					} else if (value.text == "exit_uid") {
+						value.symbol = Value::Symbol::EXIT_UID;
+						value.type   = ValueType::BYTES;
+					} else if (value.text == "initial_data") {
+						value.symbol = Value::Symbol::INITIAL_DATA;
+						value.type   = ValueType::BYTES;
+					} else {
+						value.symbol = Value::Symbol::INITIAL_UID;
+						value.type   = ValueType::BYTES;
+					}
+					return value.type;
 				} else if (value.text == "entered" || value.text == "left") {
 					value.symbol = value.text == "entered" ? Value::Symbol::ENTERED : Value::Symbol::LEFT;
 					require_arity(value, 2);
@@ -164,6 +200,15 @@ namespace ltl {
 
 			ValueType check_member(Value& value) {
 				const ValueType base = check(*value.base);
+				if (base == ValueType::BYTES) {
+					if (value.text == "length") return resolve(value, ValueType::NUMBER, Value::Symbol::LENGTH);
+					error(value.span, "unknown Bytes member '" + value.text + "'");
+				}
+				if (base == ValueType::TUB) {
+					if (value.text == "data") return resolve(value, ValueType::BYTES, Value::Symbol::DATA);
+					if (value.text == "uid") return resolve(value, ValueType::BYTES, Value::Symbol::UID);
+					error(value.span, "unknown Tub member '" + value.text + "'");
+				}
 				if (base == ValueType::RPC_REQUEST) {
 					if (value.text == "id") return resolve(value, ValueType::NUMBER, Value::Symbol::ID);
 					if (value.text == "call_id") return resolve(value, ValueType::NUMBER, Value::Symbol::CALL_ID);
@@ -190,8 +235,9 @@ namespace ltl {
 					if (value.text == "payload") return resolve(value, ValueType::BYTES, Value::Symbol::PAYLOAD);
 					error(value.span, "unknown RpcEvent member '" + value.text + "'");
 				}
-				if (base != ValueType::MODULE) error(value.base->span, "only a Module or RPC record has members");
+				if (base != ValueType::MODULE) error(value.base->span, "this value has no members");
 
+				if (value.text == "id") return resolve(value, ValueType::NUMBER, Value::Symbol::ID);
 				if (value.text == "big_belt_speed")
 					return resolve(value, ValueType::NUMBER, Value::Symbol::BIG_BELT_SPEED);
 				if (value.text == "small_belt_speed")
@@ -278,7 +324,30 @@ namespace ltl {
 				case Value::Kind::COUNT:  return check_count(value);
 				case Value::Kind::CALL:   return check_call(value);
 				case Value::Kind::MEMBER: return check_member(value);
-				case Value::Kind::NAME:   {
+				case Value::Kind::INDEX:
+					if (check(*value.base) != ValueType::BYTES) error(value.base->span, "indexing requires Bytes");
+					if (value.arguments.size() != 1 || check(*value.arguments[0]) != ValueType::NUMBER)
+						error(value.span, "byte index must be a Number");
+					value.type = ValueType::NUMBER;
+					return value.type;
+				case Value::Kind::SLICE:
+					if (check(*value.base) != ValueType::BYTES) error(value.base->span, "slicing requires Bytes");
+					if (value.arguments.size() != 2 || check(*value.arguments[0]) != ValueType::NUMBER ||
+						check(*value.arguments[1]) != ValueType::NUMBER)
+						error(value.span, "byte slice bounds must be Numbers");
+					value.type = ValueType::BYTES;
+					return value.type;
+				case Value::Kind::UNARY:
+					if (check(*value.base) != ValueType::NUMBER)
+						error(value.base->span, "numeric unary operator requires a Number");
+					value.type = ValueType::NUMBER;
+					return value.type;
+				case Value::Kind::BINARY:
+					if (check(*value.base) != ValueType::NUMBER || check(*value.arguments[0]) != ValueType::NUMBER)
+						error(value.span, "arithmetic and bitwise operators require Numbers");
+					value.type = ValueType::NUMBER;
+					return value.type;
+				case Value::Kind::NAME: {
 					const auto found = bindings_.find(value.text);
 					if (found == bindings_.end()) error(value.span, "unknown name '" + value.text + "'");
 					value.type = found->second;

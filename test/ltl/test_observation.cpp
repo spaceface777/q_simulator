@@ -149,6 +149,28 @@ TEST_F(LtlObservationTest, EvaluatesAndRendersByteComparisons) {
 	EXPECT_EQ(observation.actual_value(*file.properties[0].formula), "\"\\x00\\xff\"");
 }
 
+TEST_F(LtlObservationTest, ReadsRawTubAndRpcBytesWithGuardedIndexing) {
+	Blocks data{};
+	data[0] = {0x81, 0x00, 0x34, 0x12};
+	RfidUid uid{1, 2, 3, 4, 5, 6, 7};
+	world_.place(TUB, module::ModuleId{MODULE}, world::Position::ENTRY, uid, data);
+	ltl::Observer          observer(modules(), world_);
+	const ltl::Observation observation =
+		observer.observe(0, world_, {{100, 0, MODULE, CMD_SEND_PACKET, 1, 0, true, {'Q', 'F', 'B', '2', 0xaa}}});
+
+	EXPECT_TRUE(evaluate("tub(67).data.length == 128", observation));
+	EXPECT_TRUE(evaluate("tub(67).uid[6] == 7", observation));
+	ltl::File    request_file = compile(R"(forall network_rpc_request in rpc_requests(module(1)):
+		network_rpc_request.payload[0:4] == "QFB2"
+		&& network_rpc_request.payload[-3:99] == "B2\xaa")");
+	ltl::Monitor request_monitor("request slices", *request_file.properties[0].formula);
+	EXPECT_EQ(observe(request_monitor, observation), ltl::Verdict::TRUE);
+	EXPECT_TRUE(evaluate("((tub(67).data[0] & 0xf0u) >> 4) == 8", observation));
+	EXPECT_TRUE(evaluate("(tub(67).data[2] | (tub(67).data[3] << 8)) == 4660", observation));
+	EXPECT_FALSE(evaluate("tub(67).data.length > 200 && tub(67).data[200] == 0", observation));
+	EXPECT_THROW((void)evaluate("tub(67).data[128] == 0", observation), std::runtime_error);
+}
+
 TEST_F(LtlObservationTest, AppliesOrdinaryEmptyDomainQuantifierAndCountRules) {
 	ltl::Observer          observer(modules(), world_);
 	const ltl::Observation observation = observer.observe(0, world_);
@@ -184,6 +206,27 @@ forall tub: Tub:
 )");
 	ltl::Monitor counted_owner_monitor("counted owners", *counted_owner_file.properties[0].formula);
 	EXPECT_EQ(observe(counted_owner_monitor, observation), ltl::Verdict::TRUE);
+}
+
+TEST_F(LtlObservationTest, RetainsInitialDataAndGenericRemovalFacts) {
+	Blocks data{};
+	data[0] = {0x10, 0x20, 0x30, 0x40};
+	world_.place(TUB, module::ModuleId{MODULE}, world::Position::ENTRY, RfidUid{}, data);
+	ltl::Observer observer(modules(), world_);
+	(void)observer.observe(0, world_);
+	const RfidPage changed{0xaa, 0xbb, 0xcc, 0xdd};
+	ASSERT_TRUE(world_.write_rfid_page(module::ModuleId{MODULE}, 0, changed));
+	const ltl::Observation live = observer.observe(1, world_);
+	EXPECT_TRUE(evaluate("initial_data(tub(67))[0] == 16 && tub(67).data[0] == 170", live));
+
+	world_.remove(TUB, world::TubRemovalReason::SCHEDULED);
+	const ltl::Observation removed = observer.observe(2, world_);
+	EXPECT_TRUE(evaluate("exit_cause(tub(67)) == 1", removed));
+	EXPECT_TRUE(evaluate("exit_module(tub(67)) == module(1).id", removed));
+	EXPECT_TRUE(evaluate("exit_time(tub(67)) == 2", removed));
+	EXPECT_TRUE(evaluate("exit_data(tub(67))[0] == 170", removed));
+	EXPECT_FALSE(evaluate("physical_exit(tub(67))", removed));
+	EXPECT_FALSE(evaluate("physical_exit(tub(67)) && exit_endpoint(tub(67)) == 1", removed));
 }
 
 TEST_F(LtlObservationTest, PersistentTubDomainsRetainRemovedIdentities) {

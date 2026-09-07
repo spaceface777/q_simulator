@@ -6,6 +6,10 @@
     { "include": "#comments" },
     { "include": "#strings" },
     {
+      "match": "\\bimport\\b",
+      "name": "keyword.control.import.simulation-ltlf"
+    },
+    {
       "match": "\\b(let)(\\s+)([a-z_][A-Za-z0-9_]*)",
       "captures": {
         "1": { "name": "storage.type.alias.simulation-ltlf" },
@@ -52,6 +56,10 @@
       "name": "constant.other.color.rgb.simulation-ltlf"
     },
     {
+      "match": "0[xX][0-9A-Fa-f]+[uU]\\b",
+      "name": "constant.numeric.integer.hex.simulation-ltlf"
+    },
+    {
       "match": "(?<![A-Za-z0-9_])(?:\\d+\\.\\d+|\\d+)",
       "name": "constant.numeric.simulation-ltlf"
     },
@@ -60,7 +68,7 @@
       "name": "keyword.other.unit.duration.simulation-ltlf"
     },
     {
-      "match": "&&|\\|\\||->|==|!=|<=|>=|<|>|!",
+      "match": "<<|>>|&&|\\|\\||->|==|!=|<=|>=|[+*/%&|^~<>!-]",
       "name": "keyword.operator.logical.simulation-ltlf"
     },
     {

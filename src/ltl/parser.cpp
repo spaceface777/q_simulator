@@ -1,7 +1,10 @@
 #include "parser.h"
 
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -13,14 +16,86 @@ namespace ltl {
 
 	namespace {
 
+		[[noreturn]] void import_error(const std::string& filename, const Token& token, const std::string& message) {
+			throw std::invalid_argument(filename + ":" + std::to_string(token.span.begin.line) + ":" +
+										std::to_string(token.span.begin.column) + ": " + message);
+		}
+
+		std::string import_path(const Token& token, const std::string& filename) {
+			std::string result;
+			for (std::size_t i = 1; i + 1 < token.text.size(); ++i) {
+				if (token.text[i] != '\\') {
+					result.push_back(token.text[i]);
+					continue;
+				}
+				const char escape = token.text[++i];
+				switch (escape) {
+				case '"':  result.push_back('"'); break;
+				case '\\': result.push_back('\\'); break;
+				default:   import_error(filename, token, "import paths only support the escapes \\\" and \\\\");
+				}
+			}
+			if (result.empty()) import_error(filename, token, "import path cannot be empty");
+			return result;
+		}
+
+		std::string read_import(const std::filesystem::path& path, const Token& token, const std::string& filename) {
+			std::ifstream input(path);
+			if (!input) import_error(filename, token, "could not read import '" + path.string() + "'");
+			std::ostringstream source;
+			source << input.rdbuf();
+			return source.str();
+		}
+
+		std::vector<Token> imported_tokens(const std::string& source, const std::string& filename,
+										   std::unordered_set<std::string>& loaded,
+										   std::unordered_set<std::string>& stack) {
+			std::vector<Token> input = lex(source, filename);
+			std::vector<Token> result;
+			std::size_t        i = 0;
+			while (i < input.size() && input[i].kind == TokenKind::IDENTIFIER && input[i].text == "import") {
+				const Token& keyword = input[i++];
+				if (i >= input.size() || input[i].kind != TokenKind::BYTE_LITERAL)
+					import_error(filename, input[i], "expected a quoted path after 'import'");
+				const Token& path_token = input[i++];
+				if (i >= input.size() || input[i].kind != TokenKind::SEMICOLON)
+					import_error(filename, input[i], "expected ';' after import");
+				++i;
+
+				std::filesystem::path path = import_path(path_token, filename);
+				if (path.is_relative() && !filename.starts_with('<'))
+					path = std::filesystem::path(filename).parent_path() / path;
+				path                  = std::filesystem::absolute(path).lexically_normal();
+				const std::string key = path.string();
+				if (stack.contains(key)) import_error(filename, keyword, "circular import of '" + key + "'");
+				if (!loaded.insert(key).second) continue;
+				stack.insert(key);
+				std::vector<Token> imported =
+					imported_tokens(read_import(path, path_token, filename), key, loaded, stack);
+				stack.erase(key);
+				result.insert(result.end(), imported.begin(), imported.end() - 1);
+			}
+			for (std::size_t j = i; j < input.size(); ++j) {
+				if (input[j].kind == TokenKind::IDENTIFIER && input[j].text == "import")
+					import_error(filename, input[j], "imports must be at the top of the file");
+			}
+			result.insert(result.end(), input.begin() + static_cast<std::ptrdiff_t>(i), input.end());
+			return result;
+		}
+
 		class MacroExpander {
 		private:
 			using Expansion = std::vector<Token>;
 
-			const std::vector<Token>&                    tokens_;
-			std::string                                  filename_;
-			std::unordered_map<std::string, std::size_t> declaration_order_;
-			std::unordered_map<std::string, Expansion>   expansions_;
+			struct Alias {
+				std::vector<std::string> parameters;
+				Expansion                body;
+				std::size_t              order = 0;
+			};
+
+			const std::vector<Token>&              tokens_;
+			std::string                            filename_;
+			std::unordered_map<std::string, Alias> aliases_;
 
 			[[noreturn]] void error(const Token& token, const std::string& message) const {
 				throw std::invalid_argument(filename_ + ":" + std::to_string(token.span.begin.line) + ":" +
@@ -31,91 +106,246 @@ namespace ltl {
 				return token.kind == TokenKind::IDENTIFIER && token.text == text;
 			}
 
-			static bool binder(const Token& token) {
-				return word(token, "forall") || word(token, "exists") || word(token, "count") ||
-					   token.kind == TokenKind::FORALL_ALIAS || token.kind == TokenKind::EXISTS_ALIAS ||
-					   token.kind == TokenKind::COUNT_ALIAS;
+			static bool snake_case(const std::string& name) {
+				if (name.empty() || (name.front() != '_' && (name.front() < 'a' || name.front() > 'z'))) return false;
+				for (const char c : name)
+					if (c != '_' && (c < 'a' || c > 'z') && (c < '0' || c > '9')) return false;
+				return true;
 			}
 
 			std::size_t declaration_end(std::size_t begin) const {
-				// A `sequence` block separates its steps with semicolons, so only a semicolon outside
-				// every brace ends the declaration.
-				std::size_t depth = 0;
-				for (std::size_t index = begin; tokens_[index].kind != TokenKind::END; index++) {
-					if (tokens_[index].kind == TokenKind::LEFT_BRACE) depth++;
-					else if (tokens_[index].kind == TokenKind::RIGHT_BRACE && depth > 0) depth--;
-					else if (tokens_[index].kind == TokenKind::SEMICOLON && depth == 0) return index;
+				std::size_t braces = 0;
+				for (std::size_t i = begin; tokens_[i].kind != TokenKind::END; ++i) {
+					if (tokens_[i].kind == TokenKind::LEFT_BRACE) ++braces;
+					else if (tokens_[i].kind == TokenKind::RIGHT_BRACE && braces) --braces;
+					else if (tokens_[i].kind == TokenKind::SEMICOLON && !braces) return i;
 				}
 				error(tokens_[begin], word(tokens_[begin], "let") ? "expected ';' after alias declaration"
 																  : "expected ';' after prop declaration");
 			}
 
-			static bool snake_case(const std::string& name) {
-				if (name.empty() || (name.front() != '_' && (name.front() < 'a' || name.front() > 'z'))) return false;
-				for (const char character : name) {
-					if (character != '_' && (character < 'a' || character > 'z') &&
-						(character < '0' || character > '9')) {
-						return false;
+			std::size_t signature_end(std::size_t begin, std::vector<std::string>& parameters) const {
+				std::size_t i = begin + 2;
+				if (tokens_[i].kind == TokenKind::LEFT_PAREN) {
+					++i;
+					std::unordered_set<std::string> seen;
+					if (tokens_[i].kind != TokenKind::RIGHT_PAREN) {
+						for (;;) {
+							if (tokens_[i].kind != TokenKind::IDENTIFIER)
+								error(tokens_[i], "expected an alias parameter name");
+							if (!snake_case(tokens_[i].text))
+								error(tokens_[i], "alias parameter names must use snake_case");
+							if (!seen.insert(tokens_[i].text).second)
+								error(tokens_[i], "duplicate alias parameter '" + tokens_[i].text + "'");
+							parameters.push_back(tokens_[i++].text);
+							if (tokens_[i].kind != TokenKind::COMMA) break;
+							++i;
+						}
 					}
+					if (tokens_[i].kind != TokenKind::RIGHT_PAREN)
+						error(tokens_[i], "expected ')' after alias parameters");
+					++i;
 				}
-				return true;
+				if (tokens_[i].kind != TokenKind::EQUAL) error(tokens_[i], "expected '=' after alias declaration");
+				return i;
 			}
 
-			void discover_declarations() {
+			void discover() {
 				std::unordered_set<std::string> names;
-				std::size_t                     let_order = 0;
-				for (std::size_t index = 0; tokens_[index].kind != TokenKind::END;) {
-					const bool let = word(tokens_[index], "let");
-					if (!let && !word(tokens_[index], "prop")) {
-						error(tokens_[index], "expected 'let' or 'prop' declaration");
-					}
-					if (tokens_[index + 1].kind != TokenKind::IDENTIFIER) {
-						error(tokens_[index + 1],
-							  let ? "expected an alias name after 'let'" : "expected a proposition name after 'prop'");
-					}
-					const Token& name = tokens_[index + 1];
+				std::size_t                     order = 0;
+				for (std::size_t i = 0; tokens_[i].kind != TokenKind::END;) {
+					const bool is_let = word(tokens_[i], "let");
+					if (!is_let && !word(tokens_[i], "prop")) error(tokens_[i], "expected 'let' or 'prop' declaration");
+					if (tokens_[i + 1].kind != TokenKind::IDENTIFIER)
+						error(tokens_[i + 1], "expected a declaration name");
+					const Token& name = tokens_[i + 1];
 					if (!names.insert(name.text).second) error(name, "duplicate declaration '" + name.text + "'");
-					if (let) {
+					if (is_let) {
 						if (!snake_case(name.text)) error(name, "alias names must use snake_case");
-						declaration_order_.emplace(name.text, let_order++);
+						std::vector<std::string> params;
+						const std::size_t        equal = signature_end(i, params);
+						const std::size_t        end   = declaration_end(i);
+						if (equal + 1 == end) error(tokens_[end], "expected an alias expression after '='");
+						aliases_.emplace(name.text,
+										 Alias{std::move(params),
+											   Expansion(tokens_.begin() + equal + 1, tokens_.begin() + end), order++});
 					}
-					index = declaration_end(index) + 1;
+					i = declaration_end(i) + 1;
 				}
 			}
 
-			Expansion expand(std::size_t begin, std::size_t end, const std::string* defining,
-							 std::size_t available_order) const {
-				Expansion result;
-				for (std::size_t index = begin; index < end; index++) {
-					const Token& token = tokens_[index];
-					if (binder(token) && index + 1 < end && tokens_[index + 1].kind == TokenKind::IDENTIFIER &&
-						declaration_order_.contains(tokens_[index + 1].text)) {
-						error(tokens_[index + 1], "bound name '" + tokens_[index + 1].text + "' shadows an alias");
-					}
-					const bool member = index > begin && tokens_[index - 1].kind == TokenKind::DOT;
-					if (token.kind != TokenKind::IDENTIFIER || member) {
-						result.push_back(token);
-						continue;
-					}
-
-					if (defining && token.text == *defining) {
-						error(token, "recursive alias '" + token.text + "' is not allowed");
-					}
-					const auto declared = declaration_order_.find(token.text);
-					if (declared != declaration_order_.end() && declared->second >= available_order) {
-						error(token, "alias '" + token.text + "' cannot be referenced before its declaration");
-					}
-					const auto expansion = expansions_.find(token.text);
-					if (expansion == expansions_.end()) {
-						result.push_back(token);
-						continue;
-					}
-
-					result.push_back(Token{TokenKind::LEFT_PAREN, "(", token.span});
-					result.insert(result.end(), expansion->second.begin(), expansion->second.end());
-					result.push_back(Token{TokenKind::RIGHT_PAREN, ")", token.span});
+			static std::size_t matching_paren(const Expansion& input, std::size_t open, const MacroExpander& self) {
+				std::size_t depth = 0;
+				for (std::size_t i = open; i < input.size(); ++i) {
+					if (input[i].kind == TokenKind::LEFT_PAREN) ++depth;
+					else if (input[i].kind == TokenKind::RIGHT_PAREN && --depth == 0) return i;
 				}
-				return result;
+				self.error(input[open], "expected ')' after alias arguments");
+			}
+
+			Expansion hygienic_body(const Alias& alias) const {
+				Expansion                                    body = alias.body;
+				std::unordered_map<std::string, std::string> renamed;
+				for (std::size_t i = 0; i + 1 < body.size(); ++i) {
+					const bool binder = word(body[i], "forall") || word(body[i], "exists") || word(body[i], "count") ||
+										body[i].kind == TokenKind::FORALL_ALIAS ||
+										body[i].kind == TokenKind::EXISTS_ALIAS ||
+										body[i].kind == TokenKind::COUNT_ALIAS;
+					if (binder && body[i + 1].kind == TokenKind::IDENTIFIER) {
+						renamed.emplace(body[i + 1].text,
+										"__alias_" + std::to_string(alias.order) + "_" + body[i + 1].text);
+					}
+				}
+				for (std::size_t i = 0; i < body.size(); ++i) {
+					if (body[i].kind != TokenKind::IDENTIFIER || (i && body[i - 1].kind == TokenKind::DOT)) continue;
+					if (const auto found = renamed.find(body[i].text); found != renamed.end())
+						body[i].text = found->second;
+				}
+				return body;
+			}
+
+			Expansion expand_range(const Expansion& input, std::size_t begin, std::size_t end, std::size_t available,
+								   const std::unordered_map<std::string, Expansion>& substitutions,
+								   std::unordered_set<std::string>&                  stack) const {
+				Expansion out;
+				for (std::size_t i = begin; i < end; ++i) {
+					const Token& token  = input[i];
+					const bool   member = i > begin && input[i - 1].kind == TokenKind::DOT;
+					if (token.kind != TokenKind::IDENTIFIER || member) {
+						out.push_back(token);
+						continue;
+					}
+					const bool bound_name =
+						i > begin &&
+						(word(input[i - 1], "forall") || word(input[i - 1], "exists") || word(input[i - 1], "count") ||
+						 input[i - 1].kind == TokenKind::FORALL_ALIAS || input[i - 1].kind == TokenKind::EXISTS_ALIAS ||
+						 input[i - 1].kind == TokenKind::COUNT_ALIAS);
+					if (bound_name && aliases_.contains(token.text))
+						error(token, "bound name '" + token.text + "' shadows an alias");
+					if (const auto sub = substitutions.find(token.text); sub != substitutions.end()) {
+						out.push_back(Token{TokenKind::LEFT_PAREN, "(", token.span});
+						out.insert(out.end(), sub->second.begin(), sub->second.end());
+						out.push_back(Token{TokenKind::RIGHT_PAREN, ")", token.span});
+						continue;
+					}
+					const auto found = aliases_.find(token.text);
+					if (found == aliases_.end()) {
+						out.push_back(token);
+						continue;
+					}
+					const Alias& alias = found->second;
+					if (alias.order >= available)
+						error(token, "alias '" + token.text + "' cannot be referenced before its declaration");
+					if (!stack.insert(token.text).second)
+						error(token, "recursive alias '" + token.text + "' is not allowed");
+					std::unordered_map<std::string, Expansion> args;
+					if (!alias.parameters.empty()) {
+						if (i + 1 >= end || input[i + 1].kind != TokenKind::LEFT_PAREN)
+							error(token, "alias '" + token.text + "' expects " +
+											 std::to_string(alias.parameters.size()) + " arguments");
+						const std::size_t      close = matching_paren(input, i + 1, *this);
+						std::vector<Expansion> actual;
+						std::size_t            start = i + 2, depth = 0;
+						for (std::size_t j = start; j <= close; ++j) {
+							const bool separator = j == close || (input[j].kind == TokenKind::COMMA && depth == 0);
+							if (separator) {
+								if (j > start)
+									actual.push_back(expand_range(input, start, j, available, substitutions, stack));
+								else if (j != close || start != close) actual.emplace_back();
+								start = j + 1;
+							} else if (input[j].kind == TokenKind::LEFT_PAREN ||
+									   input[j].kind == TokenKind::LEFT_BRACKET)
+								++depth;
+							else if ((input[j].kind == TokenKind::RIGHT_PAREN ||
+									  input[j].kind == TokenKind::RIGHT_BRACKET) &&
+									 depth)
+								--depth;
+						}
+						if (actual.size() != alias.parameters.size())
+							error(token, "alias '" + token.text + "' expects " +
+											 std::to_string(alias.parameters.size()) + " arguments, got " +
+											 std::to_string(actual.size()));
+						for (std::size_t n = 0; n < actual.size(); ++n)
+							args.emplace(alias.parameters[n], std::move(actual[n]));
+						i = close;
+					} else if (i + 1 < end && input[i + 1].kind == TokenKind::LEFT_PAREN) {
+						error(token, "alias '" + token.text + "' expects 0 arguments");
+					}
+					Expansion alias_body = hygienic_body(alias);
+					Expansion expanded   = expand_range(alias_body, 0, alias_body.size(), alias.order, args, stack);
+					stack.erase(token.text);
+					out.push_back(Token{TokenKind::LEFT_PAREN, "(", token.span});
+					out.insert(out.end(), expanded.begin(), expanded.end());
+					out.push_back(Token{TokenKind::RIGHT_PAREN, ")", token.span});
+				}
+				return out;
+			}
+
+			void reject_free_names(const std::string& name, const Alias& alias) const {
+				std::unordered_set<std::string>              allowed(alias.parameters.begin(), alias.parameters.end());
+				static const std::unordered_set<std::string> words = {"true",
+																	  "false",
+																	  "always",
+																	  "eventually",
+																	  "next",
+																	  "until",
+																	  "G",
+																	  "F",
+																	  "X",
+																	  "U",
+																	  "forall",
+																	  "exists",
+																	  "count",
+																	  "in",
+																	  "where",
+																	  "sequence",
+																	  "Module",
+																	  "Tub",
+																	  "h",
+																	  "m",
+																	  "s",
+																	  "ms",
+																	  "module",
+																	  "tub",
+																	  "rpc_response_to",
+																	  "rpc_requests",
+																	  "rpc_responses",
+																	  "rpc_events",
+																	  "present",
+																	  "at_module",
+																	  "at_position",
+																	  "appeared",
+																	  "disappeared",
+																	  "physical_exit",
+																	  "exit_cause",
+																	  "exit_endpoint",
+																	  "exit_module",
+																	  "exit_time",
+																	  "exit_data",
+																	  "exit_uid",
+																	  "initial_data",
+																	  "initial_uid",
+																	  "entered",
+																	  "left",
+																	  "changed"};
+				for (std::size_t i = 0; i < alias.body.size(); ++i) {
+					const Token& t = alias.body[i];
+					if (t.kind != TokenKind::IDENTIFIER || (i && alias.body[i - 1].kind == TokenKind::DOT)) continue;
+					if ((t.text == "forall" || t.text == "exists" || t.text == "count") && i + 1 < alias.body.size()) {
+						allowed.insert(alias.body[i + 1].text);
+						continue;
+					}
+					const auto other = aliases_.find(t.text);
+					if (allowed.contains(t.text) || words.contains(t.text) ||
+						(other != aliases_.end() && other->second.order < alias.order))
+						continue;
+					if (other != aliases_.end() && other->second.order == alias.order)
+						error(t, "recursive alias '" + name + "' is not allowed");
+					if (other != aliases_.end())
+						error(t, "alias '" + t.text + "' cannot be referenced before its declaration");
+					error(t, "alias '" + name + "' has unresolved free name '" + t.text +
+								 "'; add it as an explicit parameter");
+				}
 			}
 
 		public:
@@ -123,31 +353,27 @@ namespace ltl {
 				: tokens_(tokens), filename_(std::move(filename)) {}
 
 			std::vector<Token> run() {
-				discover_declarations();
-				std::vector<Token> result;
-				std::size_t        available_order = 0;
-				for (std::size_t index = 0; tokens_[index].kind != TokenKind::END;) {
-					const std::size_t end = declaration_end(index);
-					if (word(tokens_[index], "let")) {
-						const Token& name = tokens_[index + 1];
-						if (tokens_[index + 2].kind != TokenKind::EQUAL) {
-							error(tokens_[index + 2], "expected '=' after alias name");
-						}
-						if (index + 3 == end) error(tokens_[end], "expected an alias expansion after '='");
-						Expansion body = expand(index + 3, end, &name.text, available_order);
-						expansions_.emplace(name.text, std::move(body));
-						available_order++;
-					} else {
-						std::size_t equal = index + 2;
-						while (equal < end && tokens_[equal].kind != TokenKind::EQUAL) equal++;
-						if (equal == end) error(tokens_[end], "expected '=' after proposition name");
-						result.insert(result.end(), tokens_.begin() + static_cast<std::ptrdiff_t>(index),
-									  tokens_.begin() + static_cast<std::ptrdiff_t>(equal + 1));
-						Expansion body = expand(equal + 1, end, nullptr, available_order);
-						result.insert(result.end(), body.begin(), body.end());
-						result.push_back(tokens_[end]);
+				discover();
+				for (const auto& [name, alias] : aliases_) reject_free_names(name, alias);
+				Expansion   result;
+				std::size_t available = 0;
+				for (std::size_t i = 0; tokens_[i].kind != TokenKind::END;) {
+					const std::size_t end = declaration_end(i);
+					if (word(tokens_[i], "let")) {
+						++available;
+						i = end + 1;
+						continue;
 					}
-					index = end + 1;
+					std::size_t equal = i + 2;
+					while (equal < end && tokens_[equal].kind != TokenKind::EQUAL) ++equal;
+					if (equal == end) error(tokens_[end], "expected '=' after proposition name");
+					result.insert(result.end(), tokens_.begin() + i, tokens_.begin() + equal + 1);
+					Expansion                       body(tokens_.begin() + equal + 1, tokens_.begin() + end);
+					std::unordered_set<std::string> stack;
+					Expansion                       expanded = expand_range(body, 0, body.size(), available, {}, stack);
+					result.insert(result.end(), expanded.begin(), expanded.end());
+					result.push_back(tokens_[end]);
+					i = end + 1;
 				}
 				result.push_back(tokens_.back());
 				return result;
@@ -324,15 +550,35 @@ namespace ltl {
 				return interval;
 			}
 
-			void members(std::unique_ptr<Value>& result) {
-				while (take(TokenKind::DOT)) {
-					const Token& member = require_name("expected a member name after '.'");
-					auto         access = std::make_unique<Value>();
-					access->kind        = Value::Kind::MEMBER;
-					access->text        = member.text;
-					access->span        = Span{result->span.begin, member.span.end};
-					access->base        = std::move(result);
-					result              = std::move(access);
+			void postfix(std::unique_ptr<Value>& result) {
+				for (;;) {
+					if (take(TokenKind::DOT)) {
+						const Token& member = require_name("expected a member name after '.'");
+						auto         access = std::make_unique<Value>();
+						access->kind        = Value::Kind::MEMBER;
+						access->text        = member.text;
+						access->span        = Span{result->span.begin, member.span.end};
+						access->base        = std::move(result);
+						result              = std::move(access);
+						continue;
+					}
+					if (take(TokenKind::LEFT_BRACKET)) {
+						auto access  = std::make_unique<Value>();
+						access->kind = Value::Kind::INDEX;
+						access->base = std::move(result);
+						access->arguments.push_back(value());
+						if (take(TokenKind::COLON)) {
+							access->kind = Value::Kind::SLICE;
+							access->arguments.push_back(value());
+						}
+						const Token& close = require(TokenKind::RIGHT_BRACKET, access->kind == Value::Kind::SLICE
+																				   ? "expected ']' after byte slice"
+																				   : "expected ']' after byte index");
+						access->span       = Span{access->base->span.begin, close.span.end};
+						result             = std::move(access);
+						continue;
+					}
+					break;
 				}
 			}
 
@@ -344,7 +590,6 @@ namespace ltl {
 						result.push_back(byte);
 						continue;
 					}
-
 					const char escape = token.text[++index];
 					switch (escape) {
 					case '"':  result.push_back('"'); break;
@@ -352,12 +597,11 @@ namespace ltl {
 					case 'n':  result.push_back('\n'); break;
 					case 'r':  result.push_back('\r'); break;
 					case 't':  result.push_back('\t'); break;
-					case 'x':  {
-						const std::string digits = token.text.substr(index + 1, 2);
-						result.push_back(static_cast<uint8_t>(std::stoul(digits, nullptr, 16)));
+					case 'x':
+						result.push_back(
+							static_cast<uint8_t>(std::stoul(token.text.substr(index + 1, 2), nullptr, 16)));
 						index += 2;
 						break;
-					}
 					default: throw std::logic_error("lexer accepted an invalid byte escape");
 					}
 				}
@@ -393,13 +637,11 @@ namespace ltl {
 				return result;
 			}
 
-			std::unique_ptr<Value> value() {
+			std::unique_ptr<Value> primary() {
 				const Position begin  = current().span.begin;
 				auto           result = std::make_unique<Value>();
-
-				if (take_word("count") || take(TokenKind::COUNT_ALIAS)) {
-					result = count_value(begin);
-				} else if (take(TokenKind::LEFT_PAREN)) {
+				if (take_word("count") || take(TokenKind::COUNT_ALIAS)) result = count_value(begin);
+				else if (take(TokenKind::LEFT_PAREN)) {
 					result             = value();
 					const Token& close = require(TokenKind::RIGHT_PAREN, "expected ')' after value");
 					result->span       = Span{begin, close.span.end};
@@ -413,51 +655,181 @@ namespace ltl {
 					result->kind        = Value::Kind::ENUM_LITERAL;
 					result->text        = member.text;
 					result->span        = Span{begin, member.span.end};
-				} else {
-					bool negative = take(TokenKind::MINUS);
-					if (take(TokenKind::NUMBER)) {
-						result->kind   = Value::Kind::NUMBER;
-						result->text   = (negative ? "-" : "") + previous().text;
-						result->number = std::stod(result->text);
-						result->span   = Span{begin, previous().span.end};
+				} else if (take(TokenKind::NUMBER)) {
+					result->kind = Value::Kind::NUMBER;
+					result->text = previous().text;
+					result->span = previous().span;
+					if (result->text.starts_with("0x") || result->text.starts_with("0X")) {
+						std::string    digits = result->text.substr(2, result->text.size() - 3);
+						const uint64_t raw    = std::stoull(digits, nullptr, 16);
+						result->integer       = static_cast<int64_t>(raw);
+						result->number        = static_cast<double>(result->integer);
+						result->is_integer    = true;
 					} else {
-						if (negative) error(current(), "'-' may only prefix a numeric literal");
-						if (take(TokenKind::HEX_COLOR)) {
-							result->kind  = Value::Kind::COLOR;
-							result->text  = previous().text;
-							result->color = static_cast<uint32_t>(std::stoul(result->text.substr(2), nullptr, 16));
-							result->span  = previous().span;
-						} else {
-							const Token& name = require_name("expected a value");
-							if (name.text == "true" || name.text == "false") {
-								result->kind    = Value::Kind::BOOLEAN;
-								result->boolean = name.text == "true";
-								result->text    = name.text;
-							} else {
-								result->kind = Value::Kind::NAME;
-								result->text = name.text;
-							}
-							result->span = name.span;
-
-							if (take(TokenKind::LEFT_PAREN)) {
-								if (result->kind == Value::Kind::BOOLEAN)
-									error(name, "a Boolean literal is not callable");
-								result->kind = Value::Kind::CALL;
-								if (!at(TokenKind::RIGHT_PAREN)) {
-									do {
-										result->arguments.push_back(value());
-									} while (take(TokenKind::COMMA));
-								}
-								const Token& close = require(TokenKind::RIGHT_PAREN, "expected ')' after arguments");
-								result->span.end   = close.span.end;
-							}
-						}
+						result->number     = std::stod(result->text);
+						result->is_integer = result->text.find('.') == std::string::npos;
+						if (result->is_integer) result->integer = std::stoll(result->text);
+					}
+				} else if (take(TokenKind::HEX_COLOR)) {
+					result->kind  = Value::Kind::COLOR;
+					result->text  = previous().text;
+					result->color = static_cast<uint32_t>(std::stoul(result->text.substr(2), nullptr, 16));
+					result->span  = previous().span;
+				} else {
+					const Token& name = require_name("expected a value");
+					if (name.text == "true" || name.text == "false") {
+						result->kind    = Value::Kind::BOOLEAN;
+						result->boolean = name.text == "true";
+						result->text    = name.text;
+					} else {
+						result->kind = Value::Kind::NAME;
+						result->text = name.text;
+					}
+					result->span = name.span;
+					if (take(TokenKind::LEFT_PAREN)) {
+						if (result->kind == Value::Kind::BOOLEAN) error(name, "a Boolean literal is not callable");
+						result->kind = Value::Kind::CALL;
+						if (!at(TokenKind::RIGHT_PAREN)) do {
+								result->arguments.push_back(value());
+							} while (take(TokenKind::COMMA));
+						const Token& close = require(TokenKind::RIGHT_PAREN, "expected ')' after arguments");
+						result->span.end   = close.span.end;
 					}
 				}
-
-				members(result);
+				postfix(result);
 				return result;
 			}
+
+			std::unique_ptr<Value> unary_value() {
+				if (at(TokenKind::MINUS) || at(TokenKind::TILDE)) {
+					const Token op = current();
+					++current_;
+					auto operand = unary_value();
+					if (op.kind == TokenKind::MINUS && operand->kind == Value::Kind::NUMBER) {
+						operand->span.begin = op.span.begin;
+						operand->text       = "-" + operand->text;
+						operand->number     = -operand->number;
+						if (operand->is_integer)
+							operand->integer = static_cast<int64_t>(0U - static_cast<uint64_t>(operand->integer));
+						return operand;
+					}
+					auto result  = std::make_unique<Value>();
+					result->kind = Value::Kind::UNARY;
+					result->operation =
+						op.kind == TokenKind::MINUS ? Value::Operator::NEGATE : Value::Operator::BIT_NOT;
+					result->base = std::move(operand);
+					result->span = Span{op.span.begin, result->base->span.end};
+					return result;
+				}
+				return primary();
+			}
+
+			std::unique_ptr<Value> binary_value(std::unique_ptr<Value> left, Value::Operator op,
+												std::unique_ptr<Value> right) {
+				auto result       = std::make_unique<Value>();
+				result->kind      = Value::Kind::BINARY;
+				result->operation = op;
+				result->span      = Span{left->span.begin, right->span.end};
+				result->base      = std::move(left);
+				result->arguments.push_back(std::move(right));
+				return result;
+			}
+
+			std::unique_ptr<Value> multiplicative() {
+				auto left = unary_value();
+				for (;;) {
+					Value::Operator op;
+					if (take(TokenKind::STAR)) op = Value::Operator::MULTIPLY;
+					else if (take(TokenKind::SLASH)) op = Value::Operator::DIVIDE;
+					else if (take(TokenKind::PERCENT)) op = Value::Operator::MODULO;
+					else break;
+					left = binary_value(std::move(left), op, unary_value());
+				}
+				return left;
+			}
+
+			std::unique_ptr<Value> additive() {
+				auto left = multiplicative();
+				for (;;) {
+					Value::Operator op;
+					if (take(TokenKind::PLUS)) op = Value::Operator::ADD;
+					else if (take(TokenKind::MINUS)) op = Value::Operator::SUBTRACT;
+					else break;
+					left = binary_value(std::move(left), op, multiplicative());
+				}
+				return left;
+			}
+
+			std::unique_ptr<Value> shifts() {
+				auto left = additive();
+				for (;;) {
+					Value::Operator op;
+					if (take(TokenKind::SHIFT_LEFT)) op = Value::Operator::SHIFT_LEFT;
+					else if (take(TokenKind::SHIFT_RIGHT)) op = Value::Operator::SHIFT_RIGHT;
+					else break;
+					left = binary_value(std::move(left), op, additive());
+				}
+				return left;
+			}
+
+			std::unique_ptr<Value> bit_and() {
+				auto left = shifts();
+				while (take(TokenKind::AMPERSAND))
+					left = binary_value(std::move(left), Value::Operator::BIT_AND, shifts());
+				return left;
+			}
+
+			std::unique_ptr<Value> bit_xor() {
+				auto left = bit_and();
+				while (take(TokenKind::CARET))
+					left = binary_value(std::move(left), Value::Operator::BIT_XOR, bit_and());
+				return left;
+			}
+
+			int value_precedence(TokenKind kind) const {
+				switch (kind) {
+				case TokenKind::PIPE:        return 1;
+				case TokenKind::CARET:       return 2;
+				case TokenKind::AMPERSAND:   return 3;
+				case TokenKind::SHIFT_LEFT:
+				case TokenKind::SHIFT_RIGHT: return 4;
+				case TokenKind::PLUS:
+				case TokenKind::MINUS:       return 5;
+				case TokenKind::STAR:
+				case TokenKind::SLASH:
+				case TokenKind::PERCENT:     return 6;
+				default:                     return 0;
+				}
+			}
+
+			Value::Operator value_operation(TokenKind kind) const {
+				switch (kind) {
+				case TokenKind::PIPE:        return Value::Operator::BIT_OR;
+				case TokenKind::CARET:       return Value::Operator::BIT_XOR;
+				case TokenKind::AMPERSAND:   return Value::Operator::BIT_AND;
+				case TokenKind::SHIFT_LEFT:  return Value::Operator::SHIFT_LEFT;
+				case TokenKind::SHIFT_RIGHT: return Value::Operator::SHIFT_RIGHT;
+				case TokenKind::PLUS:        return Value::Operator::ADD;
+				case TokenKind::MINUS:       return Value::Operator::SUBTRACT;
+				case TokenKind::STAR:        return Value::Operator::MULTIPLY;
+				case TokenKind::SLASH:       return Value::Operator::DIVIDE;
+				case TokenKind::PERCENT:     return Value::Operator::MODULO;
+				default:                     return Value::Operator::NONE;
+				}
+			}
+
+			std::unique_ptr<Value> value_tail(std::unique_ptr<Value> left, int minimum) {
+				while (value_precedence(current().kind) >= minimum) {
+					const TokenKind token      = current().kind;
+					const int       precedence = value_precedence(token);
+					++current_;
+					auto right = value_tail(unary_value(), precedence + 1);
+					left       = binary_value(std::move(left), value_operation(token), std::move(right));
+				}
+				return left;
+			}
+
+			std::unique_ptr<Value> value() { return value_tail(unary_value(), 1); }
 
 			[[nodiscard]] bool at_comparison() const noexcept {
 				return at(TokenKind::EQUAL_EQUAL) || at(TokenKind::NOT_EQUAL) || at(TokenKind::LESS) ||
@@ -592,13 +964,15 @@ namespace ltl {
 					auto         result = formula();
 					const Token& close  = require(TokenKind::RIGHT_PAREN, "expected ')' after formula");
 					result->span        = Span{begin, close.span.end};
-					if (at(TokenKind::DOT) || at_comparison()) {
+					if (at(TokenKind::DOT) || at(TokenKind::LEFT_BRACKET) || value_precedence(current().kind) > 0 ||
+						at_comparison()) {
 						if (result->kind != Formula::Kind::ATOM) {
 							error(result->span, "only a parenthesized value can have members or be compared");
 						}
 						auto grouped_value  = std::move(result->value);
 						grouped_value->span = Span{begin, close.span.end};
-						members(grouped_value);
+						postfix(grouped_value);
+						grouped_value = value_tail(std::move(grouped_value), 1);
 						return Operand{comparison(std::move(grouped_value)), false, false};
 					}
 					return Operand{std::move(result), true, false};
@@ -746,7 +1120,10 @@ namespace ltl {
 	} // namespace
 
 	File parse(const std::string& source, const std::string& filename) {
-		const std::vector<Token> tokens = lex(source, filename);
+		std::unordered_set<std::string> loaded;
+		std::unordered_set<std::string> stack;
+		if (!filename.starts_with('<')) stack.insert(std::filesystem::absolute(filename).lexically_normal().string());
+		const std::vector<Token> tokens = imported_tokens(source, filename, loaded, stack);
 		return Parser(MacroExpander(tokens, filename).run(), filename).run();
 	}
 

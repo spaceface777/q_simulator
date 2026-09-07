@@ -39,6 +39,12 @@ namespace ltl {
 			bool      operator==(const EnumRef&) const = default;
 		};
 
+		struct Numeric {
+			bool    integral = true;
+			int64_t integer  = 0;
+			double  physical = 0.0;
+		};
+
 		struct RecordRef {
 			ValueType type;
 			uint64_t  id;
@@ -47,7 +53,7 @@ namespace ltl {
 
 		using BytesRef = std::span<const uint8_t>;
 		using EvaluatedValue =
-			std::variant<bool, double, uint32_t, BytesRef, EnumRef, RecordRef, ModuleRef, TubRef, PositionRef>;
+			std::variant<bool, Numeric, uint32_t, BytesRef, EnumRef, RecordRef, ModuleRef, TubRef, PositionRef>;
 		using BindingMap = std::unordered_map<std::string, uint64_t>;
 
 		ModuleSnapshot snapshot(const module::Module& hardware) {
@@ -81,8 +87,11 @@ namespace ltl {
 		std::map<uint16_t, TubSnapshot> snapshot_tubs(const world::State& world) {
 			std::map<uint16_t, TubSnapshot> result;
 			for (const auto& [id, tub] : world.tubs()) {
-				result.emplace(id,
-							   TubSnapshot{id, tub.module.raw(), tub.belt, tub.position_um, world.position_of(tub)});
+				TubSnapshot value{id, tub.module.raw(), tub.belt, tub.position_um, world.position_of(tub), {}, {}};
+				value.uid.assign(tub.uid.begin(), tub.uid.end());
+				value.data.reserve(RFID_PAYLOAD_PAGE_COUNT * RFID_PAGE_SIZE_BYTES);
+				for (const RfidPage& page : tub.payload) value.data.insert(value.data.end(), page.begin(), page.end());
+				result.emplace(id, std::move(value));
 			}
 			return result;
 		}
@@ -157,6 +166,10 @@ namespace ltl {
 			if (value.symbol == Value::Symbol::DISAPPEARED) {
 				return observation.disappeared().contains(evaluate_tub(*value.arguments[0], observation, bindings).id);
 			}
+			if (value.symbol == Value::Symbol::PHYSICAL_EXIT) {
+				const TubExit* exit = observation.tub_exit(evaluate_tub(*value.arguments[0], observation, bindings).id);
+				return exit && exit->cause == world::TubRemovalReason::YEETED;
+			}
 			if (value.symbol == Value::Symbol::ENTERED || value.symbol == Value::Symbol::LEFT) {
 				const TubRef      tub      = evaluate_tub(*value.arguments[0], observation, bindings);
 				const PositionRef position = evaluate_position(*value.arguments[1], observation, bindings);
@@ -182,14 +195,39 @@ namespace ltl {
 			return result;
 		}
 
+		Numeric numeric(const EvaluatedValue& value) {
+			if (!std::holds_alternative<Numeric>(value)) throw std::logic_error("expected numeric LTL value");
+			return std::get<Numeric>(value);
+		}
+
+		int64_t integer(const EvaluatedValue& value, const Span&) {
+			const Numeric number = numeric(value);
+			if (!number.integral) throw std::runtime_error("integer operation received a fractional value");
+			return number.integer;
+		}
+
+		Numeric integer_value(uint64_t value) {
+			return Numeric{true, static_cast<int64_t>(value), static_cast<double>(static_cast<int64_t>(value))};
+		}
+
+		Numeric physical_value(double value) {
+			return Numeric{false, 0, value};
+		}
+
+		double as_double(const Numeric& value) {
+			return value.integral ? static_cast<double>(value.integer) : value.physical;
+		}
+
 		EvaluatedValue evaluate_value(const Value& value, const Observation& observation, BindingMap& bindings) {
 			switch (value.kind) {
-			case Value::Kind::BOOLEAN:      return value.boolean;
-			case Value::Kind::NUMBER:       return value.number;
+			case Value::Kind::BOOLEAN: return value.boolean;
+			case Value::Kind::NUMBER:
+				return value.is_integer ? EvaluatedValue{integer_value(static_cast<uint64_t>(value.integer))}
+										: EvaluatedValue{physical_value(value.number)};
 			case Value::Kind::COLOR:        return value.color;
 			case Value::Kind::BYTES:        return BytesRef{value.bytes};
 			case Value::Kind::ENUM_LITERAL: return EnumRef{value.type, value.enum_value};
-			case Value::Kind::COUNT:        return static_cast<double>(evaluate_count(value, observation, bindings));
+			case Value::Kind::COUNT:        return integer_value(evaluate_count(value, observation, bindings));
 			case Value::Kind::NAME:
 				if (value.type == ValueType::RPC_REQUEST || value.type == ValueType::RPC_RESPONSE ||
 					value.type == ValueType::RPC_EVENT) {
@@ -213,6 +251,33 @@ namespace ltl {
 				}
 				break;
 			case Value::Kind::CALL:
+				if (value.symbol == Value::Symbol::EXIT_CAUSE || value.symbol == Value::Symbol::EXIT_ENDPOINT ||
+					value.symbol == Value::Symbol::EXIT_MODULE || value.symbol == Value::Symbol::EXIT_TIME ||
+					value.symbol == Value::Symbol::EXIT_DATA || value.symbol == Value::Symbol::EXIT_UID ||
+					value.symbol == Value::Symbol::INITIAL_DATA || value.symbol == Value::Symbol::INITIAL_UID) {
+					const TubRef tub = evaluate_tub(*value.arguments[0], observation, bindings);
+					if (value.symbol == Value::Symbol::INITIAL_DATA || value.symbol == Value::Symbol::INITIAL_UID) {
+						const TubSnapshot* initial = observation.initial_tub(tub.id);
+						if (!initial)
+							throw std::runtime_error("initial data for tub(" + std::to_string(tub.id) +
+													 ") is unavailable before appearance");
+						return value.symbol == Value::Symbol::INITIAL_UID ? BytesRef{initial->uid}
+																		  : BytesRef{initial->data};
+					}
+					const TubExit* exit = observation.tub_exit(tub.id);
+					if (!exit)
+						throw std::runtime_error("exit facts for tub(" + std::to_string(tub.id) +
+												 ") are unavailable before removal");
+					if (value.symbol == Value::Symbol::EXIT_DATA) return BytesRef{exit->data};
+					if (value.symbol == Value::Symbol::EXIT_UID) return BytesRef{exit->uid};
+					if (value.symbol == Value::Symbol::EXIT_CAUSE)
+						return integer_value(static_cast<uint8_t>(exit->cause));
+					if (value.symbol == Value::Symbol::EXIT_MODULE) return integer_value(exit->source_module);
+					if (value.symbol == Value::Symbol::EXIT_TIME) return integer_value(exit->tick);
+					if (exit->endpoint < 0)
+						throw std::runtime_error("exit endpoint is unavailable for a non-physical removal");
+					return integer_value(static_cast<uint8_t>(exit->endpoint));
+				}
 				if (value.type == ValueType::RPC_RESPONSE) {
 					const RecordRef request =
 						std::get<RecordRef>(evaluate_value(*value.arguments[0], observation, bindings));
@@ -222,6 +287,85 @@ namespace ltl {
 				if (value.type == ValueType::TUB) return TubRef{static_cast<uint16_t>(value.entity_id)};
 				if (value.type == ValueType::BOOLEAN) return evaluate_call(value, observation, bindings);
 				break;
+			case Value::Kind::INDEX: {
+				const BytesRef bytes = std::get<BytesRef>(evaluate_value(*value.base, observation, bindings));
+				const int64_t  index =
+					integer(evaluate_value(*value.arguments[0], observation, bindings), value.arguments[0]->span);
+				if (index < 0 || static_cast<std::size_t>(index) >= bytes.size())
+					throw std::runtime_error("byte index " + std::to_string(index) + " is outside sequence length " +
+											 std::to_string(bytes.size()));
+				return integer_value(bytes[static_cast<std::size_t>(index)]);
+			}
+			case Value::Kind::SLICE: {
+				const BytesRef bytes = std::get<BytesRef>(evaluate_value(*value.base, observation, bindings));
+				const int64_t  start =
+					integer(evaluate_value(*value.arguments[0], observation, bindings), value.arguments[0]->span);
+				const int64_t end =
+					integer(evaluate_value(*value.arguments[1], observation, bindings), value.arguments[1]->span);
+				const int64_t length    = static_cast<int64_t>(bytes.size());
+				auto          normalize = [length](int64_t bound) {
+					if (bound < 0) bound = std::max(-length, bound) + length;
+					return std::clamp(bound, int64_t{0}, length);
+				};
+				const int64_t first = normalize(start), last = normalize(end);
+				return last <= first
+						   ? BytesRef{}
+						   : bytes.subspan(static_cast<std::size_t>(first), static_cast<std::size_t>(last - first));
+			}
+			case Value::Kind::UNARY: {
+				const EvaluatedValue operand = evaluate_value(*value.base, observation, bindings);
+				if (value.operation == Value::Operator::BIT_NOT)
+					return integer_value(~static_cast<uint64_t>(integer(operand, value.span)));
+				const Numeric number = numeric(operand);
+				if (!number.integral) return physical_value(-number.physical);
+				return integer_value(0U - static_cast<uint64_t>(number.integer));
+			}
+			case Value::Kind::BINARY: {
+				const Numeric left  = numeric(evaluate_value(*value.base, observation, bindings));
+				const Numeric right = numeric(evaluate_value(*value.arguments[0], observation, bindings));
+				if (value.operation == Value::Operator::ADD || value.operation == Value::Operator::SUBTRACT ||
+					value.operation == Value::Operator::MULTIPLY || value.operation == Value::Operator::DIVIDE) {
+					if (!left.integral || !right.integral) {
+						const double a = as_double(left), b = as_double(right);
+						if (value.operation == Value::Operator::DIVIDE && b == 0.0)
+							throw std::runtime_error("division by zero");
+						if (value.operation == Value::Operator::ADD) return physical_value(a + b);
+						if (value.operation == Value::Operator::SUBTRACT) return physical_value(a - b);
+						if (value.operation == Value::Operator::MULTIPLY) return physical_value(a * b);
+						return physical_value(a / b);
+					}
+				}
+				const uint64_t a = static_cast<uint64_t>(left.integer), b = static_cast<uint64_t>(right.integer);
+				switch (value.operation) {
+				case Value::Operator::ADD:      return integer_value(a + b);
+				case Value::Operator::SUBTRACT: return integer_value(a - b);
+				case Value::Operator::MULTIPLY: return integer_value(a * b);
+				case Value::Operator::DIVIDE:
+					if (right.integer == 0) throw std::runtime_error("division by zero");
+					if (left.integer == std::numeric_limits<int64_t>::min() && right.integer == -1)
+						return integer_value(a);
+					return integer_value(static_cast<uint64_t>(left.integer / right.integer));
+				case Value::Operator::MODULO:
+					if (!left.integral || !right.integral) throw std::runtime_error("modulo requires integer operands");
+					if (right.integer == 0) throw std::runtime_error("modulo by zero");
+					if (left.integer == std::numeric_limits<int64_t>::min() && right.integer == -1)
+						return integer_value(0);
+					return integer_value(static_cast<uint64_t>(left.integer % right.integer));
+				case Value::Operator::SHIFT_LEFT:
+				case Value::Operator::SHIFT_RIGHT: {
+					if (!left.integral || !right.integral || right.integer < 0 || right.integer >= 64)
+						throw std::runtime_error("shift count must be an integer from 0 through 63");
+					if (value.operation == Value::Operator::SHIFT_LEFT) return integer_value(a << right.integer);
+					if (left.integer >= 0 || right.integer == 0) return integer_value(a >> right.integer);
+					return integer_value((a >> right.integer) | (~uint64_t{0} << (64 - right.integer)));
+				}
+				case Value::Operator::BIT_AND: return integer_value(a & b);
+				case Value::Operator::BIT_XOR: return integer_value(a ^ b);
+				case Value::Operator::BIT_OR:  return integer_value(a | b);
+				default:                       break;
+				}
+				throw std::logic_error("unknown numeric operator");
+			}
 			case Value::Kind::MEMBER: {
 				if (value.base->type == ValueType::RPC_REQUEST || value.base->type == ValueType::RPC_RESPONSE ||
 					value.base->type == ValueType::RPC_EVENT) {
@@ -230,8 +374,8 @@ namespace ltl {
 						const RpcRequest* request = observation.rpc_request(record.id);
 						if (!request) throw std::logic_error("unknown frozen RPC request");
 						switch (value.symbol) {
-						case Value::Symbol::ID:          return static_cast<double>(request->id);
-						case Value::Symbol::CALL_ID:     return static_cast<double>(request->call_id);
+						case Value::Symbol::ID:          return integer_value(request->id);
+						case Value::Symbol::CALL_ID:     return integer_value(request->call_id);
 						case Value::Symbol::MODULE:      return ModuleRef{request->module};
 						case Value::Symbol::CMD:         return EnumRef{ValueType::RPC_COMMAND, request->cmd};
 						case Value::Symbol::PAYLOAD:     return BytesRef{request->payload};
@@ -243,7 +387,7 @@ namespace ltl {
 						const RpcRequest* request = observation.rpc_request(record.id);
 						if (!request) throw std::logic_error("unknown correlated RPC request");
 						switch (value.symbol) {
-						case Value::Symbol::ID:      return static_cast<double>(record.id);
+						case Value::Symbol::ID:      return integer_value(record.id);
 						case Value::Symbol::REQUEST: return RecordRef{ValueType::RPC_REQUEST, record.id};
 						case Value::Symbol::MODULE:  return ModuleRef{request->module};
 						case Value::Symbol::CMD:     return EnumRef{ValueType::RPC_COMMAND, request->cmd};
@@ -263,7 +407,7 @@ namespace ltl {
 						const RpcEvent* event = observation.rpc_event(record.id);
 						if (!event) throw std::logic_error("unknown RPC event");
 						switch (value.symbol) {
-						case Value::Symbol::ID:      return static_cast<double>(event->id);
+						case Value::Symbol::ID:      return integer_value(event->id);
 						case Value::Symbol::MODULE:  return ModuleRef{event->module};
 						case Value::Symbol::KIND:    return EnumRef{ValueType::RPC_EVENT_KIND, event->kind};
 						case Value::Symbol::PAYLOAD: return BytesRef{event->payload};
@@ -272,7 +416,20 @@ namespace ltl {
 					}
 					break;
 				}
+				if (value.symbol == Value::Symbol::LENGTH) {
+					return integer_value(std::get<BytesRef>(evaluate_value(*value.base, observation, bindings)).size());
+				}
+				if (value.base->type == ValueType::TUB) {
+					const TubRef tub   = evaluate_tub(*value.base, observation, bindings);
+					const auto   found = observation.tubs().find(tub.id);
+					if (found == observation.tubs().end())
+						throw std::runtime_error("tub(" + std::to_string(tub.id) +
+												 ") data is unavailable while the tub is not present");
+					return value.symbol == Value::Symbol::UID ? BytesRef{found->second.uid}
+															  : BytesRef{found->second.data};
+				}
 				const ModuleRef module = evaluate_module(*value.base, observation, bindings);
+				if (value.symbol == Value::Symbol::ID) return integer_value(module.id);
 				if (value.symbol == Value::Symbol::ENTRY) return PositionRef{module.id, world::Position::ENTRY};
 				if (value.symbol == Value::Symbol::CENTER) return PositionRef{module.id, world::Position::CENTER};
 				if (value.symbol == Value::Symbol::LEFT_LASER)
@@ -281,10 +438,10 @@ namespace ltl {
 					return PositionRef{module.id, world::Position::RIGHT_LASER};
 				const ModuleSnapshot& state = module_snapshot(observation, module.id);
 				switch (value.symbol) {
-				case Value::Symbol::BIG_BELT_SPEED:       return state.big_belt_speed;
-				case Value::Symbol::SMALL_BELT_SPEED:     return state.small_belt_speed;
-				case Value::Symbol::SERVO_ANGLE:          return state.servo_angle;
-				case Value::Symbol::SERVO_PHYSICAL_ANGLE: return state.servo_physical_angle;
+				case Value::Symbol::BIG_BELT_SPEED:       return physical_value(state.big_belt_speed);
+				case Value::Symbol::SMALL_BELT_SPEED:     return physical_value(state.small_belt_speed);
+				case Value::Symbol::SERVO_ANGLE:          return physical_value(state.servo_angle);
+				case Value::Symbol::SERVO_PHYSICAL_ANGLE: return physical_value(state.servo_physical_angle);
 				case Value::Symbol::LED_COLOR:            return state.led_color;
 				case Value::Symbol::LEFT_LASER_ENABLED:   return state.left_laser_enabled;
 				case Value::Symbol::RIGHT_LASER_ENABLED:  return state.right_laser_enabled;
@@ -307,12 +464,16 @@ namespace ltl {
 				const EvaluatedValue left  = evaluate_value(*formula.value, observation, bindings);
 				const EvaluatedValue right = evaluate_value(*formula.compared, observation, bindings);
 				switch (formula.comparison) {
-				case Formula::Comparison::EQUAL:         return equal(left, right, formula.value->type);
-				case Formula::Comparison::NOT_EQUAL:     return !equal(left, right, formula.value->type);
-				case Formula::Comparison::LESS:          return std::get<double>(left) < std::get<double>(right);
-				case Formula::Comparison::LESS_EQUAL:    return std::get<double>(left) <= std::get<double>(right);
-				case Formula::Comparison::GREATER:       return std::get<double>(left) > std::get<double>(right);
-				case Formula::Comparison::GREATER_EQUAL: return std::get<double>(left) >= std::get<double>(right);
+				case Formula::Comparison::EQUAL:     return equal(left, right, formula.value->type);
+				case Formula::Comparison::NOT_EQUAL: return !equal(left, right, formula.value->type);
+				case Formula::Comparison::LESS:
+					return as_double(std::get<Numeric>(left)) < as_double(std::get<Numeric>(right));
+				case Formula::Comparison::LESS_EQUAL:
+					return as_double(std::get<Numeric>(left)) <= as_double(std::get<Numeric>(right));
+				case Formula::Comparison::GREATER:
+					return as_double(std::get<Numeric>(left)) > as_double(std::get<Numeric>(right));
+				case Formula::Comparison::GREATER_EQUAL:
+					return as_double(std::get<Numeric>(left)) >= as_double(std::get<Numeric>(right));
 				}
 			}
 			if (formula.kind == Formula::Kind::NOT) return !evaluate_formula(*formula.left, observation, bindings);
@@ -331,8 +492,11 @@ namespace ltl {
 		bool equal(const EvaluatedValue& left, const EvaluatedValue& right, ValueType type) {
 			switch (type) {
 			case ValueType::BOOLEAN: return std::get<bool>(left) == std::get<bool>(right);
-			case ValueType::NUMBER:
-				return std::fabs(std::get<double>(left) - std::get<double>(right)) <= NUMERIC_TOLERANCE;
+			case ValueType::NUMBER:  {
+				const Numeric a = std::get<Numeric>(left), b = std::get<Numeric>(right);
+				if (a.integral && b.integral) return a.integer == b.integer;
+				return std::fabs(as_double(a) - as_double(b)) <= NUMERIC_TOLERANCE;
+			}
 			case ValueType::COLOR:          return std::get<uint32_t>(left) == std::get<uint32_t>(right);
 			case ValueType::MODULE:         return std::get<ModuleRef>(left) == std::get<ModuleRef>(right);
 			case ValueType::TUB:            return std::get<TubRef>(left) == std::get<TubRef>(right);
@@ -352,8 +516,9 @@ namespace ltl {
 		std::string render_value(const EvaluatedValue& value, ValueType type) {
 			std::ostringstream output;
 			if (const auto boolean = std::get_if<bool>(&value)) return *boolean ? "true" : "false";
-			if (const auto number = std::get_if<double>(&value)) {
-				output << std::setprecision(17) << *number;
+			if (const auto number = std::get_if<Numeric>(&value)) {
+				if (number->integral) output << number->integer;
+				else output << std::setprecision(17) << number->physical;
 				return output.str();
 			}
 			if (const auto color = std::get_if<uint32_t>(&value)) {
@@ -479,6 +644,7 @@ namespace ltl {
 			}
 			seen_tubs_.insert(id);
 		}
+		for (const auto& [id, tub] : observation.tubs_) initial_tub_registry_.try_emplace(id, tub);
 		observation.known_tubs_    = seen_tubs_;
 		observation.rpc_requests_  = std::move(requests);
 		observation.rpc_responses_ = std::move(responses);
@@ -511,6 +677,20 @@ namespace ltl {
 		}
 		derive_tub_edges(observation.tubs_, previous_tubs_, observation.appeared_, observation.disappeared_,
 						 observation.entered_, observation.left_);
+		for (const uint16_t id : observation.disappeared_) {
+			const TubSnapshot& before = previous_tubs_.at(id);
+			TubExit            exit;
+			exit.tub           = id;
+			exit.source_module = before.module;
+			exit.cause = world.removal_reason(static_cast<uint8_t>(id)).value_or(world::TubRemovalReason::EXPLICIT);
+			exit.tick  = logical_tick;
+			exit.uid   = before.uid;
+			exit.data  = before.data;
+			if (exit.cause == world::TubRemovalReason::YEETED) {
+				exit.endpoint = before.belt == world::Belt::SMALL ? 1 : (before.position_um == 0 ? 2 : 0);
+			}
+			tub_exit_registry_.emplace(id, std::move(exit));
+		}
 		derive_module_edges(observation.modules_, previous_modules_, observation.changed_);
 		previous_tubs_    = observation.tubs_;
 		previous_modules_ = observation.modules_;
@@ -614,6 +794,24 @@ namespace ltl {
 
 	const RpcEvent* Observation::rpc_event(uint64_t id) const {
 		return observer_ ? observer_->rpc_event(id, tick_) : nullptr;
+	}
+
+	const TubExit* Observer::tub_exit(uint16_t id, uint64_t observation_tick) const {
+		const auto found = tub_exit_registry_.find(id);
+		return found == tub_exit_registry_.end() || found->second.tick > observation_tick ? nullptr : &found->second;
+	}
+
+	const TubExit* Observation::tub_exit(uint16_t id) const {
+		return observer_ ? observer_->tub_exit(id, tick_) : nullptr;
+	}
+
+	const TubSnapshot* Observer::initial_tub(uint16_t id) const {
+		const auto found = initial_tub_registry_.find(id);
+		return found == initial_tub_registry_.end() ? nullptr : &found->second;
+	}
+
+	const TubSnapshot* Observation::initial_tub(uint16_t id) const {
+		return observer_ ? observer_->initial_tub(id) : nullptr;
 	}
 
 } // namespace ltl
