@@ -2,7 +2,7 @@
   "name": "simulation-ltlf",
   "displayName": "Simulation LTLf",
   "description": "Syntax highlighting and authoritative parser/type-check diagnostics for the simulation project's LTLf DSL.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "local",
   "license": "UNLICENSED",
   "repository": {

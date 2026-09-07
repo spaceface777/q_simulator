@@ -56,11 +56,11 @@ namespace {
 		return escaped;
 	}
 
-	void diagnostic(std::string_view error) {
-		std::size_t                line    = 1;
-		std::size_t                column  = 1;
-		std::string_view           message = error;
-		constexpr std::string_view prefix  = "<document>:";
+	void diagnostic(std::string_view error, std::string_view filename) {
+		std::size_t       line    = 1;
+		std::size_t       column  = 1;
+		std::string_view  message = error;
+		const std::string prefix  = std::string(filename) + ":";
 		if (message.starts_with(prefix)) {
 			message.remove_prefix(prefix.size());
 			const std::size_t first  = message.find(':');
@@ -78,15 +78,17 @@ namespace {
 
 } // namespace
 
-extern "C" EMSCRIPTEN_KEEPALIVE const char* ltlf_validate(const char* source, const char* module_ids) noexcept {
+extern "C" EMSCRIPTEN_KEEPALIVE const char* ltlf_validate(const char* source, const char* filename,
+														  const char* module_ids) noexcept {
+	const std::string document = filename ? filename : "<document>";
 	try {
-		ltl::File file = ltl::parse(source ? source : "", "<document>");
-		ltl::type_check(file, ltl::TypeEnvironment{parse_modules(module_ids ? module_ids : "")}, "<document>");
+		ltl::File file = ltl::parse(source ? source : "", document);
+		ltl::type_check(file, ltl::TypeEnvironment{parse_modules(module_ids ? module_ids : "")}, document);
 		result.clear();
 	} catch (const std::exception& error) {
-		diagnostic(error.what());
+		diagnostic(error.what(), document);
 	} catch (...) {
-		diagnostic("unexpected validator failure");
+		diagnostic("unexpected validator failure", document);
 	}
 	return result.c_str();
 }

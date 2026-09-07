@@ -14,10 +14,10 @@ npx @vscode/vsce package
 
 from this directory, then install the resulting `.vsix` with **Extensions: Install from VSIX...**.
 
-This checkout already includes `simulation-ltlf-0.1.1.vsix`, which can also be installed from a shell with:
+This checkout already includes `simulation-ltlf-0.1.2.vsix`, which can also be installed from a shell with:
 
 ```sh
-code --install-extension simulation-ltlf-0.1.1.vsix
+code --install-extension simulation-ltlf-0.1.2.vsix
 ```
 
 ## Type-checking environment

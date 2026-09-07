@@ -63,8 +63,11 @@ namespace ltl {
 				++i;
 
 				std::filesystem::path path = import_path(path_token, filename);
-				if (path.is_relative() && !filename.starts_with('<'))
+				if (path.is_relative()) {
+					if (filename.starts_with('<'))
+						import_error(filename, path_token, "relative imports require a saved source file");
 					path = std::filesystem::path(filename).parent_path() / path;
+				}
 				path                  = std::filesystem::absolute(path).lexically_normal();
 				const std::string key = path.string();
 				if (stack.contains(key)) import_error(filename, keyword, "circular import of '" + key + "'");

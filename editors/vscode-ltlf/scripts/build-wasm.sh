@@ -14,7 +14,7 @@ em++ \
   -std=c++23 -O3 -flto -fexceptions \
   -sDISABLE_EXCEPTION_CATCHING=0 \
   -sALLOW_MEMORY_GROWTH=1 \
-  -sFILESYSTEM=0 \
+  -sNODERAWFS=1 \
   -sMODULARIZE=1 \
   -sEXPORT_NAME=createLtlfValidator \
   -sENVIRONMENT=node \

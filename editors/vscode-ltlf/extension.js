@@ -69,9 +69,13 @@ async function validateSource(module, document) {
     ? configured.filter((value) => Number.isInteger(value) && value >= 0 && value <= 255)
     : defaultModuleIds;
   const sourcePointer = writeString(module, document.getText());
+  const filenamePointer = writeString(
+    module,
+    document.uri.scheme === 'untitled' ? '<document>' : document.uri.fsPath,
+  );
   const modulesPointer = writeString(module, moduleIds.join(','));
   try {
-    const resultPointer = module._ltlf_validate(sourcePointer, modulesPointer);
+    const resultPointer = module._ltlf_validate(sourcePointer, filenamePointer, modulesPointer);
     if (!resultPointer) return undefined;
     const json = module.UTF8ToString(resultPointer);
     if (!json) return undefined;
@@ -89,6 +93,7 @@ async function validateSource(module, document) {
     return diagnostic;
   } finally {
     module._free(modulesPointer);
+    module._free(filenamePointer);
     module._free(sourcePointer);
   }
 }
