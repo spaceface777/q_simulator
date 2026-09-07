@@ -963,6 +963,27 @@ TEST_F(RuntimeTest, TreatsAnEmptyPropertyFileAsAVacuousPass) {
 	runtime.stop();
 }
 
+TEST_F(RuntimeTest, ReportsTheImportedFileAsAPropertySource) {
+	const fs::path directory = fs::temp_directory_path() / "q_simulator_runtime_import_location_test";
+	fs::remove_all(directory);
+	fs::create_directories(directory);
+	const fs::path imported_file = directory / "imported.spec";
+	{
+		std::ofstream imported(imported_file);
+		imported << "prop imported_property = true;\n";
+	}
+	const fs::path main_file = directory / "main.spec";
+	ltl::File properties = ltl::parse("import \"imported.spec\";\n", main_file.string());
+
+	sim::Runtime runtime(7);
+	runtime.load_properties(std::move(properties), 1, main_file.string());
+	const auto results = runtime.property_results();
+	ASSERT_EQ(results.size(), 1u);
+	EXPECT_EQ(results[0].source, fs::absolute(imported_file).lexically_normal().string());
+	EXPECT_EQ(results[0].position.line, 1u);
+	fs::remove_all(directory);
+}
+
 TEST_F(RuntimeTest, EvaluatesPropertyScopesDirectlyFromCanonicalObservations) {
 	events::Schedule   schedule;
 	events::TubArrival tub;

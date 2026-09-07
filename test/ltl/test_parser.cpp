@@ -183,6 +183,64 @@ prop framed = forall request in rpc_requests(module(1)): valid_header(request);
 	std::filesystem::remove_all(directory);
 }
 
+TEST(LtlParser, LoadsSharedTransitiveImportsOnlyOnce) {
+	const std::filesystem::path directory =
+		std::filesystem::temp_directory_path() / "q_simulator_ltl_diamond_import_test";
+	std::filesystem::remove_all(directory);
+	std::filesystem::create_directories(directory);
+	{
+		std::ofstream shared(directory / "shared.spec");
+		shared << "let shared_value = true;\n";
+	}
+	{
+		std::ofstream left(directory / "left.spec");
+		left << "import \"shared.spec\";\nprop left = shared_value;\n";
+	}
+	{
+		std::ofstream right(directory / "right.spec");
+		right << "import \"shared.spec\";\nprop right = shared_value;\n";
+	}
+
+	ltl::File file = ltl::parse("import \"left.spec\";\nimport \"right.spec\";\n",
+								(directory / "main.spec").string());
+	ltl::type_check(file, ltl::TypeEnvironment{{}}, (directory / "main.spec").string());
+	ASSERT_EQ(file.properties.size(), 2u);
+	EXPECT_EQ(file.properties[0].name, "left");
+	EXPECT_EQ(file.properties[1].name, "right");
+	std::filesystem::remove_all(directory);
+}
+
+TEST(LtlParser, RetainsImportedSourceLocations) {
+	const std::filesystem::path directory =
+		std::filesystem::temp_directory_path() / "q_simulator_ltl_import_location_test";
+	std::filesystem::remove_all(directory);
+	std::filesystem::create_directories(directory);
+	const std::filesystem::path child = directory / "child.spec";
+	{
+		std::ofstream imported(child);
+		imported << "// imported line one\nprop imported_property = true;\n";
+	}
+
+	ltl::File file = ltl::parse("import \"child.spec\";\n", (directory / "main.spec").string());
+	ASSERT_EQ(file.properties.size(), 1u);
+	EXPECT_EQ(file.properties[0].span.begin.source, std::filesystem::absolute(child).lexically_normal().string());
+	EXPECT_EQ(file.properties[0].span.begin.line, 2u);
+
+	{
+		std::ofstream imported(child);
+		imported << "prop imported_property = module(1).uid == 1;\n";
+	}
+	file = ltl::parse("import \"child.spec\";\n", (directory / "main.spec").string());
+	try {
+		ltl::type_check(file, ltl::TypeEnvironment{{1}}, (directory / "main.spec").string());
+		FAIL() << "expected an imported type error";
+	} catch (const std::invalid_argument& error) {
+		EXPECT_EQ(std::string(error.what()).find(std::filesystem::absolute(child).lexically_normal().string() + ":1:"),
+				  0u);
+	}
+	std::filesystem::remove_all(directory);
+}
+
 TEST(LtlParser, SupportsParameterizedAliasesAndCValuePrecedence) {
 	ltl::File file = compile(R"(
 let kind = 3;

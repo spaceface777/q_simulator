@@ -256,9 +256,11 @@ namespace sim {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
 			const uint64_t until_tick = declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
+			const std::string& source = declaration.span.begin.source.empty() ? property_filename_
+																			 : declaration.span.begin.source;
 			trace_.write(trace::Entry("property_activation")
 							 .field("name", declaration.name)
-							 .field("source", property_filename_)
+							 .field("source", source)
 							 .field("line", static_cast<uint64_t>(declaration.span.begin.line))
 							 .field("column", static_cast<uint64_t>(declaration.span.begin.column))
 							 .field("from_tick", from_tick)
@@ -435,7 +437,9 @@ namespace sim {
 			const ltl::Verdict              verdict =
 				global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
 			const ltl::Monitor& monitor = property_monitors_[index];
-			results.push_back(PropertyResult{declaration.name, property_filename_, declaration.span.begin, verdict,
+			const std::string& source = declaration.span.begin.source.empty() ? property_filename_
+																			 : declaration.span.begin.source;
+			results.push_back(PropertyResult{declaration.name, source, declaration.span.begin, verdict,
 											 property_decisive_ticks_[index], monitor.failure(), monitor.activations(),
 											 monitor.has_trigger(), monitor.obligation_at_end()});
 		}

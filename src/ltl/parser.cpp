@@ -101,7 +101,8 @@ namespace ltl {
 			std::unordered_map<std::string, Alias> aliases_;
 
 			[[noreturn]] void error(const Token& token, const std::string& message) const {
-				throw std::invalid_argument(filename_ + ":" + std::to_string(token.span.begin.line) + ":" +
+				const std::string& source = token.span.begin.source.empty() ? filename_ : token.span.begin.source;
+				throw std::invalid_argument(source + ":" + std::to_string(token.span.begin.line) + ":" +
 											std::to_string(token.span.begin.column) + ": " + message);
 			}
 
@@ -416,12 +417,14 @@ namespace ltl {
 			}
 
 			[[noreturn]] void error(const Token& token, const std::string& message) const {
-				throw std::invalid_argument(filename_ + ":" + std::to_string(token.span.begin.line) + ":" +
+				const std::string& source = token.span.begin.source.empty() ? filename_ : token.span.begin.source;
+				throw std::invalid_argument(source + ":" + std::to_string(token.span.begin.line) + ":" +
 											std::to_string(token.span.begin.column) + ": " + message);
 			}
 
 			[[noreturn]] void error(const Span& span, const std::string& message) const {
-				throw std::invalid_argument(filename_ + ":" + std::to_string(span.begin.line) + ":" +
+				const std::string& source = span.begin.source.empty() ? filename_ : span.begin.source;
+				throw std::invalid_argument(source + ":" + std::to_string(span.begin.line) + ":" +
 											std::to_string(span.begin.column) + ": " + message);
 			}
 

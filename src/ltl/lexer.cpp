@@ -139,7 +139,9 @@ namespace ltl {
 			}
 
 		public:
-			Lexer(const std::string& source, std::string filename) : source_(source), filename_(std::move(filename)) {}
+			Lexer(const std::string& source, std::string filename) : source_(source), filename_(std::move(filename)) {
+				position_.source = filename_;
+			}
 
 			std::vector<Token> run() {
 				while (!done()) {
