@@ -972,8 +972,8 @@ TEST_F(RuntimeTest, ReportsTheImportedFileAsAPropertySource) {
 		std::ofstream imported(imported_file);
 		imported << "prop imported_property = true;\n";
 	}
-	const fs::path main_file = directory / "main.spec";
-	ltl::File properties = ltl::parse("import \"imported.spec\";\n", main_file.string());
+	const fs::path main_file  = directory / "main.spec";
+	ltl::File      properties = ltl::parse("import \"imported.spec\";\n", main_file.string());
 
 	sim::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 1, main_file.string());

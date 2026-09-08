@@ -255,9 +255,9 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			const uint64_t until_tick = declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
-			const std::string& source = declaration.span.begin.source.empty() ? property_filename_
-																			 : declaration.span.begin.source;
+			const uint64_t     until_tick = declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
+			const std::string& source =
+				declaration.span.begin.source.empty() ? property_filename_ : declaration.span.begin.source;
 			trace_.write(trace::Entry("property_activation")
 							 .field("name", declaration.name)
 							 .field("source", source)
@@ -437,8 +437,8 @@ namespace sim {
 			const ltl::Verdict              verdict =
 				global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
 			const ltl::Monitor& monitor = property_monitors_[index];
-			const std::string& source = declaration.span.begin.source.empty() ? property_filename_
-																			 : declaration.span.begin.source;
+			const std::string&  source =
+				declaration.span.begin.source.empty() ? property_filename_ : declaration.span.begin.source;
 			results.push_back(PropertyResult{declaration.name, source, declaration.span.begin, verdict,
 											 property_decisive_ticks_[index], monitor.failure(), monitor.activations(),
 											 monitor.has_trigger(), monitor.obligation_at_end()});

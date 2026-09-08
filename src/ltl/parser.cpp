@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -279,7 +280,8 @@ namespace ltl {
 					Expansion expanded   = expand_range(alias_body, 0, alias_body.size(), alias.order, args, stack);
 					stack.erase(token.text);
 					out.push_back(Token{TokenKind::LEFT_PAREN, "(", token.span});
-					out.insert(out.end(), expanded.begin(), expanded.end());
+					out.insert(out.end(), std::make_move_iterator(expanded.begin()),
+							   std::make_move_iterator(expanded.end()));
 					out.push_back(Token{TokenKind::RIGHT_PAREN, ")", token.span});
 				}
 				return out;
@@ -375,7 +377,8 @@ namespace ltl {
 					Expansion                       body(tokens_.begin() + equal + 1, tokens_.begin() + end);
 					std::unordered_set<std::string> stack;
 					Expansion                       expanded = expand_range(body, 0, body.size(), available, {}, stack);
-					result.insert(result.end(), expanded.begin(), expanded.end());
+					result.insert(result.end(), std::make_move_iterator(expanded.begin()),
+								  std::make_move_iterator(expanded.end()));
 					result.push_back(tokens_[end]);
 					i = end + 1;
 				}

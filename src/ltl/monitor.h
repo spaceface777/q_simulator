@@ -27,7 +27,8 @@ namespace ltl {
 	using AtomEvaluator     = std::function<bool(const Formula&)>;
 	using AtomValueRenderer = std::function<std::optional<std::string>(const Formula&)>;
 	using DomainVisitor     = std::function<void(uint64_t)>;
-	using DomainEvaluator   = std::function<void(const Value*, ValueType, const DomainVisitor&)>;
+	// The Module domain is the fixed layout. Tub and RPC domains are observed on each tick.
+	using DomainEvaluator = std::function<void(const Value*, ValueType, const DomainVisitor&)>;
 
 	// Whether the given module's application code advanced on the current observation. Module zero
 	// asks about the global observation tick, which always advances. An absent evaluator reports
@@ -50,7 +51,7 @@ namespace ltl {
 
 	class Monitor {
 	public:
-		// formula, including all of its child nodes, must outlive this monitor.
+		// formula and its child nodes must remain unchanged and outlive this monitor.
 		Monitor(std::string property_name, const Formula& formula, uint64_t activation_tick = 0);
 		~Monitor();
 

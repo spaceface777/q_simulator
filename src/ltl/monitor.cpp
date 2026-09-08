@@ -13,7 +13,7 @@
 namespace ltl {
 
 	namespace {
-		constexpr uint64_t MAINTENANCE_INTERVAL = 64;
+		constexpr uint64_t MAINTENANCE_INTERVAL = 1024;
 
 		enum class NodeKind : uint8_t {
 			FALSE,
@@ -28,17 +28,22 @@ namespace ltl {
 			UNTIL,
 			FORALL,
 			EXISTS,
+			DEFERRED,
 		};
 
 		struct Node;
 		using NodePtr = std::shared_ptr<const Node>;
 
 		struct Node {
-			NodeKind       kind;
-			const Formula* source;
-			NodePtr        left;
-			NodePtr        right;
-			uint64_t       elapsed = 0;
+			NodeKind                                      kind;
+			const Formula*                                source;
+			NodePtr                                       left;
+			NodePtr                                       right;
+			uint64_t                                      elapsed          = 0;
+			mutable bool                                  modules_grounded = false;
+			mutable std::vector<NodePtr>                  module_instances{};
+			mutable std::unordered_map<uint64_t, NodePtr> tub_instances{};
+			mutable NodePtr                               expansion{};
 		};
 
 		struct NodeKey {
@@ -180,6 +185,8 @@ namespace ltl {
 			return "?";
 		}
 
+		void append_formula_key(std::ostringstream& output, const Formula& formula);
+
 		void append_value_key(std::ostringstream& output, const Value& value) {
 			output << static_cast<unsigned>(value.kind) << ':' << static_cast<unsigned>(value.type) << ':';
 			switch (value.kind) {
@@ -197,9 +204,13 @@ namespace ltl {
 			case Value::Kind::COUNT:
 				output << value.binding << ':' << static_cast<unsigned>(value.binding_type) << ':';
 				if (value.domain) append_value_key(output, *value.domain);
-				output << ':' << render_formula(*value.predicate);
+				output << ':';
+				append_formula_key(output, *value.predicate);
 				break;
-			case Value::Kind::NAME: output << value.entity_id; break;
+			case Value::Kind::NAME:
+				output << value.entity_id;
+				if (!value.entity_id) output << ':' << value.text;
+				break;
 			case Value::Kind::CALL:
 				output << value.text << '(';
 				for (const auto& argument : value.arguments) {
@@ -238,6 +249,17 @@ namespace ltl {
 				output << ')';
 				break;
 			}
+		}
+
+		void append_formula_key(std::ostringstream& output, const Formula& formula) {
+			output << '(' << static_cast<unsigned>(formula.kind) << ':' << static_cast<unsigned>(formula.comparison);
+			if (formula.value) append_value_key(output, *formula.value);
+			if (formula.compared) append_value_key(output, *formula.compared);
+			if (formula.left) append_formula_key(output, *formula.left);
+			if (formula.right) append_formula_key(output, *formula.right);
+			output << ':' << formula.binding << ':' << static_cast<unsigned>(formula.binding_type);
+			if (formula.domain) append_value_key(output, *formula.domain);
+			output << ')';
 		}
 
 		std::string atom_key(const Formula& formula) {
@@ -409,7 +431,8 @@ namespace ltl {
 				return "(" + render_node(node->left) + " until" + render_interval(*node->source) + " " +
 					   render_node(node->right) + ")";
 			case NodeKind::FORALL:
-			case NodeKind::EXISTS: return render_formula(*node->source);
+			case NodeKind::EXISTS:   return render_formula(*node->source);
+			case NodeKind::DEFERRED: return render_formula(*node->source->right);
 			}
 			throw std::logic_error("unknown normalized LTL node kind");
 		}
@@ -433,7 +456,7 @@ namespace ltl {
 				return factory.make_or(normalize(*formula.left, factory), normalize(*formula.right, factory), &formula);
 			case Formula::Kind::IMPLIES:
 				return factory.make_or(factory.negate_antecedent(normalize(*formula.left, factory), &formula),
-									   normalize(*formula.right, factory), &formula);
+									   factory.unary(NodeKind::DEFERRED, formula, {}), &formula);
 			case Formula::Kind::UNTIL:
 				return factory.binary(NodeKind::UNTIL, formula, normalize(*formula.left, factory),
 									  normalize(*formula.right, factory));
@@ -443,10 +466,62 @@ namespace ltl {
 			throw std::logic_error("unknown LTL formula kind");
 		}
 
-		std::unique_ptr<Value> clone_value(const Value& value, const std::string& binding, uint64_t identity);
+		std::unique_ptr<Value> clone_value(const Value&                                         value,
+										   const std::vector<std::pair<std::string, uint64_t>>& bindings);
 
-		std::unique_ptr<Formula> clone_formula(const Formula& formula, const std::string& binding, uint64_t identity) {
-			auto result          = std::make_unique<Formula>();
+		// Only fold facts independent of observations. In particular, a false dynamic guard
+		// must never erase a future obligation.
+		std::optional<bool> static_truth(const Formula&                                       formula,
+										 const std::vector<std::pair<std::string, uint64_t>>& bindings) {
+			auto entity = [&](const Value& value) -> uint64_t {
+				if (value.type != ValueType::MODULE && value.type != ValueType::TUB) return 0;
+				if (value.kind == Value::Kind::NAME) {
+					for (const auto& [binding, identity] : bindings)
+						if (value.text == binding) return identity;
+					return value.entity_id;
+				}
+				if (value.kind == Value::Kind::CALL && (value.text == "module" || value.text == "tub"))
+					return value.entity_id;
+				return 0;
+			};
+			if (formula.kind == Formula::Kind::ATOM && formula.value->kind == Value::Kind::BOOLEAN)
+				return formula.value->boolean;
+			if (formula.kind == Formula::Kind::COMPARISON) {
+				const auto a = entity(*formula.value), b = entity(*formula.compared);
+				if (a && b) {
+					if (formula.comparison == Formula::Comparison::EQUAL) return a == b;
+					if (formula.comparison == Formula::Comparison::NOT_EQUAL) return a != b;
+				}
+			}
+			if (formula.kind == Formula::Kind::NOT) {
+				if (auto value = static_truth(*formula.left, bindings)) return !*value;
+			}
+			if (formula.kind == Formula::Kind::IMPLIES) {
+				if (auto a = static_truth(*formula.left, bindings); a && !*a) return true;
+				return std::nullopt;
+			}
+			if (formula.kind == Formula::Kind::AND || formula.kind == Formula::Kind::OR) {
+				auto       a           = static_truth(*formula.left, bindings);
+				const bool conjunction = formula.kind == Formula::Kind::AND;
+				if (a && *a != conjunction) return *a;
+				auto b = static_truth(*formula.right, bindings);
+				if (b && *b != conjunction) return *b;
+				if (a && b) return conjunction;
+			}
+			return std::nullopt;
+		}
+
+		std::unique_ptr<Formula> clone_formula(const Formula&                                       formula,
+											   const std::vector<std::pair<std::string, uint64_t>>& bindings,
+											   bool                                                 defer = true) {
+			auto result = std::make_unique<Formula>();
+			if (auto truth = static_truth(formula, bindings)) {
+				result->value          = std::make_unique<Value>();
+				result->value->kind    = Value::Kind::BOOLEAN;
+				result->value->type    = ValueType::BOOLEAN;
+				result->value->boolean = *truth;
+				return result;
+			}
 			result->kind         = formula.kind;
 			result->span         = formula.span;
 			result->interval     = formula.interval;
@@ -458,19 +533,29 @@ namespace ltl {
 			result->step_module         = formula.step_module;
 			result->step_module_binding = formula.step_module_binding;
 			result->sequencing          = formula.sequencing;
-			if (!formula.step_module_binding.empty() && formula.step_module_binding == binding) {
-				result->step_module = static_cast<uint16_t>(identity);
-				result->step_module_binding.clear();
-			}
-			if (formula.value) result->value = clone_value(*formula.value, binding, identity);
-			if (formula.compared) result->compared = clone_value(*formula.compared, binding, identity);
-			if (formula.left) result->left = clone_formula(*formula.left, binding, identity);
-			if (formula.right) result->right = clone_formula(*formula.right, binding, identity);
-			if (formula.domain) result->domain = clone_value(*formula.domain, binding, identity);
+			for (const auto& [binding, identity] : bindings)
+				if (!formula.step_module_binding.empty() && formula.step_module_binding == binding) {
+					result->step_module = static_cast<uint16_t>(identity);
+					result->step_module_binding.clear();
+				}
+			if (formula.value) result->value = clone_value(*formula.value, bindings);
+			if (formula.compared) result->compared = clone_value(*formula.compared, bindings);
+			if (defer && (formula.kind == Formula::Kind::FORALL || formula.kind == Formula::Kind::EXISTS)) {
+				result->left            = formula.left;
+				result->ground_bindings = formula.ground_bindings;
+				result->ground_bindings.insert(result->ground_bindings.end(), bindings.begin(), bindings.end());
+			} else if (formula.left) result->left = clone_formula(*formula.left, bindings, defer);
+			if (defer && formula.kind == Formula::Kind::IMPLIES) {
+				result->right           = formula.right;
+				result->ground_bindings = formula.ground_bindings;
+				result->ground_bindings.insert(result->ground_bindings.end(), bindings.begin(), bindings.end());
+			} else if (formula.right) result->right = clone_formula(*formula.right, bindings, defer);
+			if (formula.domain) result->domain = clone_value(*formula.domain, bindings);
 			return result;
 		}
 
-		std::unique_ptr<Value> clone_value(const Value& value, const std::string& binding, uint64_t identity) {
+		std::unique_ptr<Value> clone_value(const Value&                                         value,
+										   const std::vector<std::pair<std::string, uint64_t>>& bindings) {
 			auto result          = std::make_unique<Value>();
 			result->kind         = value.kind;
 			result->span         = value.span;
@@ -488,15 +573,16 @@ namespace ltl {
 			result->boolean      = value.boolean;
 			result->binding      = value.binding;
 			result->binding_type = value.binding_type;
-			if (value.kind == Value::Kind::NAME && value.text == binding) {
-				result->entity_id = identity;
-			}
-			if (value.base) result->base = clone_value(*value.base, binding, identity);
+			for (const auto& [binding, identity] : bindings)
+				if (value.kind == Value::Kind::NAME && value.text == binding) {
+					result->entity_id = identity;
+				}
+			if (value.base) result->base = clone_value(*value.base, bindings);
 			for (const auto& argument : value.arguments) {
-				result->arguments.push_back(clone_value(*argument, binding, identity));
+				result->arguments.push_back(clone_value(*argument, bindings));
 			}
-			if (value.domain) result->domain = clone_value(*value.domain, binding, identity);
-			if (value.predicate) result->predicate = clone_formula(*value.predicate, binding, identity);
+			if (value.domain) result->domain = clone_value(*value.domain, bindings);
+			if (value.predicate) result->predicate = clone_formula(*value.predicate, bindings, false);
 			return result;
 		}
 
@@ -572,7 +658,7 @@ namespace ltl {
 				// ahead. Hold the obligation rather than discharging it against a tick whose code did
 				// not run. Module zero is the global tick, which advances on every observation.
 				if (node->source->step_module != 0 && evaluate_step && !evaluate_step(node->source->step_module)) {
-					return factory.advance(node);
+					return node;
 				}
 				return progress_child(node->left);
 			case NodeKind::UNTIL:
@@ -601,20 +687,45 @@ namespace ltl {
 							: factory.make_and(std::move(prefix), factory.advance(node), node->source);
 					return factory.make_or(std::move(witness), std::move(continuation), node->source);
 				}
+			case NodeKind::DEFERRED: {
+				if (!node->expansion) node->expansion = ground_persistent(*node->source, {}, 0);
+				return progress_child(node->expansion);
+			}
 			case NodeKind::FORALL:
 			case NodeKind::EXISTS: {
 				if (!evaluate_domain) throw std::logic_error("quantified monitor requires a domain evaluator");
 				const bool universal = node->kind == NodeKind::FORALL;
 				NodePtr    result    = factory.constant(universal);
+				if (!node->source->domain && node->source->binding_type == ValueType::MODULE) {
+					if (!node->modules_grounded) {
+						evaluate_domain(nullptr, ValueType::MODULE, [&](uint64_t identity) {
+							NodePtr instance = ground_persistent(*node->source, node->source->binding, identity);
+							if (instance->kind != (universal ? NodeKind::TRUE : NodeKind::FALSE))
+								node->module_instances.push_back(std::move(instance));
+						});
+						node->modules_grounded = true;
+					}
+					for (const auto& instance : node->module_instances) {
+						NodePtr item = progress_child(instance);
+						result       = universal ? factory.make_and(std::move(result), std::move(item), node->source)
+												 : factory.make_or(std::move(result), std::move(item), node->source);
+						if (result->kind == (universal ? NodeKind::FALSE : NodeKind::TRUE)) break;
+					}
+					return result;
+				}
 				evaluate_domain(node->source->domain.get(), node->source->binding_type, [&](uint64_t identity) {
 					if ((universal && result->kind == NodeKind::FALSE) ||
 						(!universal && result->kind == NodeKind::TRUE))
 						return;
 					NodePtr item;
 					if (!node->source->domain) {
-						item = progress_child(ground_persistent(*node->source->left, node->source->binding, identity));
+						auto& instance = node->tub_instances[identity];
+						if (!instance) instance = ground_persistent(*node->source, node->source->binding, identity);
+						item = progress_child(instance);
 					} else {
-						auto grounded         = clone_formula(*node->source->left, node->source->binding, identity);
+						auto bindings = node->source->ground_bindings;
+						bindings.emplace_back(node->source->binding, identity);
+						auto grounded         = clone_formula(*node->source->left, bindings);
 						item                  = progress_child(normalize(*grounded, factory));
 						const bool persistent = item->kind != NodeKind::TRUE && item->kind != NodeKind::FALSE;
 						own_formula(std::move(grounded), persistent);
@@ -654,7 +765,8 @@ namespace ltl {
 			case NodeKind::NEXT:       return factory.constant(optimistic);
 			case NodeKind::UNTIL:      return factory.constant(optimistic);
 			case NodeKind::FORALL:
-			case NodeKind::EXISTS:     throw std::logic_error("unprogressed quantifier at finite-trace end");
+			case NodeKind::EXISTS:
+			case NodeKind::DEFERRED:   throw std::logic_error("unprogressed quantifier at finite-trace end");
 			}
 			throw std::logic_error("unknown normalized LTL formula kind");
 		}
@@ -686,6 +798,9 @@ namespace ltl {
 			if (node->source) sources.insert(node->source);
 			collect_formula_sources(node->left, sources, visited);
 			collect_formula_sources(node->right, sources, visited);
+			collect_formula_sources(node->expansion, sources, visited);
+			for (const auto& instance : node->module_instances) collect_formula_sources(instance, sources, visited);
+			for (const auto& [id, instance] : node->tub_instances) collect_formula_sources(instance, sources, visited);
 		}
 
 		bool formula_tree_is_referenced(const Formula& formula, const std::unordered_set<const Formula*>& sources) {
@@ -714,24 +829,22 @@ namespace ltl {
 			  residual(normalize(formula, factory)), trigger(contains_implication(formula)),
 			  activation_tick(activation_tick) {}
 
-		std::string                                            property_name;
-		std::string                                            formula;
-		NodeFactory                                            factory;
-		NodePtr                                                residual;
-		std::vector<std::pair<const Formula*, bool>>           last_evaluations;
-		std::vector<std::unique_ptr<Formula>>                  transient_formulas;
-		std::vector<std::unique_ptr<Formula>>                  persistent_formulas;
-		std::vector<std::unique_ptr<Formula>>                  persistent_ground_formulas;
-		std::map<std::pair<const Formula*, uint64_t>, NodePtr> persistent_ground_nodes;
-		std::optional<FailureExplanation>                      failure;
-		std::string                                            obligation_at_end;
-		bool                                                   observed        = false;
-		bool                                                   finished        = false;
-		bool                                                   unresolved      = false;
-		bool                                                   trigger         = false;
-		uint64_t                                               activation_tick = 0;
-		uint64_t                                               observations    = 0;
-		uint64_t                                               activations     = 0;
+		std::string                                  property_name;
+		std::string                                  formula;
+		NodeFactory                                  factory;
+		NodePtr                                      residual;
+		std::vector<std::pair<const Formula*, bool>> last_evaluations;
+		std::vector<std::unique_ptr<Formula>>        transient_formulas;
+		std::vector<std::unique_ptr<Formula>>        persistent_formulas;
+		std::optional<FailureExplanation>            failure;
+		std::string                                  obligation_at_end;
+		bool                                         observed        = false;
+		bool                                         finished        = false;
+		bool                                         unresolved      = false;
+		bool                                         trigger         = false;
+		uint64_t                                     activation_tick = 0;
+		uint64_t                                     observations    = 0;
+		uint64_t                                     activations     = 0;
 	};
 
 	Monitor::Monitor(std::string property_name, const Formula& formula, uint64_t activation_tick)
@@ -795,15 +908,11 @@ namespace ltl {
 				else implementation_->transient_formulas.push_back(std::move(formula));
 			},
 			[&](const Formula& formula, const std::string& binding, uint64_t identity) {
-				const auto key = std::make_pair(&formula, identity);
-				if (const auto found = implementation_->persistent_ground_nodes.find(key);
-					found != implementation_->persistent_ground_nodes.end()) {
-					return found->second;
-				}
-				auto    grounded   = clone_formula(formula, binding, identity);
+				auto bindings = formula.ground_bindings;
+				if (identity) bindings.emplace_back(binding, identity);
+				auto    grounded   = clone_formula(identity ? *formula.left : *formula.right, bindings);
 				NodePtr normalized = normalize(*grounded, implementation_->factory);
-				implementation_->persistent_ground_formulas.push_back(std::move(grounded));
-				implementation_->persistent_ground_nodes.emplace(key, normalized);
+				implementation_->persistent_formulas.push_back(std::move(grounded));
 				return normalized;
 			},
 			evaluate_step, implementation_->activations);
@@ -828,6 +937,7 @@ namespace ltl {
 		}
 		if (implementation_->observations % MAINTENANCE_INTERVAL == 0U) {
 			implementation_->factory.prune_expired();
+			if (implementation_->persistent_formulas.empty()) return verdict();
 			// Ground formulas only need to outlive the residual nodes and diagnostics that refer to them.
 			std::unordered_set<const Formula*> sources;
 			std::unordered_set<const Node*>    visited;
@@ -836,10 +946,6 @@ namespace ltl {
 			for (const auto& [formula, value] : implementation_->last_evaluations) {
 				(void)value;
 				sources.insert(formula);
-			}
-			for (const auto& [key, node] : implementation_->persistent_ground_nodes) {
-				sources.insert(key.first);
-				collect_formula_sources(node, sources, visited);
 			}
 			std::erase_if(implementation_->persistent_formulas,
 						  [&](const auto& formula) { return !formula_tree_is_referenced(*formula, sources); });

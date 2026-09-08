@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ltl {
@@ -195,11 +196,15 @@ namespace ltl {
 		Comparison               comparison = Comparison::EQUAL;
 		std::unique_ptr<Value>   value;
 		std::unique_ptr<Value>   compared;
-		std::unique_ptr<Formula> left;
-		std::unique_ptr<Formula> right;
+		std::shared_ptr<Formula> left;
+		std::shared_ptr<Formula> right;
 		std::string              binding;
 		ValueType                binding_type = ValueType::UNKNOWN;
 		std::unique_ptr<Value>   domain;
+
+		// Deferred substitutions for shared quantified bodies and implication consequents.
+		// Monitoring does not mutate shared bodies after type checking.
+		std::vector<std::pair<std::string, uint64_t>> ground_bindings;
 	};
 
 	struct PropertyScope {

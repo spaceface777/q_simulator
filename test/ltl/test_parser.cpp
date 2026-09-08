@@ -201,8 +201,7 @@ TEST(LtlParser, LoadsSharedTransitiveImportsOnlyOnce) {
 		right << "import \"shared.spec\";\nprop right = shared_value;\n";
 	}
 
-	ltl::File file = ltl::parse("import \"left.spec\";\nimport \"right.spec\";\n",
-								(directory / "main.spec").string());
+	ltl::File file = ltl::parse("import \"left.spec\";\nimport \"right.spec\";\n", (directory / "main.spec").string());
 	ltl::type_check(file, ltl::TypeEnvironment{{}}, (directory / "main.spec").string());
 	ASSERT_EQ(file.properties.size(), 2u);
 	EXPECT_EQ(file.properties[0].name, "left");

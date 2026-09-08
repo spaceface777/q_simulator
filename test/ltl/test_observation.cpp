@@ -362,7 +362,7 @@ always (
 )");
 	ltl::Monitor  monitor("grounding lifetime", *file.properties[0].formula);
 
-	for (uint64_t tick = 0; tick < 130; tick++) {
+	for (uint64_t tick = 0; tick < 2050; tick++) {
 		const uint64_t                id = 1000 + tick;
 		std::vector<ltl::RpcResponse> responses;
 		if (tick > 0) {
@@ -376,11 +376,63 @@ always (
 		EXPECT_EQ(observe(monitor, observation), ltl::Verdict::PENDING);
 	}
 
-	const uint64_t last = 1129;
-	EXPECT_EQ(observe(monitor,
-					  observer.observe(130, world_, {}, {{last, last, 130, MODULE, CMD_LASER_LEFT_GET, 129, 0, {}}})),
+	const uint64_t last = 3049;
+	EXPECT_EQ(observe(monitor, observer.observe(2050, world_, {},
+												{{last, last, 2050, MODULE, CMD_LASER_LEFT_GET, 2049, 0, {}}})),
 			  ltl::Verdict::PENDING);
 	EXPECT_EQ(monitor.finish(), ltl::Verdict::TRUE);
+}
+
+TEST_F(LtlObservationTest, DeferredNestedGroundingsSurviveCollectionAndKeepRecordIdentities) {
+	ltl::Observer observer(modules(), world_);
+	ltl::File     file = compile(R"(
+G (forall request in rpc_requests(module(1)): forall owner: Module:
+    owner == module(1) ->
+        (request.confirmable -> (F[1ms, 1ms] (rpc_response_to(request).status == .ok))))
+)");
+	ltl::Monitor  monitor("nested lifetime", *file.properties[0].formula);
+	for (uint64_t tick = 0; tick < 2050; ++tick) {
+		const uint64_t                id = 1000 + tick;
+		std::vector<ltl::RpcResponse> responses;
+		if (tick)
+			responses.push_back(
+				{id - 1, id - 1, tick, MODULE, CMD_LASER_LEFT_GET, static_cast<uint16_t>(tick - 1), 0, {}});
+		ASSERT_EQ(
+			observe(monitor,
+					observer.observe(tick, world_,
+									 {{id, tick, MODULE, CMD_LASER_LEFT_GET, static_cast<uint16_t>(tick), 0, true, {}}},
+									 std::move(responses))),
+			ltl::Verdict::PENDING);
+	}
+	EXPECT_EQ(observe(monitor, observer.observe(2050, world_)), ltl::Verdict::FALSE);
+	ASSERT_TRUE(monitor.failure());
+	ASSERT_FALSE(monitor.failure()->facts.empty());
+	EXPECT_NE(monitor.failure()->facts.back().expression.find("request#3049"), std::string::npos);
+	EXPECT_EQ(monitor.failure()->deadline_tick, 2050u);
+}
+
+TEST_F(LtlObservationTest, DeferredCountPredicatesRetainOuterModuleBindings) {
+	ltl::Observer observer(modules(), world_);
+	ltl::File     file = compile(R"(
+forall owner: Module: owner == module(1) ->
+    (count item: Module where (true -> item == owner) == 1)
+)");
+	ltl::Monitor  monitor("count bindings", *file.properties[0].formula);
+	EXPECT_EQ(observe(monitor, observer.observe(0, world_)), ltl::Verdict::TRUE);
+}
+
+TEST_F(LtlObservationTest, CountAtomSharingDistinguishesGroundModuleIdentities) {
+	world_.add_module(module::ModuleId{2});
+	place();
+	ltl::Observer observer({module::ModuleId{1}, module::ModuleId{2}}, world_);
+	ltl::File     file = ltl::parse(R"(
+prop test = forall owner: Module:
+    (count item: Module where (at_module(tub(67), owner) && item == module(1))) == 1;
+)",
+									"count.spec");
+	ltl::type_check(file, ltl::TypeEnvironment{{1, 2}}, "count.spec");
+	ltl::Monitor monitor("count identity", *file.properties[0].formula);
+	EXPECT_EQ(observe(monitor, observer.observe(0, world_)), ltl::Verdict::FALSE);
 }
 
 TEST_F(LtlObservationTest, CorrelatedDeadlineFailuresNameTheFrozenRequestAndItsFields) {

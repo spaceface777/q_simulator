@@ -4,6 +4,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <stdexcept>
 #include <sys/prctl.h>
 #include <sys/wait.h>
@@ -74,15 +75,30 @@ namespace childproc {
 	}
 
 	Handle launch(const LaunchSpec& spec) {
+		// Do not accumulate forked copies of the simulator's compiled specification.
+		// EOF acknowledges exec (or failure), not application activation. CLOEXEC also
+		// prevents later children from inheriting an acknowledgement pipe.
+		int ready[2];
+		if (::pipe2(ready, O_CLOEXEC) < 0)
+			throw std::runtime_error("Failed to create module launch pipe: " + std::string(::strerror(errno)));
 		const pid_t pid = ::fork();
 		if (pid < 0) {
+			const int error = errno;
+			::close(ready[0]);
+			::close(ready[1]);
 			throw std::runtime_error("Failed to fork module " + std::to_string(spec.id.raw()) + ": " +
-									 std::string(::strerror(errno)));
+									 std::string(::strerror(error)));
 		}
 
 		if (pid > 0) {
+			::close(ready[1]);
+			char unused;
+			while (::read(ready[0], &unused, 1) < 0 && errno == EINTR) {
+			}
+			::close(ready[0]);
 			return Handle(pid);
 		}
+		::close(ready[0]);
 
 		// Child process: must not throw or allocate, so failures call _exit(), not an exception.
 		::prctl(PR_SET_PDEATHSIG, SIGKILL);

@@ -122,6 +122,41 @@ namespace {
 
 } // namespace
 
+TEST(LtlMonitor, SpecializesStaticModuleGuardsOnceWithoutEvaluatingDeadBodies) {
+	CompiledProperty property("G (forall m: Module: m != module(1) -> (F[1ms, 2ms] m.rfid_active))");
+	ltl::Monitor     monitor("static guard", property.formula());
+	unsigned         domains = 0;
+	for (unsigned tick = 0; tick < 2050; ++tick) {
+		EXPECT_EQ(monitor.observe(
+					  [](const ltl::Formula&) -> bool {
+						  ADD_FAILURE() << "A statically false module guard must erase its body";
+						  return false;
+					  },
+					  {},
+					  [&](const ltl::Value*, ltl::ValueType, const ltl::DomainVisitor& visit) {
+						  ++domains;
+						  visit(1);
+					  }),
+				  ltl::Verdict::PENDING);
+	}
+	EXPECT_EQ(domains, 1u);
+	EXPECT_EQ(monitor.activations(), 0u);
+	EXPECT_EQ(monitor.finish(), ltl::Verdict::TRUE);
+}
+
+TEST(LtlMonitor, SpecializationPreservesTriggersAndDeadlinesOnUnchangedTicks) {
+	CompiledProperty property("G (forall m: Module: m == module(1) -> (F[1ms, 2ms] m.rfid_active))");
+	ltl::Monitor     monitor("deadline", property.formula());
+	for (unsigned tick = 0; tick < 3; ++tick) {
+		EXPECT_EQ(monitor.observe([](const ltl::Formula&) { return false; }, {},
+								  [](const ltl::Value*, ltl::ValueType, const ltl::DomainVisitor& visit) { visit(1); }),
+				  tick < 2 ? ltl::Verdict::PENDING : ltl::Verdict::FALSE);
+	}
+	EXPECT_GT(monitor.activations(), 0u);
+	ASSERT_TRUE(monitor.failure());
+	EXPECT_EQ(monitor.failure()->deadline_tick, 2u);
+}
+
 TEST(LtlMonitor, EvaluatesBooleanTruthTables) {
 	EXPECT_EQ(run("true && true", {signals(false)}).back(), ltl::Verdict::TRUE);
 	EXPECT_EQ(run("true && false", {signals(false)}).back(), ltl::Verdict::FALSE);
