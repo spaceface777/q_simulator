@@ -1,6 +1,7 @@
 #include "parser.h"
 
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -87,9 +88,17 @@ namespace ltl {
 			return result;
 		}
 
+		using Expansion = std::vector<const Token*>;
+
+		template <typename Iterator> Expansion token_refs(Iterator begin, Iterator end) {
+			Expansion result;
+			result.reserve(end - begin);
+			for (; begin != end; ++begin) result.push_back(&*begin);
+			return result;
+		}
+
 		class MacroExpander {
 		private:
-			using Expansion = std::vector<Token>;
 
 			struct Alias {
 				std::vector<std::string> parameters;
@@ -100,9 +109,24 @@ namespace ltl {
 			const std::vector<Token>&              tokens_;
 			std::string                            filename_;
 			std::unordered_map<std::string, Alias> aliases_;
+			// Expansion streams borrow tokens. Only hygiene and synthetic parentheses need storage.
+			std::deque<Token>                                                       generated_;
+			std::unordered_map<const Token*, std::pair<const Token*, const Token*>> parentheses_;
+
+			const Token* parenthesis(const Token& token, bool left) {
+				auto [it, inserted] = parentheses_.try_emplace(&token);
+				if (inserted) {
+					generated_.push_back(Token{TokenKind::LEFT_PAREN, "(", token.span});
+					it->second.first = &generated_.back();
+					generated_.push_back(Token{TokenKind::RIGHT_PAREN, ")", token.span});
+					it->second.second = &generated_.back();
+				}
+				return left ? it->second.first : it->second.second;
+			}
 
 			[[noreturn]] void error(const Token& token, const std::string& message) const {
-				const std::string& source = token.span.begin.source.empty() ? filename_ : token.span.begin.source;
+				const std::string& source =
+					token.span.begin.source_name().empty() ? filename_ : token.span.begin.source_name();
 				throw std::invalid_argument(source + ":" + std::to_string(token.span.begin.line) + ":" +
 											std::to_string(token.span.begin.column) + ": " + message);
 			}
@@ -171,9 +195,9 @@ namespace ltl {
 						const std::size_t        equal = signature_end(i, params);
 						const std::size_t        end   = declaration_end(i);
 						if (equal + 1 == end) error(tokens_[end], "expected an alias expression after '='");
-						aliases_.emplace(name.text,
-										 Alias{std::move(params),
-											   Expansion(tokens_.begin() + equal + 1, tokens_.begin() + end), order++});
+						aliases_.emplace(
+							name.text, Alias{std::move(params),
+											 token_refs(tokens_.begin() + equal + 1, tokens_.begin() + end), order++});
 					}
 					i = declaration_end(i) + 1;
 				}
@@ -182,60 +206,63 @@ namespace ltl {
 			static std::size_t matching_paren(const Expansion& input, std::size_t open, const MacroExpander& self) {
 				std::size_t depth = 0;
 				for (std::size_t i = open; i < input.size(); ++i) {
-					if (input[i].kind == TokenKind::LEFT_PAREN) ++depth;
-					else if (input[i].kind == TokenKind::RIGHT_PAREN && --depth == 0) return i;
+					if (input[i]->kind == TokenKind::LEFT_PAREN) ++depth;
+					else if (input[i]->kind == TokenKind::RIGHT_PAREN && --depth == 0) return i;
 				}
-				self.error(input[open], "expected ')' after alias arguments");
+				self.error(*input[open], "expected ')' after alias arguments");
 			}
 
-			Expansion hygienic_body(const Alias& alias) const {
+			Expansion hygienic_body(const Alias& alias) {
 				Expansion                                    body = alias.body;
 				std::unordered_map<std::string, std::string> renamed;
 				for (std::size_t i = 0; i + 1 < body.size(); ++i) {
-					const bool binder = word(body[i], "forall") || word(body[i], "exists") || word(body[i], "count") ||
-										body[i].kind == TokenKind::FORALL_ALIAS ||
-										body[i].kind == TokenKind::EXISTS_ALIAS ||
-										body[i].kind == TokenKind::COUNT_ALIAS;
-					if (binder && body[i + 1].kind == TokenKind::IDENTIFIER) {
-						renamed.emplace(body[i + 1].text,
-										"__alias_" + std::to_string(alias.order) + "_" + body[i + 1].text);
+					const bool binder = word(*body[i], "forall") || word(*body[i], "exists") ||
+										word(*body[i], "count") || body[i]->kind == TokenKind::FORALL_ALIAS ||
+										body[i]->kind == TokenKind::EXISTS_ALIAS ||
+										body[i]->kind == TokenKind::COUNT_ALIAS;
+					if (binder && body[i + 1]->kind == TokenKind::IDENTIFIER) {
+						renamed.emplace(body[i + 1]->text,
+										"__alias_" + std::to_string(alias.order) + "_" + body[i + 1]->text);
 					}
 				}
 				for (std::size_t i = 0; i < body.size(); ++i) {
-					if (body[i].kind != TokenKind::IDENTIFIER || (i && body[i - 1].kind == TokenKind::DOT)) continue;
-					if (const auto found = renamed.find(body[i].text); found != renamed.end())
-						body[i].text = found->second;
+					if (body[i]->kind != TokenKind::IDENTIFIER || (i && body[i - 1]->kind == TokenKind::DOT)) continue;
+					if (const auto found = renamed.find(body[i]->text); found != renamed.end()) {
+						generated_.push_back(*body[i]);
+						generated_.back().text = found->second;
+						body[i]                = &generated_.back();
+					}
 				}
 				return body;
 			}
 
 			Expansion expand_range(const Expansion& input, std::size_t begin, std::size_t end, std::size_t available,
 								   const std::unordered_map<std::string, Expansion>& substitutions,
-								   std::unordered_set<std::string>&                  stack) const {
+								   std::unordered_set<std::string>&                  stack) {
 				Expansion out;
 				for (std::size_t i = begin; i < end; ++i) {
-					const Token& token  = input[i];
-					const bool   member = i > begin && input[i - 1].kind == TokenKind::DOT;
+					const Token& token  = *input[i];
+					const bool   member = i > begin && input[i - 1]->kind == TokenKind::DOT;
 					if (token.kind != TokenKind::IDENTIFIER || member) {
-						out.push_back(token);
+						out.push_back(&token);
 						continue;
 					}
 					const bool bound_name =
 						i > begin &&
-						(word(input[i - 1], "forall") || word(input[i - 1], "exists") || word(input[i - 1], "count") ||
-						 input[i - 1].kind == TokenKind::FORALL_ALIAS || input[i - 1].kind == TokenKind::EXISTS_ALIAS ||
-						 input[i - 1].kind == TokenKind::COUNT_ALIAS);
+						(word(*input[i - 1], "forall") || word(*input[i - 1], "exists") ||
+						 word(*input[i - 1], "count") || input[i - 1]->kind == TokenKind::FORALL_ALIAS ||
+						 input[i - 1]->kind == TokenKind::EXISTS_ALIAS || input[i - 1]->kind == TokenKind::COUNT_ALIAS);
 					if (bound_name && aliases_.contains(token.text))
 						error(token, "bound name '" + token.text + "' shadows an alias");
 					if (const auto sub = substitutions.find(token.text); sub != substitutions.end()) {
-						out.push_back(Token{TokenKind::LEFT_PAREN, "(", token.span});
+						out.push_back(parenthesis(token, true));
 						out.insert(out.end(), sub->second.begin(), sub->second.end());
-						out.push_back(Token{TokenKind::RIGHT_PAREN, ")", token.span});
+						out.push_back(parenthesis(token, false));
 						continue;
 					}
 					const auto found = aliases_.find(token.text);
 					if (found == aliases_.end()) {
-						out.push_back(token);
+						out.push_back(&token);
 						continue;
 					}
 					const Alias& alias = found->second;
@@ -245,24 +272,24 @@ namespace ltl {
 						error(token, "recursive alias '" + token.text + "' is not allowed");
 					std::unordered_map<std::string, Expansion> args;
 					if (!alias.parameters.empty()) {
-						if (i + 1 >= end || input[i + 1].kind != TokenKind::LEFT_PAREN)
+						if (i + 1 >= end || input[i + 1]->kind != TokenKind::LEFT_PAREN)
 							error(token, "alias '" + token.text + "' expects " +
 											 std::to_string(alias.parameters.size()) + " arguments");
 						const std::size_t      close = matching_paren(input, i + 1, *this);
 						std::vector<Expansion> actual;
 						std::size_t            start = i + 2, depth = 0;
 						for (std::size_t j = start; j <= close; ++j) {
-							const bool separator = j == close || (input[j].kind == TokenKind::COMMA && depth == 0);
+							const bool separator = j == close || (input[j]->kind == TokenKind::COMMA && depth == 0);
 							if (separator) {
 								if (j > start)
 									actual.push_back(expand_range(input, start, j, available, substitutions, stack));
 								else if (j != close || start != close) actual.emplace_back();
 								start = j + 1;
-							} else if (input[j].kind == TokenKind::LEFT_PAREN ||
-									   input[j].kind == TokenKind::LEFT_BRACKET)
+							} else if (input[j]->kind == TokenKind::LEFT_PAREN ||
+									   input[j]->kind == TokenKind::LEFT_BRACKET)
 								++depth;
-							else if ((input[j].kind == TokenKind::RIGHT_PAREN ||
-									  input[j].kind == TokenKind::RIGHT_BRACKET) &&
+							else if ((input[j]->kind == TokenKind::RIGHT_PAREN ||
+									  input[j]->kind == TokenKind::RIGHT_BRACKET) &&
 									 depth)
 								--depth;
 						}
@@ -273,16 +300,14 @@ namespace ltl {
 						for (std::size_t n = 0; n < actual.size(); ++n)
 							args.emplace(alias.parameters[n], std::move(actual[n]));
 						i = close;
-					} else if (i + 1 < end && input[i + 1].kind == TokenKind::LEFT_PAREN) {
+					} else if (i + 1 < end && input[i + 1]->kind == TokenKind::LEFT_PAREN) {
 						error(token, "alias '" + token.text + "' expects 0 arguments");
 					}
-					Expansion alias_body = hygienic_body(alias);
-					Expansion expanded   = expand_range(alias_body, 0, alias_body.size(), alias.order, args, stack);
+					Expansion expanded = expand_range(alias.body, 0, alias.body.size(), alias.order, args, stack);
 					stack.erase(token.text);
-					out.push_back(Token{TokenKind::LEFT_PAREN, "(", token.span});
-					out.insert(out.end(), std::make_move_iterator(expanded.begin()),
-							   std::make_move_iterator(expanded.end()));
-					out.push_back(Token{TokenKind::RIGHT_PAREN, ")", token.span});
+					out.push_back(parenthesis(token, true));
+					out.insert(out.end(), expanded.begin(), expanded.end());
+					out.push_back(parenthesis(token, false));
 				}
 				return out;
 			}
@@ -335,10 +360,10 @@ namespace ltl {
 																	  "left",
 																	  "changed"};
 				for (std::size_t i = 0; i < alias.body.size(); ++i) {
-					const Token& t = alias.body[i];
-					if (t.kind != TokenKind::IDENTIFIER || (i && alias.body[i - 1].kind == TokenKind::DOT)) continue;
+					const Token& t = *alias.body[i];
+					if (t.kind != TokenKind::IDENTIFIER || (i && alias.body[i - 1]->kind == TokenKind::DOT)) continue;
 					if ((t.text == "forall" || t.text == "exists" || t.text == "count") && i + 1 < alias.body.size()) {
-						allowed.insert(alias.body[i + 1].text);
+						allowed.insert(alias.body[i + 1]->text);
 						continue;
 					}
 					const auto other = aliases_.find(t.text);
@@ -358,9 +383,10 @@ namespace ltl {
 			MacroExpander(const std::vector<Token>& tokens, std::string filename)
 				: tokens_(tokens), filename_(std::move(filename)) {}
 
-			std::vector<Token> run() {
+			Expansion run() {
 				discover();
 				for (const auto& [name, alias] : aliases_) reject_free_names(name, alias);
+				for (auto& [name, alias] : aliases_) alias.body = hygienic_body(alias);
 				Expansion   result;
 				std::size_t available = 0;
 				for (std::size_t i = 0; tokens_[i].kind != TokenKind::END;) {
@@ -373,29 +399,29 @@ namespace ltl {
 					std::size_t equal = i + 2;
 					while (equal < end && tokens_[equal].kind != TokenKind::EQUAL) ++equal;
 					if (equal == end) error(tokens_[end], "expected '=' after proposition name");
-					result.insert(result.end(), tokens_.begin() + i, tokens_.begin() + equal + 1);
-					Expansion                       body(tokens_.begin() + equal + 1, tokens_.begin() + end);
+					for (std::size_t j = i; j <= equal; ++j) result.push_back(&tokens_[j]);
+					Expansion body = token_refs(tokens_.begin() + equal + 1, tokens_.begin() + end);
 					std::unordered_set<std::string> stack;
 					Expansion                       expanded = expand_range(body, 0, body.size(), available, {}, stack);
 					result.insert(result.end(), std::make_move_iterator(expanded.begin()),
 								  std::make_move_iterator(expanded.end()));
-					result.push_back(tokens_[end]);
+					result.push_back(&tokens_[end]);
 					i = end + 1;
 				}
-				result.push_back(tokens_.back());
+				result.push_back(&tokens_.back());
 				return result;
 			}
 		};
 
 		class Parser {
 		private:
-			std::vector<Token> tokens_;
-			std::string        filename_;
-			std::size_t        current_ = 0;
+			Expansion   tokens_;
+			std::string filename_;
+			std::size_t current_ = 0;
 
-			[[nodiscard]] const Token& current() const noexcept { return tokens_[current_]; }
+			[[nodiscard]] const Token& current() const noexcept { return *tokens_[current_]; }
 
-			[[nodiscard]] const Token& previous() const noexcept { return tokens_[current_ - 1]; }
+			[[nodiscard]] const Token& previous() const noexcept { return *tokens_[current_ - 1]; }
 
 			[[nodiscard]] bool at(TokenKind kind) const noexcept { return current().kind == kind; }
 
@@ -420,13 +446,14 @@ namespace ltl {
 			}
 
 			[[noreturn]] void error(const Token& token, const std::string& message) const {
-				const std::string& source = token.span.begin.source.empty() ? filename_ : token.span.begin.source;
+				const std::string& source =
+					token.span.begin.source_name().empty() ? filename_ : token.span.begin.source_name();
 				throw std::invalid_argument(source + ":" + std::to_string(token.span.begin.line) + ":" +
 											std::to_string(token.span.begin.column) + ": " + message);
 			}
 
 			[[noreturn]] void error(const Span& span, const std::string& message) const {
-				const std::string& source = span.begin.source.empty() ? filename_ : span.begin.source;
+				const std::string& source = span.begin.source_name().empty() ? filename_ : span.begin.source_name();
 				throw std::invalid_argument(source + ":" + std::to_string(span.begin.line) + ":" +
 											std::to_string(span.begin.column) + ": " + message);
 			}
@@ -1096,7 +1123,7 @@ namespace ltl {
 			}
 
 		public:
-			Parser(std::vector<Token> tokens, std::string filename)
+			Parser(Expansion tokens, std::string filename)
 				: tokens_(std::move(tokens)), filename_(std::move(filename)) {}
 
 			uint64_t duration_only() {
@@ -1133,11 +1160,13 @@ namespace ltl {
 		std::unordered_set<std::string> stack;
 		if (!filename.starts_with('<')) stack.insert(std::filesystem::absolute(filename).lexically_normal().string());
 		const std::vector<Token> tokens = imported_tokens(source, filename, loaded, stack);
-		return Parser(MacroExpander(tokens, filename).run(), filename).run();
+		MacroExpander            expander(tokens, filename);
+		return Parser(expander.run(), filename).run();
 	}
 
 	uint64_t parse_duration(const std::string& source, const std::string& filename) {
-		return Parser(lex(source, filename), filename).duration_only();
+		const auto tokens = lex(source, filename);
+		return Parser(token_refs(tokens.begin(), tokens.end()), filename).duration_only();
 	}
 
 } // namespace ltl

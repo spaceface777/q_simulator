@@ -1,4 +1,5 @@
 #include "observation.h"
+#include <atomic>
 
 #include <algorithm>
 #include <cmath>
@@ -70,18 +71,25 @@ namespace ltl {
 								  hardware.is_rfid_active()};
 		}
 
-		std::map<uint16_t, ModuleSnapshot> snapshot_modules(const std::vector<module::ModuleId>& ids,
-															const world::State&                  world) {
-			std::map<uint16_t, ModuleSnapshot> result;
+		using ModuleSnapshots = std::map<uint16_t, ModuleSnapshot>;
+
+		std::shared_ptr<const ModuleSnapshots> snapshot_modules(const std::vector<module::ModuleId>&   ids,
+																const world::State&                    world,
+																std::shared_ptr<const ModuleSnapshots> previous = {}) {
+			std::shared_ptr<ModuleSnapshots> result;
+			if (!previous) result = std::make_shared<ModuleSnapshots>();
 			for (const module::ModuleId id : ids) {
 				const module::Module* hardware = world.module(id);
 				if (hardware == nullptr) {
 					throw std::logic_error("cannot observe module " + std::to_string(id.raw()) +
 										   " because it is missing from the world");
 				}
-				result.emplace(id.raw(), snapshot(*hardware));
+				const ModuleSnapshot current = snapshot(*hardware);
+				if (previous && previous->at(id.raw()) == current) continue;
+				if (!result) result = std::make_shared<ModuleSnapshots>(*previous);
+				(*result)[id.raw()] = current;
 			}
-			return result;
+			return result ? result : previous;
 		}
 
 		std::map<uint16_t, TubSnapshot> snapshot_tubs(const world::State& world) {
@@ -635,7 +643,7 @@ namespace ltl {
 		observation.tick_           = logical_tick;
 		observation.timestamp_      = std::chrono::milliseconds(logical_tick);
 		observation.module_stepped_ = std::move(module_stepped);
-		observation.modules_        = snapshot_modules(module_ids_, world);
+		observation.modules_        = snapshot_modules(module_ids_, world, previous_modules_);
 		observation.tubs_           = snapshot_tubs(world);
 		for (const auto& [id, tub] : observation.tubs_) {
 			(void)tub;
@@ -656,6 +664,7 @@ namespace ltl {
 			}
 		}
 		for (const RpcResponse& response : observation.rpc_responses_) {
+			if (response.tick > logical_tick) time_sensitive_records_ = true;
 			const auto request = rpc_request_registry_.find(response.request_id);
 			if (request == rpc_request_registry_.end()) {
 				throw std::logic_error("RPC response refers to unknown request identity " +
@@ -671,6 +680,7 @@ namespace ltl {
 			}
 		}
 		for (const RpcEvent& event : observation.rpc_events_) {
+			if (event.tick > logical_tick) time_sensitive_records_ = true;
 			if (!rpc_event_registry_.emplace(event.id, event).second) {
 				throw std::logic_error("duplicate RPC event identity " + std::to_string(event.id));
 			}
@@ -691,9 +701,36 @@ namespace ltl {
 			}
 			tub_exit_registry_.emplace(id, std::move(exit));
 		}
-		derive_module_edges(observation.modules_, previous_modules_, observation.changed_);
-		previous_tubs_    = observation.tubs_;
-		previous_modules_ = observation.modules_;
+		if (observation.modules_ != previous_modules_)
+			derive_module_edges(*observation.modules_, *previous_modules_, observation.changed_);
+		// Continuous belt coordinates are not exposed to LTL. All discrete tub state and
+		// data are exposed, as are module fields, event pulses, RPC domains, and step clocks.
+		bool tub_change = observation.tubs_.size() != previous_tubs_.size();
+		for (const auto& [id, tub] : observation.tubs_) {
+			const auto before = previous_tubs_.find(id);
+			if (before == previous_tubs_.end() || tub.module != before->second.module ||
+				tub.position != before->second.position || tub.uid != before->second.uid ||
+				tub.data != before->second.data)
+				tub_change = true;
+		}
+		const bool pulses = !observation.changed_.empty() || !observation.appeared_.empty() ||
+							!observation.disappeared_.empty() || !observation.entered_.empty() ||
+							!observation.left_.empty() || !observation.rpc_requests_.empty() ||
+							!observation.rpc_responses_.empty() || !observation.rpc_events_.empty();
+		// Out-of-order observations and future-dated records need time-dependent visibility.
+		// Keep the conservative per-observation path for these uncommon callers.
+		if (revision_ && logical_tick <= previous_tick_) time_sensitive_records_ = true;
+		if (!revision_ || pulses || previous_pulses_ || tub_change || time_sensitive_records_ ||
+			observation.module_stepped_ != previous_stepped_) {
+			static std::atomic<uint64_t> next_revision{1};
+			revision_ = next_revision.fetch_add(1, std::memory_order_relaxed);
+		}
+		observation.revision_ = revision_;
+		previous_tick_        = logical_tick;
+		previous_pulses_      = pulses;
+		previous_stepped_     = observation.module_stepped_;
+		previous_tubs_        = observation.tubs_;
+		previous_modules_     = observation.modules_;
 		return observation;
 	}
 
@@ -755,7 +792,7 @@ namespace ltl {
 			throw std::logic_error("unsupported LTL expression domain");
 		}
 		if (type == ValueType::MODULE) {
-			for (const auto& [id, module] : modules_) {
+			for (const auto& [id, module] : modules()) {
 				(void)module;
 				visit(id);
 			}

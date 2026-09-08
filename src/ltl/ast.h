@@ -16,7 +16,13 @@ namespace ltl {
 		std::size_t offset = 0;
 		std::size_t line   = 1;
 		std::size_t column = 1;
-		std::string source;
+		// All positions from one lexer share the filename, including imported and expanded spans.
+		std::shared_ptr<const std::string> source;
+
+		[[nodiscard]] const std::string& source_name() const noexcept {
+			static const std::string empty;
+			return source ? *source : empty;
+		}
 	};
 
 	struct Span {

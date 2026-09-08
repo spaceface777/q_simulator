@@ -21,7 +21,7 @@ namespace ltl {
 			std::unordered_map<std::string, ValueType> bindings_;
 
 			[[noreturn]] void error(const Span& span, const std::string& message) const {
-				const std::string& source = span.begin.source.empty() ? filename_ : span.begin.source;
+				const std::string& source = span.begin.source_name().empty() ? filename_ : span.begin.source_name();
 				throw std::invalid_argument(source + ":" + std::to_string(span.begin.line) + ":" +
 											std::to_string(span.begin.column) + ": " + message);
 			}

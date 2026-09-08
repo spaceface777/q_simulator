@@ -256,8 +256,9 @@ namespace sim {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
 			const uint64_t     until_tick = declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
-			const std::string& source =
-				declaration.span.begin.source.empty() ? property_filename_ : declaration.span.begin.source;
+			const std::string& source     = declaration.span.begin.source_name().empty()
+												? property_filename_
+												: declaration.span.begin.source_name();
 			trace_.write(trace::Entry("property_activation")
 							 .field("name", declaration.name)
 							 .field("source", source)
@@ -437,8 +438,9 @@ namespace sim {
 			const ltl::Verdict              verdict =
 				global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
 			const ltl::Monitor& monitor = property_monitors_[index];
-			const std::string&  source =
-				declaration.span.begin.source.empty() ? property_filename_ : declaration.span.begin.source;
+			const std::string&  source  = declaration.span.begin.source_name().empty()
+											  ? property_filename_
+											  : declaration.span.begin.source_name();
 			results.push_back(PropertyResult{declaration.name, source, declaration.span.begin, verdict,
 											 property_decisive_ticks_[index], monitor.failure(), monitor.activations(),
 											 monitor.has_trigger(), monitor.obligation_at_end()});
@@ -1528,7 +1530,8 @@ namespace sim {
 										   const ltl::DomainVisitor& visit) {
 								observation.visit_domain(domain, type, visit);
 							},
-							[&observation](uint16_t module) { return observation.stepped(module); });
+							[&observation](uint16_t module) { return observation.stepped(module); },
+							observation.revision());
 						if (tick == until_tick) (void)monitor.finish(actual);
 					}
 					if (monitor.verdict() != ltl::Verdict::PENDING) {

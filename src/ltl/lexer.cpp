@@ -140,7 +140,7 @@ namespace ltl {
 
 		public:
 			Lexer(const std::string& source, std::string filename) : source_(source), filename_(std::move(filename)) {
-				position_.source = filename_;
+				position_.source = std::make_shared<const std::string>(filename_);
 			}
 
 			std::vector<Token> run() {

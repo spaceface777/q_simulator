@@ -38,12 +38,20 @@ namespace {
 	std::vector<ltl::Verdict> run(const std::string& formula, const std::vector<Observation>& observations) {
 		CompiledProperty          property(formula);
 		ltl::Monitor              monitor("test", property.formula());
+		ltl::Monitor              cached("cached", property.formula());
 		std::vector<ltl::Verdict> verdicts;
+		uint64_t                  revision = 1;
+		const Observation*        previous = nullptr;
 		for (const Observation& observation : observations) {
-			verdicts.push_back(
-				monitor.observe([&observation](const ltl::Formula& atom) { return evaluate(atom, observation); }));
+			if (previous && *previous != observation) ++revision;
+			previous        = &observation;
+			const auto atom = [&observation](const ltl::Formula& formula) { return evaluate(formula, observation); };
+			verdicts.push_back(monitor.observe(atom));
+			EXPECT_EQ(cached.observe(atom, {}, {}, {}, revision), verdicts.back());
+			EXPECT_EQ(cached.activations(), monitor.activations());
 		}
 		verdicts.push_back(monitor.finish());
+		EXPECT_EQ(cached.finish(), verdicts.back());
 		return verdicts;
 	}
 
@@ -53,15 +61,21 @@ namespace {
 											 const std::vector<bool>& stepped) {
 		CompiledProperty          property(formula);
 		ltl::Monitor              monitor("test", property.formula());
+		ltl::Monitor              cached("cached steps", property.formula());
 		std::vector<ltl::Verdict> verdicts;
+		uint64_t                  revision = 1;
 		for (std::size_t tick = 0; tick < observations.size(); tick++) {
 			const Observation& observation = observations[tick];
 			const bool         granted     = stepped[tick];
-			verdicts.push_back(
-				monitor.observe([&observation](const ltl::Formula& atom) { return evaluate(atom, observation); }, {},
-								{}, [granted](uint16_t) { return granted; }));
+			if (tick && (observations[tick - 1] != observation || stepped[tick - 1] != granted)) ++revision;
+			const auto atom = [&observation](const ltl::Formula& formula) { return evaluate(formula, observation); };
+			const auto step = [granted](uint16_t) { return granted; };
+			verdicts.push_back(monitor.observe(atom, {}, {}, step));
+			EXPECT_EQ(cached.observe(atom, {}, {}, step, revision), verdicts.back());
+			EXPECT_EQ(cached.activations(), monitor.activations());
 		}
 		verdicts.push_back(monitor.finish());
+		EXPECT_EQ(cached.finish(), verdicts.back());
 		return verdicts;
 	}
 
@@ -121,6 +135,53 @@ namespace {
 	}
 
 } // namespace
+
+TEST(LtlMonitor, ReusesStableInputsWithoutLosingActivationsOrDeadlineBoundaries) {
+	CompiledProperty property("G[0ms, 2049ms] (true -> module(1).rfid_active)");
+	ltl::Monitor     monitor("reuse", property.formula(), 100);
+	unsigned         evaluations = 0;
+	for (unsigned tick = 0; tick <= 2049; ++tick) {
+		const auto result = monitor.observe(
+			[&](const ltl::Formula&) {
+				++evaluations;
+				return true;
+			},
+			{}, {}, {}, 1);
+		EXPECT_EQ(result, tick < 2049 ? ltl::Verdict::PENDING : ltl::Verdict::TRUE);
+	}
+	EXPECT_EQ(monitor.activations(), 2050u);
+	EXPECT_LT(evaluations, 5u);
+}
+
+TEST(LtlMonitor, StableInputsCannotDelayADeadlineAtANonzeroActivationTick) {
+	CompiledProperty property("F[2049ms, 2049ms] module(1).rfid_active");
+	ltl::Monitor     monitor("deadline", property.formula(), 100);
+	unsigned         evaluations = 0;
+	for (unsigned tick = 0; tick <= 2049; ++tick) {
+		EXPECT_EQ(monitor.observe(
+					  [&](const ltl::Formula&) {
+						  ++evaluations;
+						  return false;
+					  },
+					  {}, {}, {}, 1),
+				  tick < 2049 ? ltl::Verdict::PENDING : ltl::Verdict::FALSE);
+	}
+	EXPECT_EQ(evaluations, 1u);
+	ASSERT_TRUE(monitor.failure());
+	EXPECT_EQ(monitor.failure()->obligation_created_tick, 100u);
+	EXPECT_EQ(monitor.failure()->deadline_tick, 2149u);
+	ASSERT_EQ(monitor.failure()->facts.size(), 1u);
+	EXPECT_FALSE(monitor.failure()->facts[0].value);
+}
+
+TEST(LtlMonitor, InputChangesWakeAMonitorBeforeItsNextTemporalBoundary) {
+	CompiledProperty property("G[20ms, 40ms] module(1).rfid_active");
+	ltl::Monitor     monitor("input wakeup", property.formula());
+	for (unsigned tick = 0; tick <= 25; ++tick) {
+		EXPECT_EQ(monitor.observe([&](const ltl::Formula&) { return tick < 25; }, {}, {}, {}, tick < 25 ? 1 : 2),
+				  tick < 25 ? ltl::Verdict::PENDING : ltl::Verdict::FALSE);
+	}
+}
 
 TEST(LtlMonitor, SpecializesStaticModuleGuardsOnceWithoutEvaluatingDeadBodies) {
 	CompiledProperty property("G (forall m: Module: m != module(1) -> (F[1ms, 2ms] m.rfid_active))");

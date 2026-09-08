@@ -61,7 +61,9 @@ namespace {
 								   [&](const ltl::Formula& atom) { return observation.actual_value(atom); },
 								   [&](const ltl::Value* domain, ltl::ValueType type, const ltl::DomainVisitor& visit) {
 									   observation.visit_domain(domain, type, visit);
-								   });
+								   },
+								   [&](uint16_t module) { return observation.stepped(module); },
+								   observation.revision());
 		}
 
 		void place(world::Position position = world::Position::ENTRY) {
@@ -72,6 +74,60 @@ namespace {
 	};
 
 } // namespace
+
+TEST_F(LtlObservationTest, RevisionsIncludePulseClearingAndModuleStepsAndKeepOldSnapshots) {
+	ltl::Observer observer(modules(), world_);
+	const auto    first = observer.observe(0, world_);
+	const auto    same  = observer.observe(1, world_);
+	EXPECT_NE(first.revision(), 0u);
+	EXPECT_EQ(first.revision(), same.revision());
+	EXPECT_EQ(&first.modules(), &same.modules());
+
+	world_.module(module::ModuleId{MODULE})->set_big_belt_speed(module::BeltSpeed{40.0});
+	const auto changed = observer.observe(2, world_);
+	EXPECT_NE(same.revision(), changed.revision());
+	EXPECT_NE(&same.modules(), &changed.modules());
+	EXPECT_DOUBLE_EQ(first.modules().at(MODULE).big_belt_speed, 0.0);
+	EXPECT_DOUBLE_EQ(changed.modules().at(MODULE).big_belt_speed, 40.0);
+	const auto cleared = observer.observe(3, world_);
+	EXPECT_NE(changed.revision(), cleared.revision());
+	EXPECT_EQ(&changed.modules(), &cleared.modules());
+	EXPECT_EQ(cleared.revision(), observer.observe(4, world_).revision());
+
+	const auto stopped = observer.observe(5, world_, {}, {}, {}, {{MODULE, false}});
+	EXPECT_NE(cleared.revision(), stopped.revision());
+	EXPECT_EQ(stopped.revision(), observer.observe(6, world_, {}, {}, {}, {{MODULE, false}}).revision());
+	EXPECT_NE(stopped.revision(), observer.observe(7, world_).revision());
+
+	ltl::Observer independent(modules(), world_);
+	EXPECT_NE(independent.observe(0, world_).revision(), first.revision());
+}
+
+TEST_F(LtlObservationTest, RevisionsIncludeRpcDomainsAndTheirClearingObservations) {
+	ltl::Observer observer(modules(), world_);
+	const auto    empty   = observer.observe(0, world_);
+	const auto    request = observer.observe(1, world_, {{100, 1, MODULE, CMD_LASER_LEFT_GET, 42, 0, true, {}}});
+	const auto    cleared = observer.observe(2, world_);
+	EXPECT_NE(empty.revision(), request.revision());
+	EXPECT_NE(request.revision(), cleared.revision());
+	EXPECT_EQ(cleared.revision(), observer.observe(3, world_).revision());
+	const auto response = observer.observe(4, world_, {}, {{100, 100, 4, MODULE, CMD_LASER_LEFT_GET, 42, 0, {}}});
+	EXPECT_NE(cleared.revision(), response.revision());
+	EXPECT_NE(response.revision(), observer.observe(5, world_).revision());
+}
+
+TEST_F(LtlObservationTest, FutureDatedResponsesCannotBeHiddenByStableInputReuse) {
+	ltl::Observer observer(modules(), world_);
+	ltl::File     file = compile(R"(forall request in rpc_requests(module(1)):
+    F[0ms, 10ms] (rpc_response_to(request).status == .ok))");
+	ltl::Monitor  monitor("future response", *file.properties[0].formula);
+	EXPECT_EQ(observe(monitor, observer.observe(0, world_, {{100, 0, MODULE, CMD_LASER_LEFT_GET, 42, 0, true, {}}},
+												{{100, 100, 5, MODULE, CMD_LASER_LEFT_GET, 42, 0, {}}})),
+			  ltl::Verdict::PENDING);
+	for (unsigned tick = 1; tick <= 5; ++tick)
+		EXPECT_EQ(observe(monitor, observer.observe(tick, world_)),
+				  tick < 5 ? ltl::Verdict::PENDING : ltl::Verdict::TRUE);
+}
 
 TEST_F(LtlObservationTest, CapturesLogicalTimeAndEveryModuleField) {
 	ltl::Observer   observer(modules(), world_);

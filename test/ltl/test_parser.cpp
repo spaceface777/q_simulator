@@ -222,7 +222,8 @@ TEST(LtlParser, RetainsImportedSourceLocations) {
 
 	ltl::File file = ltl::parse("import \"child.spec\";\n", (directory / "main.spec").string());
 	ASSERT_EQ(file.properties.size(), 1u);
-	EXPECT_EQ(file.properties[0].span.begin.source, std::filesystem::absolute(child).lexically_normal().string());
+	EXPECT_EQ(file.properties[0].span.begin.source_name(),
+			  std::filesystem::absolute(child).lexically_normal().string());
 	EXPECT_EQ(file.properties[0].span.begin.line, 2u);
 
 	{

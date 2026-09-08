@@ -118,9 +118,15 @@ namespace ltl {
 	public:
 		[[nodiscard]] uint64_t tick() const noexcept { return tick_; }
 
+		// Equal revisions certify equal LTL atom, domain, and module-step inputs, not equal time.
+		[[nodiscard]] uint64_t revision() const noexcept { return revision_; }
+
 		[[nodiscard]] std::chrono::milliseconds timestamp() const noexcept { return timestamp_; }
 
-		[[nodiscard]] const std::map<uint16_t, ModuleSnapshot>& modules() const noexcept { return modules_; }
+		[[nodiscard]] const std::map<uint16_t, ModuleSnapshot>& modules() const noexcept {
+			static const std::map<uint16_t, ModuleSnapshot> empty;
+			return modules_ ? *modules_ : empty;
+		}
 
 		[[nodiscard]] const std::map<uint16_t, TubSnapshot>& tubs() const noexcept { return tubs_; }
 
@@ -166,21 +172,22 @@ namespace ltl {
 	private:
 		friend class Observer;
 
-		uint64_t                           tick_ = 0;
-		std::chrono::milliseconds          timestamp_{0};
-		std::map<uint16_t, ModuleSnapshot> modules_;
-		std::map<uint16_t, TubSnapshot>    tubs_;
-		std::set<uint16_t>                 appeared_;
-		std::set<uint16_t>                 disappeared_;
-		std::set<TubPosition>              entered_;
-		std::set<TubPosition>              left_;
-		std::set<ChangedField>             changed_;
-		std::map<uint16_t, bool>           module_stepped_;
-		std::set<uint16_t>                 known_tubs_;
-		std::vector<RpcRequest>            rpc_requests_;
-		std::vector<RpcResponse>           rpc_responses_;
-		std::vector<RpcEvent>              rpc_events_;
-		const Observer*                    observer_ = nullptr;
+		uint64_t                                                  tick_     = 0;
+		uint64_t                                                  revision_ = 0;
+		std::chrono::milliseconds                                 timestamp_{0};
+		std::shared_ptr<const std::map<uint16_t, ModuleSnapshot>> modules_;
+		std::map<uint16_t, TubSnapshot>                           tubs_;
+		std::set<uint16_t>                                        appeared_;
+		std::set<uint16_t>                                        disappeared_;
+		std::set<TubPosition>                                     entered_;
+		std::set<TubPosition>                                     left_;
+		std::set<ChangedField>                                    changed_;
+		std::map<uint16_t, bool>                                  module_stepped_;
+		std::set<uint16_t>                                        known_tubs_;
+		std::vector<RpcRequest>                                   rpc_requests_;
+		std::vector<RpcResponse>                                  rpc_responses_;
+		std::vector<RpcEvent>                                     rpc_events_;
+		const Observer*                                           observer_ = nullptr;
 	};
 
 	class Observer {
@@ -201,15 +208,20 @@ namespace ltl {
 		[[nodiscard]] const TubSnapshot* initial_tub(uint16_t id) const;
 
 	private:
-		std::vector<module::ModuleId>             module_ids_;
-		std::map<uint16_t, ModuleSnapshot>        previous_modules_;
-		std::map<uint16_t, TubSnapshot>           previous_tubs_;
-		std::set<uint16_t>                        seen_tubs_;
-		std::unordered_map<uint64_t, RpcRequest>  rpc_request_registry_;
-		std::unordered_map<uint64_t, RpcResponse> rpc_response_registry_;
-		std::unordered_map<uint64_t, RpcEvent>    rpc_event_registry_;
-		std::unordered_map<uint16_t, TubExit>     tub_exit_registry_;
-		std::unordered_map<uint16_t, TubSnapshot> initial_tub_registry_;
+		uint64_t                                                  revision_               = 0;
+		uint64_t                                                  previous_tick_          = 0;
+		bool                                                      previous_pulses_        = false;
+		bool                                                      time_sensitive_records_ = false;
+		std::map<uint16_t, bool>                                  previous_stepped_;
+		std::vector<module::ModuleId>                             module_ids_;
+		std::shared_ptr<const std::map<uint16_t, ModuleSnapshot>> previous_modules_;
+		std::map<uint16_t, TubSnapshot>                           previous_tubs_;
+		std::set<uint16_t>                                        seen_tubs_;
+		std::unordered_map<uint64_t, RpcRequest>                  rpc_request_registry_;
+		std::unordered_map<uint64_t, RpcResponse>                 rpc_response_registry_;
+		std::unordered_map<uint64_t, RpcEvent>                    rpc_event_registry_;
+		std::unordered_map<uint16_t, TubExit>                     tub_exit_registry_;
+		std::unordered_map<uint16_t, TubSnapshot>                 initial_tub_registry_;
 	};
 
 } // namespace ltl

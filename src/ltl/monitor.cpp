@@ -2,7 +2,7 @@
 
 #include <cstddef>
 #include <iomanip>
-#include <map>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -35,12 +35,14 @@ namespace ltl {
 		using NodePtr = std::shared_ptr<const Node>;
 
 		struct Node {
-			NodeKind                                      kind;
-			const Formula*                                source;
-			NodePtr                                       left;
-			NodePtr                                       right;
-			uint64_t                                      elapsed          = 0;
+			NodeKind       kind;
+			const Formula* source;
+			NodePtr        left;
+			NodePtr        right;
+			// Zero is a fresh temporal template. Otherwise this is its activation tick plus one.
+			uint64_t                                      origin           = 0;
 			mutable bool                                  modules_grounded = false;
+			mutable bool                                  immutable_atom   = false;
 			mutable std::vector<NodePtr>                  module_instances{};
 			mutable std::unordered_map<uint64_t, NodePtr> tub_instances{};
 			mutable NodePtr                               expansion{};
@@ -51,7 +53,7 @@ namespace ltl {
 			const Formula* source;
 			const Node*    left;
 			const Node*    right;
-			uint64_t       elapsed;
+			uint64_t       origin;
 
 			bool operator==(const NodeKey&) const = default;
 		};
@@ -66,10 +68,44 @@ namespace ltl {
 				combine(key.source);
 				combine(key.left);
 				combine(key.right);
-				result ^= std::hash<uint64_t>{}(key.elapsed) + 0x9e3779b9 + (result << 6) + (result >> 2);
+				result ^= std::hash<uint64_t>{}(key.origin) + 0x9e3779b9 + (result << 6) + (result >> 2);
 				return result;
 			}
 		};
+
+		bool immutable_value(const Value& value) {
+			switch (value.kind) {
+			case Value::Kind::BOOLEAN:
+			case Value::Kind::NUMBER:
+			case Value::Kind::COLOR:
+			case Value::Kind::BYTES:
+			case Value::Kind::ENUM_LITERAL: return true;
+			case Value::Kind::NAME:         return value.entity_id != 0;
+			case Value::Kind::COUNT:        return false;
+			case Value::Kind::CALL:
+				if (value.type == ValueType::MODULE || value.type == ValueType::TUB) return value.entity_id != 0;
+				// A response reference has a fixed identity. Its status and payload do not.
+				return value.type == ValueType::RPC_RESPONSE && immutable_value(*value.arguments[0]);
+			case Value::Kind::MEMBER:
+				if (!immutable_value(*value.base)) return false;
+				if (value.base->type == ValueType::RPC_REQUEST || value.base->type == ValueType::RPC_EVENT) return true;
+				if (value.base->type == ValueType::RPC_RESPONSE)
+					return value.symbol == Value::Symbol::ID || value.symbol == Value::Symbol::REQUEST ||
+						   value.symbol == Value::Symbol::MODULE || value.symbol == Value::Symbol::CMD;
+				return value.symbol == Value::Symbol::LENGTH || value.symbol == Value::Symbol::ID ||
+					   value.symbol == Value::Symbol::ENTRY || value.symbol == Value::Symbol::CENTER ||
+					   value.symbol == Value::Symbol::LEFT_LASER || value.symbol == Value::Symbol::RIGHT_LASER;
+			case Value::Kind::INDEX:
+			case Value::Kind::SLICE:
+			case Value::Kind::UNARY:
+			case Value::Kind::BINARY:
+				if (!immutable_value(*value.base)) return false;
+				for (const auto& argument : value.arguments)
+					if (!immutable_value(*argument)) return false;
+				return true;
+			}
+			return false;
+		}
 
 		class NodeFactory {
 		private:
@@ -77,12 +113,12 @@ namespace ltl {
 			std::unordered_map<std::string, std::weak_ptr<const Node>>          atoms_;
 
 			NodePtr intern(NodeKind kind, const Formula* source = nullptr, NodePtr left = {}, NodePtr right = {},
-						   uint64_t elapsed = 0) {
-				const NodeKey key{kind, source, left.get(), right.get(), elapsed};
+						   uint64_t origin = 0) {
+				const NodeKey key{kind, source, left.get(), right.get(), origin};
 				if (const auto found = nodes_.find(key); found != nodes_.end()) {
 					if (NodePtr existing = found->second.lock()) return existing;
 				}
-				auto node   = std::make_shared<Node>(Node{kind, source, std::move(left), std::move(right), elapsed});
+				auto node   = std::make_shared<Node>(Node{kind, source, std::move(left), std::move(right), origin});
 				nodes_[key] = node;
 				return node;
 			}
@@ -108,7 +144,9 @@ namespace ltl {
 					if (NodePtr existing = found->second.lock()) return existing;
 				}
 				NodePtr node = intern(NodeKind::ATOM, &source);
-				atoms_[key]  = node;
+				node->immutable_atom =
+					immutable_value(*source.value) && (!source.compared || immutable_value(*source.compared));
+				atoms_[key] = node;
 				return node;
 			}
 
@@ -120,8 +158,9 @@ namespace ltl {
 				return intern(kind, &source, std::move(left), std::move(right));
 			}
 
-			NodePtr advance(const NodePtr& node) {
-				return intern(node->kind, node->source, node->left, node->right, node->elapsed + 1);
+			NodePtr advance(const NodePtr& node, uint64_t tick) {
+				if (node->origin) return node;
+				return intern(node->kind, node->source, node->left, node->right, tick + 1);
 			}
 
 			NodePtr make_not(NodePtr child, const Formula* source = nullptr) {
@@ -431,8 +470,9 @@ namespace ltl {
 				return "(" + render_node(node->left) + " until" + render_interval(*node->source) + " " +
 					   render_node(node->right) + ")";
 			case NodeKind::FORALL:
-			case NodeKind::EXISTS:   return render_formula(*node->source);
-			case NodeKind::DEFERRED: return render_formula(*node->source->right);
+			case NodeKind::EXISTS: return render_formula(*node->source);
+			case NodeKind::DEFERRED:
+				return node->expansion ? render_node(node->expansion) : render_formula(*node->source->right);
 			}
 			throw std::logic_error("unknown normalized LTL node kind");
 		}
@@ -450,10 +490,16 @@ namespace ltl {
 				return factory.unary(NodeKind::EVENTUALLY, formula, normalize(*formula.left, factory));
 			case Formula::Kind::NEXT: return factory.unary(NodeKind::NEXT, formula, normalize(*formula.left, factory));
 			case Formula::Kind::AND:
-				return factory.make_and(normalize(*formula.left, factory), normalize(*formula.right, factory),
+				return factory.make_and(normalize(*formula.left, factory),
+										formula.ground_bindings.empty()
+											? normalize(*formula.right, factory)
+											: factory.unary(NodeKind::DEFERRED, formula, {}),
 										&formula);
 			case Formula::Kind::OR:
-				return factory.make_or(normalize(*formula.left, factory), normalize(*formula.right, factory), &formula);
+				return factory.make_or(normalize(*formula.left, factory),
+									   formula.ground_bindings.empty() ? normalize(*formula.right, factory)
+																	   : factory.unary(NodeKind::DEFERRED, formula, {}),
+									   &formula);
 			case Formula::Kind::IMPLIES:
 				return factory.make_or(factory.negate_antecedent(normalize(*formula.left, factory), &formula),
 									   factory.unary(NodeKind::DEFERRED, formula, {}), &formula);
@@ -495,6 +541,10 @@ namespace ltl {
 			}
 			if (formula.kind == Formula::Kind::NOT) {
 				if (auto value = static_truth(*formula.left, bindings)) return !*value;
+			}
+			if (formula.kind == Formula::Kind::FORALL || formula.kind == Formula::Kind::EXISTS) {
+				const bool universal = formula.kind == Formula::Kind::FORALL;
+				if (auto value = static_truth(*formula.left, bindings); value && *value == universal) return universal;
 			}
 			if (formula.kind == Formula::Kind::IMPLIES) {
 				if (auto a = static_truth(*formula.left, bindings); a && !*a) return true;
@@ -545,7 +595,9 @@ namespace ltl {
 				result->ground_bindings = formula.ground_bindings;
 				result->ground_bindings.insert(result->ground_bindings.end(), bindings.begin(), bindings.end());
 			} else if (formula.left) result->left = clone_formula(*formula.left, bindings, defer);
-			if (defer && formula.kind == Formula::Kind::IMPLIES) {
+			if (defer &&
+				(formula.kind == Formula::Kind::IMPLIES ||
+				 (!bindings.empty() && (formula.kind == Formula::Kind::AND || formula.kind == Formula::Kind::OR)))) {
 				result->right           = formula.right;
 				result->ground_bindings = formula.ground_bindings;
 				result->ground_bindings.insert(result->ground_bindings.end(), bindings.begin(), bindings.end());
@@ -592,16 +644,38 @@ namespace ltl {
 		NodePtr progress(const NodePtr& node, const AtomEvaluator& evaluate, NodeFactory& factory,
 						 const DomainEvaluator& evaluate_domain, const FormulaOwner& own_formula,
 						 const PersistentGrounder& ground_persistent, const StepEvaluator& evaluate_step,
-						 uint64_t& activations) {
+						 uint64_t& activations, uint64_t tick, uint64_t& wakeup,
+						 std::vector<std::pair<const Formula*, bool>>& evaluations) {
+			const uint64_t elapsed = node->origin ? tick - (node->origin - 1) : 0;
+			// Repeating a self-loop is safe only until the next temporal window boundary.
+			if ((node->kind == NodeKind::ALWAYS || node->kind == NodeKind::EVENTUALLY ||
+				 node->kind == NodeKind::UNTIL) &&
+				node->source->interval && elapsed < node->source->interval->until_tick) {
+				const auto&    interval = *node->source->interval;
+				const uint64_t delay =
+					(elapsed < interval.from_tick ? interval.from_tick : interval.until_tick) - elapsed;
+				if (delay < std::numeric_limits<uint64_t>::max() - tick) wakeup = std::min(wakeup, tick + delay);
+			}
+			if (node->kind == NodeKind::NEXT && elapsed == 0) wakeup = std::min(wakeup, tick + 1);
 			auto progress_child = [&](const NodePtr& child) {
 				return progress(child, evaluate, factory, evaluate_domain, own_formula, ground_persistent,
-								evaluate_step, activations);
+								evaluate_step, activations, tick, wakeup, evaluations);
 			};
 			switch (node->kind) {
 			case NodeKind::FALSE: return factory.constant(false);
 			case NodeKind::TRUE:  return factory.constant(true);
-			case NodeKind::ATOM:  return factory.constant(evaluate(*node->source));
-			case NodeKind::NOT:   {
+			case NodeKind::ATOM:  {
+				// Cache only immutable, grounded data, and only after normal short-circuit evaluation
+				// reaches the atom. Speculative evaluation could access an invalid payload index.
+				NodePtr result = node->immutable_atom ? node->expansion : NodePtr{};
+				if (!result) {
+					result = factory.constant(evaluate(*node->source));
+					if (node->immutable_atom) node->expansion = result;
+				}
+				evaluations.emplace_back(node->source, result->kind == NodeKind::TRUE);
+				return result;
+			}
+			case NodeKind::NOT: {
 				NodePtr inner = progress_child(node->left);
 				// An implication normalizes to `!antecedent || consequent`, so this negation standing
 				// over a true antecedent is the moment the property imposed a real obligation. Counting
@@ -627,14 +701,14 @@ namespace ltl {
 					if (current->kind == NodeKind::FALSE) return current;
 					return factory.make_and(std::move(current), node, node->source);
 				}
-				if (node->elapsed < node->source->interval->from_tick) return factory.advance(node);
-				if (node->elapsed == node->source->interval->until_tick) {
+				if (elapsed < node->source->interval->from_tick) return factory.advance(node, tick);
+				if (elapsed == node->source->interval->until_tick) {
 					return progress_child(node->left);
 				}
 				{
 					NodePtr current = progress_child(node->left);
 					if (current->kind == NodeKind::FALSE) return current;
-					return factory.make_and(std::move(current), factory.advance(node), node->source);
+					return factory.make_and(std::move(current), factory.advance(node, tick), node->source);
 				}
 			case NodeKind::EVENTUALLY:
 				if (!node->source->interval) {
@@ -642,18 +716,18 @@ namespace ltl {
 					if (current->kind == NodeKind::TRUE) return current;
 					return factory.make_or(std::move(current), node, node->source);
 				}
-				if (node->elapsed < node->source->interval->from_tick) return factory.advance(node);
-				if (node->elapsed == node->source->interval->until_tick) {
+				if (elapsed < node->source->interval->from_tick) return factory.advance(node, tick);
+				if (elapsed == node->source->interval->until_tick) {
 					return progress_child(node->left);
 				}
 				{
 					NodePtr current = progress_child(node->left);
 					if (current->kind == NodeKind::TRUE) return current;
-					return factory.make_or(std::move(current), factory.advance(node), node->source);
+					return factory.make_or(std::move(current), factory.advance(node, tick), node->source);
 				}
 			case NodeKind::NEXT:
 				// The observation the obligation was created on is the present, never the next step.
-				if (node->elapsed == 0) return factory.advance(node);
+				if (elapsed == 0) return factory.advance(node, tick);
 				// A module that was not granted this tick has not advanced, so its next step is still
 				// ahead. Hold the obligation rather than discharging it against a tick whose code did
 				// not run. Module zero is the global tick, which advances on every observation.
@@ -669,13 +743,13 @@ namespace ltl {
 										   factory.make_and(progress_child(node->left), node, node->source),
 										   node->source);
 				}
-				if (node->elapsed == node->source->interval->until_tick) {
+				if (elapsed == node->source->interval->until_tick) {
 					return progress_child(node->right);
 				}
-				if (node->elapsed < node->source->interval->from_tick) {
+				if (elapsed < node->source->interval->from_tick) {
 					NodePtr prefix = progress_child(node->left);
 					if (prefix->kind == NodeKind::FALSE) return prefix;
-					return factory.make_and(std::move(prefix), factory.advance(node), node->source);
+					return factory.make_and(std::move(prefix), factory.advance(node, tick), node->source);
 				}
 				{
 					NodePtr witness = progress_child(node->right);
@@ -684,7 +758,7 @@ namespace ltl {
 					NodePtr continuation =
 						prefix->kind == NodeKind::FALSE
 							? prefix
-							: factory.make_and(std::move(prefix), factory.advance(node), node->source);
+							: factory.make_and(std::move(prefix), factory.advance(node, tick), node->source);
 					return factory.make_or(std::move(witness), std::move(continuation), node->source);
 				}
 			case NodeKind::DEFERRED: {
@@ -783,13 +857,14 @@ namespace ltl {
 		};
 
 		void find_timed_obligation(const NodePtr& node, TimedObligation& result,
-								   std::unordered_set<const Node*>& visited) {
+								   std::unordered_set<const Node*>& visited, uint64_t tick) {
 			if (!visited.insert(node.get()).second) return;
-			if (node->source && node->source->interval && (!result.formula || node->elapsed > result.elapsed)) {
-				result = TimedObligation{node->source, node->elapsed};
+			const uint64_t elapsed = node->origin ? tick - (node->origin - 1) : 0;
+			if (node->source && node->source->interval && (!result.formula || elapsed > result.elapsed)) {
+				result = TimedObligation{node->source, elapsed};
 			}
-			if (node->left) find_timed_obligation(node->left, result, visited);
-			if (node->right) find_timed_obligation(node->right, result, visited);
+			if (node->left) find_timed_obligation(node->left, result, visited, tick);
+			if (node->right) find_timed_obligation(node->right, result, visited, tick);
 		}
 
 		void collect_formula_sources(const NodePtr& node, std::unordered_set<const Formula*>& sources,
@@ -805,8 +880,15 @@ namespace ltl {
 
 		bool formula_tree_is_referenced(const Formula& formula, const std::unordered_set<const Formula*>& sources) {
 			if (sources.contains(&formula)) return true;
-			return (formula.left && formula_tree_is_referenced(*formula.left, sources)) ||
-				   (formula.right && formula_tree_is_referenced(*formula.right, sources));
+			// Borrowed bodies are not owned by this grounding. Their normalized expansions
+			// have separate owners. Searching the original macro tree here is both costly
+			// and liable to retain a dead grounding because of an unrelated live source.
+			const bool deferred_left  = formula.kind == Formula::Kind::FORALL || formula.kind == Formula::Kind::EXISTS;
+			const bool deferred_right = formula.kind == Formula::Kind::IMPLIES ||
+										(!formula.ground_bindings.empty() &&
+										 (formula.kind == Formula::Kind::AND || formula.kind == Formula::Kind::OR));
+			return (!deferred_left && formula.left && formula_tree_is_referenced(*formula.left, sources)) ||
+				   (!deferred_right && formula.right && formula_tree_is_referenced(*formula.right, sources));
 		}
 
 	} // namespace
@@ -825,12 +907,12 @@ namespace ltl {
 	class Monitor::Implementation {
 	public:
 		Implementation(std::string property_name, const Formula& formula, uint64_t activation_tick)
-			: property_name(std::move(property_name)), formula(render_formula(formula)),
-			  residual(normalize(formula, factory)), trigger(contains_implication(formula)),
-			  activation_tick(activation_tick) {}
+			: property_name(std::move(property_name)), source_formula(formula), residual(normalize(formula, factory)),
+			  trigger(contains_implication(formula)), activation_tick(activation_tick) {}
 
 		std::string                                  property_name;
-		std::string                                  formula;
+		const Formula&                               source_formula;
+		mutable std::string                          formula;
 		NodeFactory                                  factory;
 		NodePtr                                      residual;
 		std::vector<std::pair<const Formula*, bool>> last_evaluations;
@@ -838,13 +920,18 @@ namespace ltl {
 		std::vector<std::unique_ptr<Formula>>        persistent_formulas;
 		std::optional<FailureExplanation>            failure;
 		std::string                                  obligation_at_end;
-		bool                                         observed        = false;
-		bool                                         finished        = false;
-		bool                                         unresolved      = false;
-		bool                                         trigger         = false;
-		uint64_t                                     activation_tick = 0;
-		uint64_t                                     observations    = 0;
-		uint64_t                                     activations     = 0;
+		bool                                         observed            = false;
+		bool                                         finished            = false;
+		bool                                         unresolved          = false;
+		bool                                         trigger             = false;
+		uint64_t                                     activation_tick     = 0;
+		uint64_t                                     observations        = 0;
+		uint64_t                                     activations         = 0;
+		uint64_t                                     last_revision       = 0;
+		uint64_t                                     stutter_activations = 0;
+		bool                                         stutter             = false;
+		uint64_t                                     wakeup              = 0;
+		uint64_t                                     next_maintenance    = MAINTENANCE_INTERVAL;
 	};
 
 	Monitor::Monitor(std::string property_name, const Formula& formula, uint64_t activation_tick)
@@ -860,7 +947,9 @@ namespace ltl {
 		return implementation_->property_name;
 	}
 
-	const std::string& Monitor::formula() const noexcept {
+	const std::string& Monitor::formula() const {
+		if (implementation_->formula.empty())
+			implementation_->formula = render_formula(implementation_->source_formula);
 		return implementation_->formula;
 	}
 
@@ -886,23 +975,29 @@ namespace ltl {
 	}
 
 	Verdict Monitor::observe(const AtomEvaluator& evaluate, const AtomValueRenderer& render_actual,
-							 const DomainEvaluator& evaluate_domain, const StepEvaluator& evaluate_step) {
+							 const DomainEvaluator& evaluate_domain, const StepEvaluator& evaluate_step,
+							 uint64_t revision) {
 		if (implementation_->finished) throw std::logic_error("cannot observe a finished LTL monitor");
 		implementation_->observed = true;
 		const Verdict current     = verdict();
 		if (current != Verdict::PENDING) return current;
-		const NodePtr  obligation       = implementation_->residual;
-		const uint64_t observation_tick = implementation_->activation_tick + implementation_->observations++;
+		// A self-loop in progression can repeat only with identical evaluator inputs. This
+		// expires at the next temporal boundary even if the input revision does not change.
+		if (revision && revision == implementation_->last_revision && implementation_->stutter &&
+			implementation_->activation_tick + implementation_->observations < implementation_->wakeup) {
+			++implementation_->observations;
+			implementation_->activations += implementation_->stutter_activations;
+			return current;
+		}
+		implementation_->last_revision      = revision;
+		const uint64_t previous_activations = implementation_->activations;
+		const NodePtr  obligation           = implementation_->residual;
+		const uint64_t observation_tick     = implementation_->activation_tick + implementation_->observations++;
 		implementation_->transient_formulas.clear();
 		implementation_->last_evaluations.clear();
+		implementation_->wakeup   = std::numeric_limits<uint64_t>::max();
 		implementation_->residual = progress(
-			implementation_->residual,
-			[&](const Formula& atom) {
-				const bool value = evaluate(atom);
-				implementation_->last_evaluations.emplace_back(&atom, value);
-				return value;
-			},
-			implementation_->factory, evaluate_domain,
+			implementation_->residual, evaluate, implementation_->factory, evaluate_domain,
 			[&](std::unique_ptr<Formula> formula, bool persistent) {
 				if (persistent) implementation_->persistent_formulas.push_back(std::move(formula));
 				else implementation_->transient_formulas.push_back(std::move(formula));
@@ -915,7 +1010,10 @@ namespace ltl {
 				implementation_->persistent_formulas.push_back(std::move(grounded));
 				return normalized;
 			},
-			evaluate_step, implementation_->activations);
+			evaluate_step, implementation_->activations, observation_tick, implementation_->wakeup,
+			implementation_->last_evaluations);
+		implementation_->stutter             = implementation_->residual == obligation;
+		implementation_->stutter_activations = implementation_->activations - previous_activations;
 		if (verdict() == Verdict::FALSE) {
 			std::vector<AtomFact> facts;
 			facts.reserve(implementation_->last_evaluations.size());
@@ -925,17 +1023,18 @@ namespace ltl {
 					facts.push_back(
 						{render_formula(*atom), value, render_actual ? render_actual(*atom) : std::nullopt});
 			}
-			FailureExplanation explanation{implementation_->formula, render_node(obligation), std::move(facts), {}, {}};
-			TimedObligation    timed;
+			FailureExplanation              explanation{formula(), render_node(obligation), std::move(facts), {}, {}};
+			TimedObligation                 timed;
 			std::unordered_set<const Node*> visited;
-			find_timed_obligation(obligation, timed, visited);
+			find_timed_obligation(obligation, timed, visited, observation_tick);
 			if (timed.formula && timed.elapsed <= observation_tick && timed.formula->interval) {
 				explanation.obligation_created_tick = observation_tick - timed.elapsed;
 				explanation.deadline_tick = *explanation.obligation_created_tick + timed.formula->interval->until_tick;
 			}
 			implementation_->failure = std::move(explanation);
 		}
-		if (implementation_->observations % MAINTENANCE_INTERVAL == 0U) {
+		if (implementation_->observations >= implementation_->next_maintenance) {
+			implementation_->next_maintenance = implementation_->observations + MAINTENANCE_INTERVAL;
 			implementation_->factory.prune_expired();
 			if (implementation_->persistent_formulas.empty()) return verdict();
 			// Ground formulas only need to outlive the residual nodes and diagnostics that refer to them.
@@ -981,13 +1080,12 @@ namespace ltl {
 						facts.push_back(
 							{render_formula(*atom), value, render_actual ? render_actual(*atom) : std::nullopt});
 				}
-				FailureExplanation explanation{
-					implementation_->formula, render_node(obligation), std::move(facts), {}, {}};
-				TimedObligation                 timed;
+				FailureExplanation explanation{formula(), render_node(obligation), std::move(facts), {}, {}};
+				TimedObligation    timed;
 				std::unordered_set<const Node*> visited;
-				find_timed_obligation(obligation, timed, visited);
+				const uint64_t final_tick = implementation_->activation_tick + implementation_->observations - 1;
+				find_timed_obligation(obligation, timed, visited, final_tick);
 				if (timed.formula && timed.formula->interval) {
-					const uint64_t final_tick = implementation_->activation_tick + implementation_->observations - 1;
 					if (timed.elapsed <= final_tick) {
 						explanation.obligation_created_tick = final_tick - timed.elapsed;
 						explanation.deadline_tick =

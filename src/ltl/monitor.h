@@ -62,7 +62,7 @@ namespace ltl {
 		Monitor& operator=(const Monitor&) = delete;
 
 		[[nodiscard]] const std::string&                       property_name() const noexcept;
-		[[nodiscard]] const std::string&                       formula() const noexcept;
+		[[nodiscard]] const std::string&                       formula() const;
 		[[nodiscard]] Verdict                                  verdict() const noexcept;
 		[[nodiscard]] const std::optional<FailureExplanation>& failure() const noexcept;
 
@@ -78,8 +78,12 @@ namespace ltl {
 		[[nodiscard]] const std::string& obligation_at_end() const noexcept;
 
 		// Progresses the property by one observation. Calls after a decisive verdict are harmless.
+		// A nonzero revision certifies identical atom, domain, and step evaluator results for
+		// repeated uses of that revision. Zero disables reuse. Revisions must not be reused
+		// for different inputs, including event pulses and their clearing observations.
 		Verdict observe(const AtomEvaluator& evaluate, const AtomValueRenderer& render_actual = {},
-						const DomainEvaluator& evaluate_domain = {}, const StepEvaluator& evaluate_step = {});
+						const DomainEvaluator& evaluate_domain = {}, const StepEvaluator& evaluate_step = {},
+						uint64_t revision = 0);
 
 		// Applies finite-trace end semantics. A scenario trace always contains at least tick zero, so
 		// finishing before the first observation is a programming error.
