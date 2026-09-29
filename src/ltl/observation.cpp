@@ -58,6 +58,7 @@ namespace ltl {
 		using BindingMap = std::unordered_map<std::string, uint64_t>;
 
 		ModuleSnapshot snapshot(const module::Module& hardware) {
+			const auto& calibration = world::calibration_for(hardware.id());
 			return ModuleSnapshot{hardware.id().raw(),
 								  hardware.big_belt_speed().raw(),
 								  hardware.small_belt_speed().raw(),
@@ -68,7 +69,9 @@ namespace ltl {
 								  hardware.is_right_laser_enabled(),
 								  hardware.is_left_laser_blocked(),
 								  hardware.is_right_laser_blocked(),
-								  hardware.is_rfid_active()};
+								  hardware.is_rfid_active(),
+								  calibration.endpoint_to_junction_um,
+								  world::tub_radius_um(calibration)};
 		}
 
 		using ModuleSnapshots = std::map<uint16_t, ModuleSnapshot>;
@@ -111,6 +114,7 @@ namespace ltl {
 			case Value::Symbol::SERVO_ANGLE:          return ModuleField::SERVO_ANGLE;
 			case Value::Symbol::SERVO_PHYSICAL_ANGLE: return ModuleField::SERVO_PHYSICAL_ANGLE;
 			case Value::Symbol::LED_COLOR:            return ModuleField::LED_COLOR;
+			case Value::Symbol::LED_VALUE:            return ModuleField::LED_COLOR;
 			case Value::Symbol::LEFT_LASER_ENABLED:   return ModuleField::LEFT_LASER_ENABLED;
 			case Value::Symbol::RIGHT_LASER_ENABLED:  return ModuleField::RIGHT_LASER_ENABLED;
 			case Value::Symbol::LEFT_LASER_BLOCKED:   return ModuleField::LEFT_LASER_BLOCKED;
@@ -154,6 +158,10 @@ namespace ltl {
 		bool evaluate_call(const Value& value, const Observation& observation, BindingMap& bindings) {
 			if (value.symbol == Value::Symbol::PRESENT) {
 				return observation.tubs().contains(evaluate_tub(*value.arguments[0], observation, bindings).id);
+			}
+			if (value.symbol == Value::Symbol::SEEN) {
+				// The tub has appeared at or before this observation. Guards initial_data and initial_uid.
+				return observation.initial_tub(evaluate_tub(*value.arguments[0], observation, bindings).id) != nullptr;
 			}
 			if (value.symbol == Value::Symbol::AT_MODULE) {
 				const TubRef    tub    = evaluate_tub(*value.arguments[0], observation, bindings);
@@ -429,10 +437,15 @@ namespace ltl {
 				}
 				if (value.base->type == ValueType::TUB) {
 					const TubRef tub   = evaluate_tub(*value.base, observation, bindings);
+					if (value.symbol == Value::Symbol::ID) return integer_value(tub.id);
 					const auto   found = observation.tubs().find(tub.id);
 					if (found == observation.tubs().end())
 						throw std::runtime_error("tub(" + std::to_string(tub.id) +
 												 ") data is unavailable while the tub is not present");
+					if (value.symbol == Value::Symbol::MODULE) return ModuleRef{found->second.module};
+					if (value.symbol == Value::Symbol::BELT) return integer_value(static_cast<uint8_t>(found->second.belt));
+					if (value.symbol == Value::Symbol::POSITION_UM) return integer_value(found->second.position_um);
+					if (value.symbol == Value::Symbol::PREVIOUS_MODULE) return integer_value(found->second.previous_module);
 					return value.symbol == Value::Symbol::UID ? BytesRef{found->second.uid}
 															  : BytesRef{found->second.data};
 				}
@@ -446,11 +459,14 @@ namespace ltl {
 					return PositionRef{module.id, world::Position::RIGHT_LASER};
 				const ModuleSnapshot& state = module_snapshot(observation, module.id);
 				switch (value.symbol) {
+				case Value::Symbol::LEG_LENGTH_UM: return integer_value(state.leg_length_um);
+				case Value::Symbol::TUB_RADIUS_UM: return integer_value(state.tub_radius_um);
 				case Value::Symbol::BIG_BELT_SPEED:       return physical_value(state.big_belt_speed);
 				case Value::Symbol::SMALL_BELT_SPEED:     return physical_value(state.small_belt_speed);
 				case Value::Symbol::SERVO_ANGLE:          return physical_value(state.servo_angle);
 				case Value::Symbol::SERVO_PHYSICAL_ANGLE: return physical_value(state.servo_physical_angle);
 				case Value::Symbol::LED_COLOR:            return state.led_color;
+				case Value::Symbol::LED_VALUE:            return integer_value(state.led_color);
 				case Value::Symbol::LEFT_LASER_ENABLED:   return state.left_laser_enabled;
 				case Value::Symbol::RIGHT_LASER_ENABLED:  return state.right_laser_enabled;
 				case Value::Symbol::LEFT_LASER_BLOCKED:   return state.left_laser_blocked;
@@ -645,6 +661,11 @@ namespace ltl {
 		observation.module_stepped_ = std::move(module_stepped);
 		observation.modules_        = snapshot_modules(module_ids_, world, previous_modules_);
 		observation.tubs_           = snapshot_tubs(world);
+		for (auto& [id, tub] : observation.tubs_) {
+			const auto before = previous_tubs_.find(id);
+			if (before != previous_tubs_.end() && before->second.module != tub.module)
+				tub.previous_module = before->second.module;
+		}
 		for (const auto& [id, tub] : observation.tubs_) {
 			(void)tub;
 			if (!previous_tubs_.contains(id) && seen_tubs_.contains(id)) {
@@ -703,14 +724,12 @@ namespace ltl {
 		}
 		if (observation.modules_ != previous_modules_)
 			derive_module_edges(*observation.modules_, *previous_modules_, observation.changed_);
-		// Continuous belt coordinates are not exposed to LTL. All discrete tub state and
-		// data are exposed, as are module fields, event pulses, RPC domains, and step clocks.
+		// Every exposed tub field participates in the revision, including continuous position
+		// and the clearing of the one-observation physical-transfer source.
 		bool tub_change = observation.tubs_.size() != previous_tubs_.size();
 		for (const auto& [id, tub] : observation.tubs_) {
 			const auto before = previous_tubs_.find(id);
-			if (before == previous_tubs_.end() || tub.module != before->second.module ||
-				tub.position != before->second.position || tub.uid != before->second.uid ||
-				tub.data != before->second.data)
+			if (before == previous_tubs_.end() || tub != before->second)
 				tub_change = true;
 		}
 		const bool pulses = !observation.changed_.empty() || !observation.appeared_.empty() ||

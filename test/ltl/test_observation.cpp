@@ -75,6 +75,86 @@ namespace {
 
 } // namespace
 
+TEST_F(LtlObservationTest, PhysicalCoordinatesAndIdentityAreTypedAndGuarded) {
+	ltl::Observer observer(modules(), world_);
+	const auto empty = observer.observe(0, world_);
+	EXPECT_TRUE(evaluate("tub(67).id == 67", empty));
+	EXPECT_FALSE(evaluate("seen(tub(67))", empty));
+	{
+		ltl::File aliased = ltl::parse("let known(t) = seen(t) && initial_uid(t).length == 7;\nprop test = !known(tub(67));", "observation.spec");
+		ltl::type_check(aliased, ltl::TypeEnvironment{{MODULE}}, "observation.spec");
+		EXPECT_TRUE(empty.evaluate(*aliased.properties[0].formula));
+	}
+	EXPECT_TRUE(evaluate("!seen(tub(67)) || initial_uid(tub(67)).length == 7", empty));
+	EXPECT_THROW(evaluate("tub(67).belt == 0", empty), std::runtime_error);
+	EXPECT_THROW(evaluate("tub(67).module == module(1)", empty), std::runtime_error);
+	EXPECT_TRUE(evaluate("!present(tub(67)) || tub(67).belt == 0", empty));
+	place(world::Position::CENTER);
+	const auto occupied = observer.observe(1, world_);
+	EXPECT_TRUE(evaluate("tub(67).module == module(1)", occupied));
+	EXPECT_TRUE(evaluate("seen(tub(67)) && present(tub(67))", occupied));
+	EXPECT_TRUE(evaluate("tub(67).belt == 0", occupied));
+	EXPECT_TRUE(evaluate("tub(67).position_um == module(1).leg_length_um", occupied));
+	EXPECT_TRUE(evaluate("tub(67).previous_module == 0", occupied));
+	EXPECT_TRUE(evaluate("module(1).tub_radius_um > 0", occupied));
+	world_.module(module::ModuleId{MODULE})->set_led_color(module::LedColor{0xA4C3D0});
+	const auto lit = observer.observe(2, world_);
+	EXPECT_TRUE(evaluate("(module(1).led_value >> 20) == 10 && ((module(1).led_value >> 18) & 3) == 1", lit));
+	EXPECT_TRUE(evaluate("changed(module(1).led_value)", lit));
+	EXPECT_TRUE(evaluate("module(1).led_color == 0xa4c3d0", lit));
+	EXPECT_THROW(compile("changed(module(1).leg_length_um)"), std::invalid_argument);
+	EXPECT_THROW(compile("changed(module(1).id)"), std::invalid_argument);
+}
+
+TEST_F(LtlObservationTest, ContinuousMotionInvalidatesAtomCacheAndKeepsOldCoordinates) {
+	place(world::Position::ENTRY);
+	ltl::Observer observer(modules(), world_);
+	const auto before = observer.observe(0, world_);
+	const auto position = before.tubs().at(TUB).position_um;
+	world_.module(module::ModuleId{MODULE})->set_small_belt_speed(module::BeltSpeed{-90.0});
+	world_.advance_tick();
+	const auto moving = observer.observe(1, world_);
+	world_.advance_tick();
+	const auto later = observer.observe(2, world_);
+	EXPECT_NE(moving.revision(), later.revision());
+	EXPECT_LT(later.tubs().at(TUB).position_um, moving.tubs().at(TUB).position_um);
+	EXPECT_EQ(before.tubs().at(TUB).position_um, position);
+	EXPECT_TRUE(evaluate("count item: Tub where (present(item) && item.belt == 1) == 1", later));
+	world_.remove(TUB);
+	const auto gone = observer.observe(3, world_);
+	EXPECT_THROW(evaluate("tub(67).position_um == 0", gone), std::runtime_error);
+	EXPECT_TRUE(evaluate("seen(tub(67)) && !present(tub(67))", gone));
+}
+
+TEST_F(LtlObservationTest, PhysicalTransferSourceIsOneObservationAndItsClearingChangesRevision) {
+	settings::ModuleSettings first{}, second{};
+	first.active = second.active = true;
+	first.right = module::ModuleId{2};
+	second.left = module::ModuleId{1};
+	settings::set_module_settings(module::ModuleId{1}, first);
+	settings::set_module_settings(module::ModuleId{2}, second);
+	world_.add_module(module::ModuleId{2});
+	world_.place(TUB, module::ModuleId{1}, world::Position::RIGHT_LASER, Blocks{});
+	world_.module(module::ModuleId{1})->set_big_belt_speed(module::BeltSpeed{-100.0});
+	world_.module(module::ModuleId{2})->set_big_belt_speed(module::BeltSpeed{-100.0});
+	ltl::Observer observer({module::ModuleId{1}, module::ModuleId{2}}, world_);
+	(void)observer.observe(0, world_);
+	bool crossed = false;
+	for (uint64_t tick = 1; tick < 10000; ++tick) {
+		world_.advance_tick();
+		const auto current = observer.observe(tick, world_);
+		if (current.tubs().at(TUB).previous_module == 0) continue;
+		EXPECT_EQ(current.tubs().at(TUB).module, 2);
+		EXPECT_EQ(current.tubs().at(TUB).previous_module, 1);
+		const auto cleared = observer.observe(tick + 1, world_);
+		EXPECT_EQ(cleared.tubs().at(TUB).previous_module, 0);
+		EXPECT_NE(cleared.revision(), current.revision());
+		crossed = true;
+		break;
+	}
+	EXPECT_TRUE(crossed);
+}
+
 TEST_F(LtlObservationTest, RevisionsIncludePulseClearingAndModuleStepsAndKeepOldSnapshots) {
 	ltl::Observer observer(modules(), world_);
 	const auto    first = observer.observe(0, world_);
