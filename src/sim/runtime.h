@@ -215,6 +215,7 @@ namespace sim {
 		std::optional<ltl::Observer>                      property_observer_;
 		std::optional<ltl::Observation>                   current_observation_;
 		uint64_t                                          scenario_duration_tick_ = 0;
+		bool     halt_on_failure_ = true;
 		std::string                                       property_filename_;
 		uint64_t                                          next_rpc_observation_id_ = 1;
 		uint64_t                                          next_rpc_work_id_        = 1;
@@ -320,6 +321,11 @@ namespace sim {
 
 		// Once true, the run grants no further ticks, so the world stays in the state that failed.
 		[[nodiscard]] bool failed() const noexcept;
+
+		// Whether the run stops granting ticks. By default a failure halts the run; with halting
+		// disabled every property is still evaluated to the end of the scenario.
+		[[nodiscard]] bool halted() const noexcept { return halt_on_failure_ && failed(); }
+		void               set_halt_on_failure(bool halt) noexcept { halt_on_failure_ = halt; }
 
 		[[nodiscard]] std::size_t properties_pending() const noexcept;
 

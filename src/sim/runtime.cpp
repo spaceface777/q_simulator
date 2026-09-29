@@ -228,7 +228,7 @@ namespace sim {
 			}
 			if (selective_sync_) step_selective(1);
 			else step(1);
-			if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) break;
+			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) break;
 			if (last_tick && global_tick_ > *last_tick) break;
 		}
 	}
@@ -449,7 +449,7 @@ namespace sim {
 	}
 
 	void Runtime::advance(std::chrono::microseconds elapsed, double speed, std::chrono::microseconds deadline) {
-		if (!running_ || speed <= 0.0 || failed()) {
+		if (!running_ || speed <= 0.0 || halted()) {
 			return;
 		}
 
@@ -478,7 +478,7 @@ namespace sim {
 			index += advanced;
 
 			// A decisive property result ends the run inside the tick that produced it, state intact.
-			if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) {
+			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) {
 				budget_us_ = 0;
 				report_pacing(elapsed, speed, global_tick_ - tick_before);
 				return;
@@ -951,7 +951,7 @@ namespace sim {
 			queue_.run_tick(global_tick_);
 			global_tick_++;
 			completed++;
-			if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) break;
+			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) break;
 		}
 		// A sleeping child does not participate in the barrier. Poll all active processes once per
 		// epoch so a failure cannot stay hidden until that child is selected again.
@@ -1072,7 +1072,7 @@ namespace sim {
 					}
 				}
 			}
-			if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) break;
+			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) break;
 		}
 		if (measured != nullptr) record_synchronization(completed, std::move(*measured));
 		return completed;
@@ -1130,7 +1130,7 @@ namespace sim {
 			queue_.run_tick(global_tick_);
 			global_tick_++;
 			completed++;
-			if (failed() || (!property_monitors_.empty() && properties_pending() == 0)) {
+			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) {
 				break;
 			}
 		}

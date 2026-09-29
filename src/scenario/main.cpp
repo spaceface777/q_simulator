@@ -43,6 +43,7 @@ namespace {
 		uint32_t                runahead_cap   = 0;
 		bool                    selective_sync = true;
 		bool                    quiet          = false;
+		bool                    keep_going     = false;
 		bool                    layout_given   = false;
 	};
 
@@ -64,6 +65,7 @@ namespace {
 				  << "      --all-child-sync    Use the reference all-child barrier\n"
 				  << "      --runahead-cap <n>  Enable exact runahead with a cap up to 100 ticks\n"
 				  << "      --trace <path>      Write an NDJSON trace of the run\n"
+				  << "  -k, --keep-going        Evaluate every property to the end after a failure\n"
 				  << "  -q, --quiet             Print only failures\n"
 				  << "  -h, --help              Print all options\n"
 				  << "  -v, --version           Print version\n"
@@ -142,6 +144,8 @@ namespace {
 							  "Runahead cap must be between 1 and " + std::to_string(sim::MAX_RUNAHEAD_TICKS));
 				options.runahead_cap   = static_cast<uint32_t>(*cap);
 				options.selective_sync = false;
+			} else if (argument == "-k" || argument == "--keep-going") {
+				options.keep_going = true;
 			} else if (argument == "-q" || argument == "--quiet") {
 				options.quiet = true;
 			} else if (!argument.empty() && argument.front() == '-') {
@@ -241,6 +245,7 @@ int main(int argc, char const* argv[]) {
 		timeout_tick = static_cast<uint64_t>(ticks);
 	}
 
+	runtime.set_halt_on_failure(!options.keep_going);
 	try {
 		runtime.load(schedule);
 		runtime.load_properties(std::move(properties), schedule.properties->duration_tick,
@@ -268,7 +273,7 @@ int main(int argc, char const* argv[]) {
 	bool timed_out = false;
 
 	try {
-		while (!runtime.failed() && runtime.properties_pending() > 0) {
+		while (!runtime.halted() && runtime.properties_pending() > 0) {
 			if (runtime.tick() > timeout_tick) {
 				timed_out = true;
 				break;
