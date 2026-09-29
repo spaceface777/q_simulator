@@ -343,6 +343,7 @@ namespace ltl {
 																	  "rpc_responses",
 																	  "rpc_events",
 																	  "present",
+																	  "seen",
 																	  "at_module",
 																	  "at_position",
 																	  "appeared",

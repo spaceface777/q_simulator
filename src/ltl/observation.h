@@ -41,6 +41,8 @@ namespace ltl {
 		bool     left_laser_blocked   = false;
 		bool     right_laser_blocked  = false;
 		bool     rfid_active          = false;
+		int64_t  leg_length_um        = 0;
+		int64_t  tub_radius_um        = 0;
 
 		bool operator==(const ModuleSnapshot&) const = default;
 	};
@@ -53,6 +55,8 @@ namespace ltl {
 		std::optional<world::Position> position;
 		std::vector<uint8_t>           uid;
 		std::vector<uint8_t>           data;
+		// Source of a physical module transition on this observation, otherwise zero.
+		uint16_t                      previous_module = 0;
 
 		bool operator==(const TubSnapshot&) const = default;
 	};

@@ -102,11 +102,11 @@ namespace ltl {
 					return value.type;
 				}
 
-				if (value.text == "present") {
-					value.symbol = Value::Symbol::PRESENT;
+				if (value.text == "present" || value.text == "seen") {
+					value.symbol = value.text == "present" ? Value::Symbol::PRESENT : Value::Symbol::SEEN;
 					require_arity(value, 1);
 					if (check(*value.arguments[0]) != ValueType::TUB) {
-						error(value.arguments[0]->span, "present expects a Tub");
+						error(value.arguments[0]->span, value.text + " expects a Tub");
 					}
 				} else if (value.text == "at_module") {
 					value.symbol = Value::Symbol::AT_MODULE;
@@ -183,7 +183,9 @@ namespace ltl {
 						error(field.span, "changed expects a module output field");
 					}
 					const ValueType type = check(field);
-					if (field.base->type != ValueType::MODULE || type == ValueType::POSITION) {
+					if (field.base->type != ValueType::MODULE || type == ValueType::POSITION ||
+						field.symbol == Value::Symbol::ID || field.symbol == Value::Symbol::LEG_LENGTH_UM ||
+						field.symbol == Value::Symbol::TUB_RADIUS_UM) {
 						error(field.span, "changed expects a module output field");
 					}
 				} else {
@@ -206,6 +208,12 @@ namespace ltl {
 					error(value.span, "unknown Bytes member '" + value.text + "'");
 				}
 				if (base == ValueType::TUB) {
+					if (value.text == "id") return resolve(value, ValueType::NUMBER, Value::Symbol::ID);
+					if (value.text == "module") return resolve(value, ValueType::MODULE, Value::Symbol::MODULE);
+					if (value.text == "belt") return resolve(value, ValueType::NUMBER, Value::Symbol::BELT);
+					if (value.text == "position_um") return resolve(value, ValueType::NUMBER, Value::Symbol::POSITION_UM);
+					if (value.text == "previous_module")
+						return resolve(value, ValueType::NUMBER, Value::Symbol::PREVIOUS_MODULE);
 					if (value.text == "data") return resolve(value, ValueType::BYTES, Value::Symbol::DATA);
 					if (value.text == "uid") return resolve(value, ValueType::BYTES, Value::Symbol::UID);
 					error(value.span, "unknown Tub member '" + value.text + "'");
@@ -239,6 +247,10 @@ namespace ltl {
 				if (base != ValueType::MODULE) error(value.base->span, "this value has no members");
 
 				if (value.text == "id") return resolve(value, ValueType::NUMBER, Value::Symbol::ID);
+				if (value.text == "leg_length_um")
+					return resolve(value, ValueType::NUMBER, Value::Symbol::LEG_LENGTH_UM);
+				if (value.text == "tub_radius_um")
+					return resolve(value, ValueType::NUMBER, Value::Symbol::TUB_RADIUS_UM);
 				if (value.text == "big_belt_speed")
 					return resolve(value, ValueType::NUMBER, Value::Symbol::BIG_BELT_SPEED);
 				if (value.text == "small_belt_speed")
@@ -247,6 +259,7 @@ namespace ltl {
 				if (value.text == "servo_physical_angle")
 					return resolve(value, ValueType::NUMBER, Value::Symbol::SERVO_PHYSICAL_ANGLE);
 				if (value.text == "led_color") return resolve(value, ValueType::COLOR, Value::Symbol::LED_COLOR);
+				if (value.text == "led_value") return resolve(value, ValueType::NUMBER, Value::Symbol::LED_VALUE);
 				if (value.text == "left_laser_enabled")
 					return resolve(value, ValueType::BOOLEAN, Value::Symbol::LEFT_LASER_ENABLED);
 				if (value.text == "right_laser_enabled")
