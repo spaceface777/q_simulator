@@ -102,6 +102,21 @@ namespace ltl {
 		// certified self-loop or returning a decided verdict.
 		[[nodiscard]] bool progressed() const noexcept;
 
+		// While the inputs keep their revision, observations before the returned tick repeat the last
+		// one exactly. Empty when the next observation must progress the formula.
+		[[nodiscard]] std::optional<uint64_t> repeats_until() const noexcept;
+
+		// Applies count repetitions certified by repeats_until() without evaluating anything, exactly as
+		// count observe() calls with an unchanged revision would.
+		void repeat(uint64_t count);
+
+		// Computes the trigger count after repetitions without changing the monitor, for reporting a
+		// sleeping monitor when a trace stops early.
+		[[nodiscard]] uint64_t activations_after_repeats(uint64_t count) const;
+
+		// The tick the next observation stands for.
+		[[nodiscard]] uint64_t next_tick() const noexcept;
+
 		// Applies finite-trace end semantics. A scenario trace always contains at least tick zero, so
 		// finishing before the first observation is a programming error.
 		Verdict finish(const AtomValueRenderer& render_actual = {});
