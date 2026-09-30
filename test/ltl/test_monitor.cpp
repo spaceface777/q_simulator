@@ -228,6 +228,57 @@ TEST(LtlMonitor, ReusesStableInputsWithoutLosingActivationsOrDeadlineBoundaries)
 	EXPECT_LT(evaluations, 5u);
 }
 
+TEST(LtlMonitor, BulkRepeatsPreserveTriggersAndAnInclusiveDeadline) {
+	CompiledProperty property("G[0ms, 20ms] (true -> module(1).rfid_active)");
+	ltl::Monitor     bulk("bulk", property.formula(), 100);
+	ltl::Monitor     reference("reference", property.formula(), 100);
+	unsigned         evaluations = 0;
+	const auto atom = [&](const ltl::Formula&) { ++evaluations; return true; };
+	EXPECT_FALSE(bulk.repeats_until());
+	EXPECT_THROW(bulk.repeat(1), std::logic_error);
+	EXPECT_EQ(bulk.observe(atom, {}, {}, {}, 1), ltl::Verdict::PENDING);
+	EXPECT_EQ(bulk.observe(atom, {}, {}, {}, 1), ltl::Verdict::PENDING);
+	ASSERT_EQ(bulk.repeats_until(), 120u);
+	EXPECT_EQ(bulk.next_tick(), 102u);
+	EXPECT_EQ(bulk.activations_after_repeats(18), 20u);
+	EXPECT_EQ(bulk.activations(), 2u) << "Reporting repetitions must not mutate the monitor";
+	EXPECT_THROW(bulk.repeat(19), std::logic_error);
+	EXPECT_EQ(bulk.next_tick(), 102u);
+	bulk.repeat(18);
+	EXPECT_EQ(bulk.next_tick(), 120u);
+	EXPECT_EQ(bulk.observe(atom, {}, {}, {}, 1), ltl::Verdict::TRUE);
+	EXPECT_FALSE(bulk.repeats_until());
+	EXPECT_THROW(bulk.repeat(1), std::logic_error);
+	EXPECT_LE(evaluations, 3u);
+	for (uint64_t tick = 100; tick <= 120; tick++)
+		(void)reference.observe([](const ltl::Formula&) { return true; });
+	EXPECT_EQ(bulk.verdict(), reference.verdict());
+	EXPECT_EQ(bulk.activations(), reference.activations());
+	EXPECT_EQ(bulk.activations(), 21u);
+}
+
+TEST(LtlMonitor, BulkRepeatsWakeAtBothMetricWindowBoundaries) {
+	CompiledProperty property("F[4ms, 6ms] module(1).rfid_active");
+	ltl::Monitor     monitor("window", property.formula(), 30);
+	unsigned         evaluations = 0;
+	const auto atom = [&](const ltl::Formula&) { ++evaluations; return false; };
+	(void)monitor.observe(atom, {}, {}, {}, 1);
+	(void)monitor.observe(atom, {}, {}, {}, 1);
+	ASSERT_EQ(monitor.repeats_until(), 34u);
+	EXPECT_THROW(monitor.repeat(3), std::logic_error);
+	monitor.repeat(2);
+	EXPECT_EQ(monitor.next_tick(), 34u);
+	EXPECT_EQ(evaluations, 0u);
+	EXPECT_EQ(monitor.observe(atom, {}, {}, {}, 1), ltl::Verdict::PENDING);
+	ASSERT_EQ(monitor.repeats_until(), 36u);
+	monitor.repeat(1);
+	EXPECT_EQ(monitor.next_tick(), 36u);
+	EXPECT_EQ(monitor.observe(atom, {}, {}, {}, 1), ltl::Verdict::FALSE);
+	EXPECT_EQ(evaluations, 2u);
+	ASSERT_TRUE(monitor.failure());
+	EXPECT_EQ(monitor.failure()->deadline_tick, 36u);
+}
+
 TEST(LtlMonitor, StableInputsCannotDelayADeadlineAtANonzeroActivationTick) {
 	CompiledProperty property("F[2049ms, 2049ms] module(1).rfid_active");
 	ltl::Monitor     monitor("deadline", property.formula(), 100);

@@ -1107,6 +1107,30 @@ namespace ltl {
 		return ltl::verdict(implementation_->residual);
 	}
 
+	std::optional<uint64_t> Monitor::repeats_until() const noexcept {
+		const Implementation& state = *implementation_;
+		if (!state.observed || state.finished || !state.stutter || verdict() != Verdict::PENDING) return std::nullopt;
+		return state.wakeup;
+	}
+
+	uint64_t Monitor::activations_after_repeats(uint64_t count) const {
+		const Implementation& state = *implementation_;
+		if (count == 0) return state.activations;
+		if (!repeats_until() || next_tick() > state.wakeup || count > state.wakeup - next_tick())
+			throw std::logic_error("LTL monitor repeated past its certified self-loop");
+		return state.activations + count * state.stutter_activations;
+	}
+
+	void Monitor::repeat(uint64_t count) {
+		Implementation& state = *implementation_;
+		state.activations = activations_after_repeats(count);
+		state.observations += count;
+	}
+
+	uint64_t Monitor::next_tick() const noexcept {
+		return implementation_->activation_tick + implementation_->observations;
+	}
+
 	bool Monitor::progressed() const noexcept {
 		return implementation_->progressed;
 	}
