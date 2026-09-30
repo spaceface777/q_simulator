@@ -1118,6 +1118,99 @@ prop relative during [3ms, 8ms] = eventually[1ms, 2ms] module(1).led_color == 0x
 	runtime.stop();
 }
 
+TEST_F(RuntimeTest, WakesAllSubscriberBitsetWordsOnATubPulse) {
+	events::Schedule schedule;
+	events::TubArrival tub;
+	tub.tick = 25;
+	tub.removed_tick = 30;
+	tub.id = 4;
+	tub.module = module::ModuleId{FIRST};
+	schedule.tubs.push_back(tub);
+
+	std::ostringstream source;
+	for (unsigned index = 0; index < 130; index++)
+		source << "prop pulse_" << index << " = F[0ms, 50ms] appeared(tub(4));\n";
+	source << "prop future during [22ms, 50ms] = F appeared(tub(4));\n"
+		   << "prop new_domain = F (exists item: Tub: appeared(item));\n"
+		   << "prop clearing = G (appeared(tub(4)) -> (X (!appeared(tub(4)))));\n"
+		   << "prop removal = F disappeared(tub(4));\n";
+	sim::Runtime runtime(7);
+	runtime.load(schedule);
+	runtime.load_properties(ltl::parse(source.str(), "subscriptions.spec"), 50, "subscriptions.spec");
+	ASSERT_NO_THROW(runtime.start(50));
+	while (runtime.properties_pending() && runtime.tick() <= 50)
+		runtime.advance(std::chrono::milliseconds(16), 1.0, std::chrono::seconds(5));
+	const auto results = runtime.property_results();
+	ASSERT_EQ(results.size(), 134u);
+	for (std::size_t index = 0; index < 132; index++) {
+		EXPECT_EQ(results[index].verdict, ltl::Verdict::TRUE) << results[index].name;
+		EXPECT_EQ(results[index].decisive_tick, 25u) << results[index].name;
+	}
+	EXPECT_EQ(results[132].verdict, ltl::Verdict::TRUE);
+	EXPECT_EQ(results[132].decisive_tick, 50u);
+	EXPECT_EQ(results[132].activations, 1u);
+	EXPECT_EQ(results[133].verdict, ltl::Verdict::TRUE);
+	EXPECT_EQ(results[133].decisive_tick, 30u);
+	runtime.stop();
+}
+
+TEST_F(RuntimeTest, UpdatesSubscriptionsWhenAShortCircuitChangesItsReadSet) {
+	sim::Runtime runtime(7);
+	runtime.load_properties(ltl::parse("prop guarded = G (module(1).big_belt_speed == 0 || module(2).led_value == 0);",
+									 "subscriptions.spec"), 100, "subscriptions.spec");
+	ASSERT_NO_THROW(runtime.start(0));
+	auto* first = runtime.world().module(module::ModuleId{FIRST});
+	auto* second = runtime.world().module(module::ModuleId{SECOND});
+	ASSERT_NE(first, nullptr);
+	ASSERT_NE(second, nullptr);
+
+	first->set_big_belt_speed(module::BeltSpeed{25});
+	runtime.advance(std::chrono::milliseconds(1), 1.0, std::chrono::seconds(5));
+	EXPECT_FALSE(runtime.failed()); // The second operand becomes a dependency.
+	first->set_big_belt_speed(module::BeltSpeed{0});
+	runtime.advance(std::chrono::milliseconds(1), 1.0, std::chrono::seconds(5));
+	second->set_led_color(module::LedColor{1});
+	runtime.advance(std::chrono::milliseconds(1), 1.0, std::chrono::seconds(5));
+	EXPECT_FALSE(runtime.failed()); // Its old dependency is gone while the guard holds.
+	const uint64_t failure_tick = runtime.tick();
+	first->set_big_belt_speed(module::BeltSpeed{25});
+	runtime.advance(std::chrono::milliseconds(1), 1.0, std::chrono::seconds(5));
+	ASSERT_TRUE(runtime.failed());
+	EXPECT_EQ(runtime.property_results()[0].decisive_tick, failure_tick);
+	runtime.stop();
+}
+
+TEST_F(RuntimeTest, ReportsSleepingTriggerCountsExactlyAfterAnEarlyFailure) {
+	sim::Runtime runtime(7);
+	runtime.load_properties(ltl::parse(R"(
+prop counted = G (true -> module(1).led_value == 0);
+prop halt at 20ms = false;
+)", "subscriptions.spec"), 100, "subscriptions.spec");
+	ASSERT_NO_THROW(runtime.start(20));
+	while (!runtime.failed()) runtime.advance(std::chrono::milliseconds(16), 1.0, std::chrono::seconds(5));
+	EXPECT_EQ(runtime.tick(), 21u);
+	const auto results = runtime.property_results();
+	ASSERT_EQ(results.size(), 2u);
+	EXPECT_EQ(results[0].verdict, ltl::Verdict::PENDING);
+	EXPECT_EQ(results[0].activations, 21u);
+	EXPECT_EQ(results[1].decisive_tick, 20u);
+	EXPECT_EQ(runtime.property_results()[0].activations, 21u) << "Reporting does not consume repeats";
+	runtime.stop();
+}
+
+TEST_F(RuntimeTest, SleepingTriggerCountsDoNotExtendPastTheSemanticScenarioEnd) {
+	sim::Runtime runtime(7);
+	runtime.load_properties(ltl::parse("prop counted during [1ms, 100ms] = G (true -> module(1).led_value == 0);",
+									 "subscriptions.spec"), 10, "subscriptions.spec");
+	ASSERT_NO_THROW(runtime.start(20));
+	while (runtime.tick() <= 20) runtime.advance(std::chrono::milliseconds(1), 1.0, std::chrono::seconds(5));
+	const auto results = runtime.property_results();
+	ASSERT_EQ(results.size(), 1u);
+	EXPECT_EQ(results[0].verdict, ltl::Verdict::PENDING);
+	EXPECT_EQ(results[0].activations, 10u);
+	runtime.stop();
+}
+
 TEST_F(RuntimeTest, StopsWhenAPropertyFails) {
 	ltl::File properties =
 		ltl::parse("prop impossible at 1ms = module(1).rfid_active && !module(1).rfid_active;", "runtime.spec");
