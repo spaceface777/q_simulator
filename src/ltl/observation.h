@@ -230,6 +230,10 @@ namespace ltl {
 		// Evaluates a typed ground atom or comparison. This is suitable for Monitor::observe().
 		[[nodiscard]] bool evaluate(const Formula& atom) const;
 
+		// Evaluates an atom of an unground formula with its quantifier bindings supplied.
+		[[nodiscard]] bool evaluate(const Formula&                                       atom,
+									const std::vector<std::pair<std::string, uint64_t>>& bindings) const;
+
 		// Returns the observed left-hand value for a comparison. Non-comparison atoms have no
 		// additional value beyond their Boolean result.
 		[[nodiscard]] std::optional<std::string> actual_value(const Formula& atom) const;

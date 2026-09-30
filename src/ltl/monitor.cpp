@@ -61,6 +61,10 @@ namespace ltl {
 			mutable std::unordered_map<uint64_t, NodePtr> tub_instances{};
 			mutable NodePtr                               expansion{};
 			mutable std::unique_ptr<StepCache>            step_cache{};
+			// For a record quantifier: the shape of its body (-1 until known), and the static truth of
+			// each body subformula under this node's ground bindings (-1 unknown, 0, 1).
+			mutable int8_t                                     state_body = -1;
+			mutable std::unordered_map<const Formula*, int8_t> static_facts{};
 		};
 
 		struct NodeKey {
@@ -655,6 +659,65 @@ namespace ltl {
 			return result;
 		}
 
+		enum BodyShape : int8_t {
+			TEMPORAL_BODY = 0,
+			// No temporal operator or quantifier: the body evaluates to a constant.
+			STATE_BODY = 1,
+			// `state -> anything`: a false antecedent decides the body without grounding it.
+			GUARDED_BODY = 2,
+		};
+
+		bool state_only(const Formula& formula);
+
+		int8_t body_shape(const Formula& body) {
+			if (state_only(body)) return STATE_BODY;
+			if (body.kind == Formula::Kind::IMPLIES && state_only(*body.left)) return GUARDED_BODY;
+			return TEMPORAL_BODY;
+		}
+
+		bool state_only(const Formula& formula) {
+			switch (formula.kind) {
+			case Formula::Kind::ATOM:
+			case Formula::Kind::COMPARISON: return true;
+			case Formula::Kind::NOT:        return state_only(*formula.left);
+			case Formula::Kind::AND:
+			case Formula::Kind::OR:
+			case Formula::Kind::IMPLIES:    return state_only(*formula.left) && state_only(*formula.right);
+			default:                        return false;
+			}
+		}
+
+		// Evaluates a state-only body under bindings with exactly the outcome of grounding it with
+		// clone_formula, normalizing, and progressing it: the same static folding at every level, the
+		// same left-to-right short circuits, and the same trigger count for implications.
+		bool evaluate_state(const Formula& formula, const std::vector<std::pair<std::string, uint64_t>>& bindings,
+							const Node& quantifier, const InputTracker& inputs, uint64_t& activations) {
+			auto [fact, inserted] = quantifier.static_facts.try_emplace(&formula, int8_t{-1});
+			if (inserted) {
+				// Record bindings never take part in static truth, which only compares entities.
+				if (const auto truth = static_truth(formula, bindings)) fact->second = *truth ? 1 : 0;
+			}
+			if (fact->second >= 0) return fact->second == 1;
+			switch (formula.kind) {
+			case Formula::Kind::ATOM:
+			case Formula::Kind::COMPARISON: return inputs.evaluate_bound(formula, bindings);
+			case Formula::Kind::NOT: return !evaluate_state(*formula.left, bindings, quantifier, inputs, activations);
+			case Formula::Kind::AND:
+				return evaluate_state(*formula.left, bindings, quantifier, inputs, activations) &&
+					   evaluate_state(*formula.right, bindings, quantifier, inputs, activations);
+			case Formula::Kind::OR:
+				return evaluate_state(*formula.left, bindings, quantifier, inputs, activations) ||
+					   evaluate_state(*formula.right, bindings, quantifier, inputs, activations);
+			case Formula::Kind::IMPLIES: {
+				const bool antecedent = evaluate_state(*formula.left, bindings, quantifier, inputs, activations);
+				if (!antecedent) return true;
+				activations++;
+				return evaluate_state(*formula.right, bindings, quantifier, inputs, activations);
+			}
+			default: throw std::logic_error("state evaluation reached a temporal formula");
+			}
+		}
+
 		using FormulaOwner       = std::function<void(std::unique_ptr<Formula>, bool)>;
 		using PersistentGrounder = std::function<NodePtr(const Formula&, const std::string&, uint64_t)>;
 
@@ -875,10 +938,27 @@ namespace ltl {
 					} else {
 						auto bindings = node->source->ground_bindings;
 						bindings.emplace_back(node->source->binding, identity);
-						auto grounded         = clone_formula(*node->source->left, bindings);
-						item                  = progress_child(normalize(*grounded, factory));
-						const bool persistent = item->kind != NodeKind::TRUE && item->kind != NodeKind::FALSE;
-						own_formula(std::move(grounded), persistent);
+						const Formula& body = *node->source->left;
+						if (inputs && inputs->evaluate_bound) {
+							if (node->state_body < 0) node->state_body = body_shape(body);
+							if (node->state_body == STATE_BODY) {
+								item = factory.constant(evaluate_state(body, bindings, *node, *inputs, activations));
+							} else if (node->state_body == GUARDED_BODY) {
+								// Grounding would count the antecedent's own implications while progressing it.
+								// When the antecedent holds, the grounded body counts them again, so drop these.
+								uint64_t antecedent_activations = 0;
+								if (!evaluate_state(*body.left, bindings, *node, *inputs, antecedent_activations)) {
+									activations += antecedent_activations;
+									item = factory.constant(true);
+								}
+							}
+						}
+						if (!item) {
+							auto grounded         = clone_formula(body, bindings);
+							item                  = progress_child(normalize(*grounded, factory));
+							const bool persistent = item->kind != NodeKind::TRUE && item->kind != NodeKind::FALSE;
+							own_formula(std::move(grounded), persistent);
+						}
 					}
 					result = universal ? factory.make_and(std::move(result), std::move(item), node->source)
 									   : factory.make_or(std::move(result), std::move(item), node->source);
