@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <stdexcept>
 #include <string>
@@ -74,6 +75,76 @@ namespace {
 	};
 
 } // namespace
+
+TEST_F(LtlObservationTest, ReportsChangedChannelsAndTheClearingOfPulses) {
+	ltl::Observer observer(modules(), world_);
+	(void)observer.observe(0, world_);
+	place();
+	const auto appeared = observer.observe(1, world_);
+	const auto contains = [](const ltl::Observation& observation, uint32_t channel) {
+		const auto& changed = observation.changed_channels();
+		return std::ranges::find(changed, channel) != changed.end();
+	};
+	const uint32_t pulse = ltl::channel::tub(TUB, ltl::channel::TubField::APPEARED);
+	EXPECT_TRUE(contains(appeared, pulse));
+	EXPECT_TRUE(contains(appeared, ltl::channel::TUB_DOMAIN));
+	const auto cleared = observer.observe(2, world_);
+	EXPECT_TRUE(contains(cleared, pulse));
+	EXPECT_FALSE(contains(cleared, ltl::channel::TUB_DOMAIN));
+	const auto quiet = observer.observe(3, world_);
+	EXPECT_EQ(quiet.changed_channels(), std::vector<uint32_t>{ltl::channel::VOLATILE});
+	world_.module(module::ModuleId{MODULE})->set_led_color(module::LedColor{0x123456});
+	const auto output = observer.observe(4, world_);
+	const uint32_t led = ltl::channel::module_field(MODULE, ltl::ModuleField::LED_COLOR);
+	const uint32_t edge = ltl::channel::module_edge(MODULE, ltl::ModuleField::LED_COLOR);
+	EXPECT_TRUE(contains(output, led));
+	EXPECT_TRUE(contains(output, edge));
+	const auto steady = observer.observe(5, world_);
+	EXPECT_FALSE(contains(steady, led));
+	EXPECT_TRUE(contains(steady, edge));
+	EXPECT_FALSE(steady.volatile_inputs());
+	const auto reordered = observer.observe(3, world_);
+	EXPECT_TRUE(reordered.volatile_inputs()) << "Input subscriptions need conservative time-dependent visibility";
+}
+
+TEST_F(LtlObservationTest, RecordSubscriptionsDistinguishRequestsResponsesAndEvents) {
+	ltl::Observer observer(modules(), world_);
+	(void)observer.observe(0, world_);
+	ltl::RpcRequest first;
+	first.id = 100;
+	first.tick = 1;
+	first.module = MODULE;
+	ltl::RpcRequest second = first;
+	second.id = 101;
+	const auto requests = observer.observe(1, world_, {first, second});
+	const uint32_t request_channel = ltl::channel::records(MODULE, ltl::channel::RecordList::REQUESTS);
+	const uint32_t response_channel = ltl::channel::records(MODULE, ltl::channel::RecordList::RESPONSES);
+	const uint32_t event_channel = ltl::channel::records(MODULE, ltl::channel::RecordList::EVENTS);
+	EXPECT_EQ(std::ranges::count(requests.changed_channels(), request_channel), 1);
+	EXPECT_EQ(std::ranges::count(requests.changed_channels(), response_channel), 0);
+	const auto cleared_requests = observer.observe(2, world_);
+	EXPECT_EQ(std::ranges::count(cleared_requests.changed_channels(), request_channel), 1);
+	ltl::RpcResponse response;
+	response.id = response.request_id = 100;
+	response.tick = 3;
+	response.module = MODULE;
+	const auto responses = observer.observe(3, world_, {}, {response});
+	EXPECT_EQ(std::ranges::count(responses.changed_channels(), response_channel), 1);
+	EXPECT_EQ(std::ranges::count(responses.changed_channels(), request_channel), 0);
+	EXPECT_EQ(std::ranges::count(responses.changed_channels(), event_channel), 0);
+	EXPECT_EQ(std::ranges::count(responses.changed_channels(), ltl::channel::response(100)), 1);
+	const auto cleared_responses = observer.observe(4, world_);
+	EXPECT_EQ(std::ranges::count(cleared_responses.changed_channels(), response_channel), 1);
+	EXPECT_EQ(std::ranges::count(cleared_responses.changed_channels(), ltl::channel::response(100)), 0);
+	ltl::RpcEvent event;
+	event.id = 200;
+	event.tick = 5;
+	event.module = MODULE;
+	const auto events = observer.observe(5, world_, {}, {}, {event});
+	EXPECT_EQ(std::ranges::count(events.changed_channels(), event_channel), 1);
+	EXPECT_EQ(std::ranges::count(events.changed_channels(), request_channel), 0);
+	EXPECT_EQ(std::ranges::count(events.changed_channels(), response_channel), 0);
+}
 
 TEST_F(LtlObservationTest, PhysicalCoordinatesAndIdentityAreTypedAndGuarded) {
 	ltl::Observer observer(modules(), world_);

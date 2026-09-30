@@ -116,6 +116,66 @@ namespace ltl {
 		std::vector<uint8_t> payload;
 	};
 
+	// An input channel is one independently changing fact that atom evaluation can read: a module
+	// output field, one field of one tub, the records one module produced this tick, and so on.
+	// A monitor that records the channels it read can skip a step whose channels did not change.
+	namespace channel {
+		enum class TubField : uint8_t {
+			PRESENT,
+			MODULE,
+			BELT,
+			POSITION_UM,
+			POSITION,
+			PREVIOUS_MODULE,
+			UID,
+			DATA,
+			APPEARED,
+			DISAPPEARED,
+			EDGES,
+			EXIT,
+			INITIAL,
+		};
+
+		enum class RecordList : uint8_t { REQUESTS, RESPONSES, EVENTS };
+
+		constexpr uint32_t ENTITIES      = 256;
+		constexpr uint32_t MODULE_FIELDS = 0;
+		constexpr uint32_t MODULE_EDGES  = MODULE_FIELDS + ENTITIES * 16;
+		constexpr uint32_t TUB_FIELDS    = MODULE_EDGES + ENTITIES * 16;
+		constexpr uint32_t RECORD_LISTS  = TUB_FIELDS + ENTITIES * 16;
+		constexpr uint32_t STEPPED       = RECORD_LISTS + ENTITIES * 4;
+		constexpr uint32_t TUB_DOMAIN    = STEPPED + ENTITIES;
+		// Any read that has no exact channel. It changes on every observation.
+		constexpr uint32_t VOLATILE         = TUB_DOMAIN + 1;
+		constexpr uint32_t RESPONSE_BUCKETS = 4096;
+		constexpr uint32_t RESPONSES        = VOLATILE + 1;
+		constexpr uint32_t COUNT            = RESPONSES + RESPONSE_BUCKETS;
+
+		constexpr uint32_t module_field(uint16_t module, ModuleField field) {
+			return module < ENTITIES ? MODULE_FIELDS + module * 16u + static_cast<uint32_t>(field) : VOLATILE;
+		}
+
+		constexpr uint32_t module_edge(uint16_t module, ModuleField field) {
+			return module < ENTITIES ? MODULE_EDGES + module * 16u + static_cast<uint32_t>(field) : VOLATILE;
+		}
+
+		constexpr uint32_t tub(uint16_t id, TubField field) {
+			return id < ENTITIES ? TUB_FIELDS + id * 16u + static_cast<uint32_t>(field) : VOLATILE;
+		}
+
+		constexpr uint32_t records(uint16_t module, RecordList list) {
+			return module < ENTITIES ? RECORD_LISTS + module * 4u + static_cast<uint32_t>(list) : VOLATILE;
+		}
+
+		constexpr uint32_t stepped(uint16_t module) {
+			return module < ENTITIES ? STEPPED + module : VOLATILE;
+		}
+
+		constexpr uint32_t response(uint64_t request_id) {
+			return RESPONSES + static_cast<uint32_t>(request_id % RESPONSE_BUCKETS);
+		}
+	} // namespace channel
+
 	class Observer;
 
 	class Observation {
@@ -148,6 +208,7 @@ namespace ltl {
 		// the runtime does not schedule is always considered to have advanced: the physical world and
 		// any fixture behind it move on every tick.
 		[[nodiscard]] bool stepped(uint16_t module) const noexcept {
+			note(channel::stepped(module));
 			const auto found = module_stepped_.find(module);
 			return found == module_stepped_.end() || found->second;
 		}
@@ -173,8 +234,30 @@ namespace ltl {
 		// additional value beyond their Boolean result.
 		[[nodiscard]] std::optional<std::string> actual_value(const Formula& atom) const;
 
+		// While set, every channel that evaluation reads is appended to reads, possibly repeated.
+		void track(std::vector<uint32_t>* reads) const noexcept { reads_ = reads; }
+
+		void note(uint32_t channel) const {
+			if (reads_) reads_->push_back(channel);
+		}
+
+		// Whether any of the channels changed after the given tick. Out-of-order observations and
+		// future-dated records make visibility depend on time, so they report every channel changed.
+		[[nodiscard]] bool changed_since(const std::vector<uint32_t>& channels, uint64_t tick) const;
+
+		// Removes repeated channels in place, keeping first occurrences, in linear time.
+		void deduplicate(std::vector<uint32_t>& channels) const;
+
+		// The channels whose value changed on this observation, each once.
+		[[nodiscard]] const std::vector<uint32_t>& changed_channels() const;
+
+		// Whether visibility depends on time, so that every channel must count as changed.
+		[[nodiscard]] bool volatile_inputs() const;
+
 	private:
 		friend class Observer;
+
+		mutable std::vector<uint32_t>* reads_ = nullptr;
 
 		uint64_t                                                  tick_     = 0;
 		uint64_t                                                  revision_ = 0;
@@ -211,7 +294,35 @@ namespace ltl {
 		[[nodiscard]] const TubExit*     tub_exit(uint16_t id, uint64_t observation_tick) const;
 		[[nodiscard]] const TubSnapshot* initial_tub(uint16_t id) const;
 
+		[[nodiscard]] bool changed_since(const std::vector<uint32_t>& channels, uint64_t tick) const;
+
+		void deduplicate(std::vector<uint32_t>& channels) const;
+
+		[[nodiscard]] const std::vector<uint32_t>& changed_channels() const noexcept { return changed_now_; }
+		[[nodiscard]] bool volatile_inputs() const noexcept { return time_sensitive_records_; }
+
 	private:
+		void mark(uint32_t channel, uint64_t tick) {
+			if (changed_tick_[channel] == tick) return;
+			changed_tick_[channel] = tick;
+			changed_now_.push_back(channel);
+		}
+
+		void mark_tub(uint16_t id, uint64_t tick);
+		void derive_channel_changes(const Observation& observation);
+
+		// The last observation tick on which each channel's value changed.
+		std::vector<uint64_t>  changed_tick_ = std::vector<uint64_t>(channel::COUNT, 0);
+		std::vector<uint32_t>  changed_now_;
+		std::vector<uint32_t>  previous_record_channels_;
+		std::set<ChangedField> previous_changed_;
+		std::set<uint16_t>     previous_appeared_;
+		std::set<uint16_t>     previous_disappeared_;
+		std::set<uint16_t>     previous_edge_tubs_;
+		std::size_t            seen_count_ = 0;
+		// Scratch for deduplicate(): the generation in which each channel was last kept.
+		mutable std::vector<uint32_t> channel_stamps_     = std::vector<uint32_t>(channel::COUNT, 0);
+		mutable uint32_t              channel_generation_ = 0;
 		uint64_t                                                  revision_               = 0;
 		uint64_t                                                  previous_tick_          = 0;
 		bool                                                      previous_pulses_        = false;

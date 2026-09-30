@@ -181,47 +181,66 @@ namespace ltl {
 			return std::get<PositionRef>(evaluated);
 		}
 
+		using channel::TubField;
+
 		bool evaluate_call(const Value& value, const Observation& observation, BindingMap& bindings) {
 			if (value.symbol == Value::Symbol::PRESENT) {
-				return observation.tubs().contains(evaluate_tub(*value.arguments[0], observation, bindings).id);
+				const TubRef tub = evaluate_tub(*value.arguments[0], observation, bindings);
+				observation.note(channel::tub(tub.id, TubField::PRESENT));
+				return observation.tubs().contains(tub.id);
 			}
 			if (value.symbol == Value::Symbol::SEEN) {
 				// The tub has appeared at or before this observation. Guards initial_data and initial_uid.
-				return observation.initial_tub(evaluate_tub(*value.arguments[0], observation, bindings).id) != nullptr;
+				const TubRef tub = evaluate_tub(*value.arguments[0], observation, bindings);
+				observation.note(channel::tub(tub.id, TubField::INITIAL));
+				return observation.initial_tub(tub.id) != nullptr;
 			}
 			if (value.symbol == Value::Symbol::AT_MODULE) {
 				const TubRef    tub    = evaluate_tub(*value.arguments[0], observation, bindings);
 				const ModuleRef module = evaluate_module(*value.arguments[1], observation, bindings);
+				observation.note(channel::tub(tub.id, TubField::PRESENT));
+				observation.note(channel::tub(tub.id, TubField::MODULE));
 				const auto      found  = observation.tubs().find(tub.id);
 				return found != observation.tubs().end() && found->second.module == module.id;
 			}
 			if (value.symbol == Value::Symbol::AT_POSITION) {
 				const TubRef      tub      = evaluate_tub(*value.arguments[0], observation, bindings);
 				const PositionRef position = evaluate_position(*value.arguments[1], observation, bindings);
+				observation.note(channel::tub(tub.id, TubField::PRESENT));
+				observation.note(channel::tub(tub.id, TubField::MODULE));
+				observation.note(channel::tub(tub.id, TubField::POSITION));
 				const auto        found    = observation.tubs().find(tub.id);
 				return found != observation.tubs().end() && found->second.module == position.module &&
 					   found->second.position == position.position;
 			}
 			if (value.symbol == Value::Symbol::APPEARED) {
-				return observation.appeared().contains(evaluate_tub(*value.arguments[0], observation, bindings).id);
+				const TubRef tub = evaluate_tub(*value.arguments[0], observation, bindings);
+				observation.note(channel::tub(tub.id, TubField::APPEARED));
+				return observation.appeared().contains(tub.id);
 			}
 			if (value.symbol == Value::Symbol::DISAPPEARED) {
-				return observation.disappeared().contains(evaluate_tub(*value.arguments[0], observation, bindings).id);
+				const TubRef tub = evaluate_tub(*value.arguments[0], observation, bindings);
+				observation.note(channel::tub(tub.id, TubField::DISAPPEARED));
+				return observation.disappeared().contains(tub.id);
 			}
 			if (value.symbol == Value::Symbol::PHYSICAL_EXIT) {
-				const TubExit* exit = observation.tub_exit(evaluate_tub(*value.arguments[0], observation, bindings).id);
+				const TubRef tub = evaluate_tub(*value.arguments[0], observation, bindings);
+				observation.note(channel::tub(tub.id, TubField::EXIT));
+				const TubExit* exit = observation.tub_exit(tub.id);
 				return exit && exit->cause == world::TubRemovalReason::YEETED;
 			}
 			if (value.symbol == Value::Symbol::ENTERED || value.symbol == Value::Symbol::LEFT) {
 				const TubRef      tub      = evaluate_tub(*value.arguments[0], observation, bindings);
 				const PositionRef position = evaluate_position(*value.arguments[1], observation, bindings);
 				const TubPosition edge{tub.id, position.module, position.position};
+				observation.note(channel::tub(tub.id, TubField::EDGES));
 				return value.symbol == Value::Symbol::ENTERED ? observation.entered().contains(edge)
 															  : observation.left().contains(edge);
 			}
 			if (value.symbol == Value::Symbol::CHANGED) {
 				const Value&    member = *value.arguments[0];
 				const ModuleRef module = evaluate_module(*member.base, observation, bindings);
+				observation.note(channel::module_edge(module.id, module_field(member.symbol)));
 				return observation.changed().contains(ChangedField{module.id, module_field(member.symbol)});
 			}
 			throw std::logic_error("typed LTL atom contains an unknown call");
@@ -298,7 +317,10 @@ namespace ltl {
 					value.symbol == Value::Symbol::EXIT_DATA || value.symbol == Value::Symbol::EXIT_UID ||
 					value.symbol == Value::Symbol::INITIAL_DATA || value.symbol == Value::Symbol::INITIAL_UID) {
 					const TubRef tub = evaluate_tub(*value.arguments[0], observation, bindings);
-					if (value.symbol == Value::Symbol::INITIAL_DATA || value.symbol == Value::Symbol::INITIAL_UID) {
+					const bool   initial_fact =
+						value.symbol == Value::Symbol::INITIAL_DATA || value.symbol == Value::Symbol::INITIAL_UID;
+					observation.note(channel::tub(tub.id, initial_fact ? TubField::INITIAL : TubField::EXIT));
+					if (initial_fact) {
 						const TubSnapshot* initial = observation.initial_tub(tub.id);
 						if (!initial)
 							throw std::runtime_error("initial data for tub(" + std::to_string(tub.id) +
@@ -434,10 +456,12 @@ namespace ltl {
 						case Value::Symbol::MODULE:  return ModuleRef{request->module};
 						case Value::Symbol::CMD:     return EnumRef{ValueType::RPC_COMMAND, request->cmd};
 						case Value::Symbol::STATUS:  {
+							observation.note(channel::response(record.id));
 							const RpcResponse* response = observation.rpc_response_to(record.id);
 							return EnumRef{ValueType::RPC_STATUS, response ? response->status : RPC_STATUS_UNDELIVERED};
 						}
 						case Value::Symbol::PAYLOAD:
+							observation.note(channel::response(record.id));
 							if (const RpcResponse* response = observation.rpc_response_to(record.id)) {
 								return BytesRef{response->payload};
 							}
@@ -464,6 +488,19 @@ namespace ltl {
 				if (value.base->type == ValueType::TUB) {
 					const TubRef tub   = evaluate_tub(*value.base, observation, bindings);
 					if (value.symbol == Value::Symbol::ID) return integer_value(tub.id);
+					observation.note(channel::tub(tub.id, TubField::PRESENT));
+					switch (value.symbol) {
+					case Value::Symbol::MODULE: observation.note(channel::tub(tub.id, TubField::MODULE)); break;
+					case Value::Symbol::BELT:   observation.note(channel::tub(tub.id, TubField::BELT)); break;
+					case Value::Symbol::POSITION_UM:
+						observation.note(channel::tub(tub.id, TubField::POSITION_UM));
+						break;
+					case Value::Symbol::PREVIOUS_MODULE:
+						observation.note(channel::tub(tub.id, TubField::PREVIOUS_MODULE));
+						break;
+					case Value::Symbol::UID: observation.note(channel::tub(tub.id, TubField::UID)); break;
+					default:                 observation.note(channel::tub(tub.id, TubField::DATA)); break;
+					}
 					const auto   found = observation.tubs().find(tub.id);
 					if (found == observation.tubs().end())
 						throw std::runtime_error("tub(" + std::to_string(tub.id) +
@@ -484,6 +521,8 @@ namespace ltl {
 				if (value.symbol == Value::Symbol::RIGHT_LASER)
 					return PositionRef{module.id, world::Position::RIGHT_LASER};
 				const ModuleSnapshot& state = module_snapshot(observation, module.id);
+				if (value.symbol != Value::Symbol::LEG_LENGTH_UM && value.symbol != Value::Symbol::TUB_RADIUS_UM)
+					observation.note(channel::module_field(module.id, module_field(value.symbol)));
 				switch (value.symbol) {
 				case Value::Symbol::LEG_LENGTH_UM: return integer_value(state.leg_length_um);
 				case Value::Symbol::TUB_RADIUS_UM: return integer_value(state.tub_radius_um);
@@ -750,6 +789,7 @@ namespace ltl {
 		}
 		if (observation.modules_ != previous_modules_)
 			derive_module_edges(*observation.modules_, *previous_modules_, observation.changed_);
+		derive_channel_changes(observation);
 		// Every exposed tub field participates in the revision, including continuous position
 		// and the clearing of the one-observation physical-transfer source.
 		bool tub_change = observation.tubs_.size() != previous_tubs_.size();
@@ -777,6 +817,138 @@ namespace ltl {
 		previous_tubs_        = observation.tubs_;
 		previous_modules_     = observation.modules_;
 		return observation;
+	}
+
+	void Observer::mark_tub(uint16_t id, uint64_t tick) {
+		for (uint8_t field = 0; field <= static_cast<uint8_t>(channel::TubField::INITIAL); field++)
+			mark(channel::tub(id, static_cast<channel::TubField>(field)), tick);
+	}
+
+	// Runs before the previous_* state advances. A pulse channel changes on the observation it
+	// fires and on the next one, where it clears.
+	void Observer::derive_channel_changes(const Observation& observation) {
+		using channel::TubField;
+		const uint64_t tick = observation.tick_;
+		changed_now_.clear();
+		mark(channel::VOLATILE, tick);
+
+		if (observation.modules_ != previous_modules_) {
+			for (const auto& [id, current] : *observation.modules_) {
+				const ModuleSnapshot& before = previous_modules_->at(id);
+				if (current == before) continue;
+				for (uint8_t field = 0; field <= static_cast<uint8_t>(ModuleField::RFID_ACTIVE); field++) {
+					const auto typed = static_cast<ModuleField>(field);
+					if (different(typed, current, before)) mark(channel::module_field(id, typed), tick);
+				}
+			}
+		}
+		for (const ChangedField& edge : observation.changed_) mark(channel::module_edge(edge.module, edge.field), tick);
+		for (const ChangedField& edge : previous_changed_) mark(channel::module_edge(edge.module, edge.field), tick);
+		previous_changed_ = observation.changed_;
+
+		for (const auto& [id, tub] : observation.tubs_) {
+			const auto before = previous_tubs_.find(id);
+			if (before == previous_tubs_.end()) {
+				mark_tub(id, tick);
+				continue;
+			}
+			const TubSnapshot& old = before->second;
+			if (tub.module != old.module) mark(channel::tub(id, TubField::MODULE), tick);
+			if (tub.belt != old.belt) mark(channel::tub(id, TubField::BELT), tick);
+			if (tub.position_um != old.position_um) mark(channel::tub(id, TubField::POSITION_UM), tick);
+			if (tub.position != old.position) mark(channel::tub(id, TubField::POSITION), tick);
+			if (tub.previous_module != old.previous_module) mark(channel::tub(id, TubField::PREVIOUS_MODULE), tick);
+			if (tub.uid != old.uid) mark(channel::tub(id, TubField::UID), tick);
+			if (tub.data != old.data) mark(channel::tub(id, TubField::DATA), tick);
+		}
+		for (const auto& [id, tub] : previous_tubs_) {
+			(void)tub;
+			if (!observation.tubs_.contains(id)) mark_tub(id, tick);
+		}
+		// Appearance, disappearance, exits, and the first sighting change the whole tub record, and
+		// their pulses clear on the next observation.
+		for (const uint16_t id : observation.appeared_) mark_tub(id, tick);
+		for (const uint16_t id : observation.disappeared_) mark_tub(id, tick);
+		for (const uint16_t id : previous_appeared_) mark_tub(id, tick);
+		for (const uint16_t id : previous_disappeared_) mark_tub(id, tick);
+		previous_appeared_    = observation.appeared_;
+		previous_disappeared_ = observation.disappeared_;
+		std::set<uint16_t> edge_tubs;
+		for (const TubPosition& edge : observation.entered_) edge_tubs.insert(edge.tub);
+		for (const TubPosition& edge : observation.left_) edge_tubs.insert(edge.tub);
+		for (const uint16_t id : edge_tubs) mark(channel::tub(id, TubField::EDGES), tick);
+		for (const uint16_t id : previous_edge_tubs_) mark(channel::tub(id, TubField::EDGES), tick);
+		previous_edge_tubs_ = std::move(edge_tubs);
+		if (observation.known_tubs_.size() != seen_count_) {
+			seen_count_ = observation.known_tubs_.size();
+			mark(channel::TUB_DOMAIN, tick);
+		}
+
+		// Wake only subscribers of the record kind actually produced, including its clearing tick.
+		// A response must not invalidate a module's request-only or event-only predicates.
+		std::vector<uint32_t> record_channels;
+		for (const RpcRequest& request : observation.rpc_requests_)
+			record_channels.push_back(channel::records(request.module, channel::RecordList::REQUESTS));
+		for (const RpcResponse& response : observation.rpc_responses_) {
+			record_channels.push_back(channel::records(response.module, channel::RecordList::RESPONSES));
+			mark(channel::response(response.request_id), tick);
+		}
+		for (const RpcEvent& event : observation.rpc_events_)
+			record_channels.push_back(channel::records(event.module, channel::RecordList::EVENTS));
+		deduplicate(record_channels);
+		for (const uint32_t channel : record_channels) mark(channel, tick);
+		for (const uint32_t channel : previous_record_channels_) mark(channel, tick);
+		previous_record_channels_ = std::move(record_channels);
+
+		for (const auto& [id, stepped] : observation.module_stepped_) {
+			const auto before = previous_stepped_.find(id);
+			if (before == previous_stepped_.end() || before->second != stepped) mark(channel::stepped(id), tick);
+		}
+		for (const auto& [id, stepped] : previous_stepped_) {
+			(void)stepped;
+			if (!observation.module_stepped_.contains(id)) mark(channel::stepped(id), tick);
+		}
+	}
+
+	bool Observer::changed_since(const std::vector<uint32_t>& channels, uint64_t tick) const {
+		if (time_sensitive_records_) return true;
+		for (const uint32_t channel : channels)
+			if (changed_tick_[channel] > tick) return true;
+		return false;
+	}
+
+	void Observer::deduplicate(std::vector<uint32_t>& channels) const {
+		if (++channel_generation_ == 0) {
+			std::ranges::fill(channel_stamps_, 0);
+			channel_generation_ = 1;
+		}
+		std::erase_if(channels, [this](uint32_t channel) {
+			if (channel_stamps_[channel] == channel_generation_) return true;
+			channel_stamps_[channel] = channel_generation_;
+			return false;
+		});
+	}
+
+	void Observation::deduplicate(std::vector<uint32_t>& channels) const {
+		if (observer_) observer_->deduplicate(channels);
+		else {
+			std::ranges::sort(channels);
+			const auto duplicates = std::ranges::unique(channels);
+			channels.erase(duplicates.begin(), duplicates.end());
+		}
+	}
+
+	const std::vector<uint32_t>& Observation::changed_channels() const {
+		static const std::vector<uint32_t> none;
+		return observer_ ? observer_->changed_channels() : none;
+	}
+
+	bool Observation::volatile_inputs() const {
+		return !observer_ || observer_->volatile_inputs();
+	}
+
+	bool Observation::changed_since(const std::vector<uint32_t>& channels, uint64_t tick) const {
+		return !observer_ || observer_->changed_since(channels, tick);
 	}
 
 	bool Observation::evaluate(const Formula& atom) const {
@@ -819,6 +991,9 @@ namespace ltl {
 		if (expression) {
 			BindingMap      bindings;
 			const ModuleRef module = evaluate_module(*expression->arguments[0], *this, bindings);
+			note(channel::records(module.id, type == ValueType::RPC_REQUEST    ? channel::RecordList::REQUESTS
+											 : type == ValueType::RPC_RESPONSE ? channel::RecordList::RESPONSES
+																			   : channel::RecordList::EVENTS));
 			if (type == ValueType::RPC_REQUEST) {
 				for (const RpcRequest& request : rpc_requests_)
 					if (request.module == module.id) visit(request.id);
@@ -844,6 +1019,7 @@ namespace ltl {
 			return;
 		}
 		if (type == ValueType::TUB) {
+			note(channel::TUB_DOMAIN);
 			for (const uint16_t id : known_tubs_) visit(id);
 			return;
 		}
