@@ -764,11 +764,19 @@ TEST(LtlMonitor, MatchesReferenceSemanticsForEveryShortBooleanTrace) {
 		"!(eventually (!module(1).rfid_active && module(1).left_laser_enabled))",
 		"always (module(1).rfid_active -> (eventually module(1).left_laser_enabled))",
 		"(eventually module(1).rfid_active) until (always module(1).left_laser_enabled)",
+		// A trigger that holds on consecutive ticks starts overlapping copies of one timed obligation.
+		"always (module(1).rfid_active -> (eventually[0ms, 2ms] module(1).left_laser_enabled))",
+		"always (module(1).rfid_active -> (always[0ms, 2ms] module(1).left_laser_enabled))",
+		"always (module(1).rfid_active -> (module(1).rfid_active until[0ms, 2ms] module(1).left_laser_enabled))",
+		"always (module(1).rfid_active -> (!module(1).left_laser_enabled until[1ms, 3ms] module(1).rfid_active))",
+		"always (module(1).rfid_active -> (always[1ms, 3ms] module(1).left_laser_enabled))",
+		"always ((eventually[0ms, 1ms] module(1).rfid_active) && ((always[0ms, 2ms] !module(1).left_laser_enabled) "
+		"|| (eventually[0ms, 2ms] module(1).left_laser_enabled)))",
 	};
 
 	for (const std::string& source : formulas) {
 		CompiledProperty property(source);
-		for (std::size_t length = 1; length <= 4; length++) {
+		for (std::size_t length = 1; length <= 6; length++) {
 			const std::size_t trace_count = std::size_t{1} << (2 * length);
 			for (std::size_t bits = 0; bits < trace_count; bits++) {
 				std::vector<Observation> trace;

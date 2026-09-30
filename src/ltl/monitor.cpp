@@ -849,6 +849,75 @@ namespace ltl {
 			throw std::logic_error("unknown normalized LTL formula kind");
 		}
 
+		// Drops conjuncts of the top-level conjunction that another conjunct implies. Copies of one
+		// timed obligation differ only by their start. Once both copies are inside their windows, an
+		// eventuality or until with the earlier deadline implies the later one, and an always with the
+		// later deadline implies the earlier one. The kept copy decides on the same tick as the pair, so
+		// verdicts and their ticks are unchanged, while an obligation triggered on every tick of a
+		// window no longer accumulates one copy per tick.
+		NodePtr subsume(const NodePtr& residual, NodeFactory& factory, uint64_t tick) {
+			if (residual->kind != NodeKind::AND) return residual;
+			std::vector<NodePtr> leaves;
+			std::vector<NodePtr> stack{residual};
+			while (!stack.empty()) {
+				NodePtr node = std::move(stack.back());
+				stack.pop_back();
+				if (node->kind == NodeKind::AND) {
+					stack.push_back(node->right);
+					stack.push_back(node->left);
+				} else leaves.push_back(std::move(node));
+			}
+
+			struct Key {
+				NodeKind       kind;
+				const Formula* source;
+				const Node*    left;
+				const Node*    right;
+				bool           operator==(const Key&) const = default;
+			};
+
+			struct KeyHash {
+				std::size_t operator()(const Key& key) const noexcept {
+					return std::hash<const void*>{}(key.source) ^ (std::hash<const void*>{}(key.left) << 1) ^
+						   (std::hash<const void*>{}(key.right) << 2) ^ static_cast<std::size_t>(key.kind);
+				}
+			};
+
+			// The next progression sees elapsed = tick + 1 - (origin - 1).
+			const auto started = [tick](const NodePtr& leaf) {
+				return (leaf->kind == NodeKind::ALWAYS || leaf->kind == NodeKind::EVENTUALLY ||
+						leaf->kind == NodeKind::UNTIL) &&
+					   leaf->origin && leaf->source->interval &&
+					   tick + 2 - leaf->origin >= leaf->source->interval->from_tick;
+			};
+			if (std::ranges::count_if(leaves, started) < 2) return residual;
+
+			std::unordered_map<Key, std::size_t, KeyHash> timed;
+			std::vector<NodePtr>                          kept;
+			kept.reserve(leaves.size());
+			bool dropped = false;
+			for (NodePtr& leaf : leaves) {
+				if (started(leaf)) {
+					const Key key{leaf->kind, leaf->source, leaf->left.get(), leaf->right.get()};
+					const auto [found, inserted] = timed.try_emplace(key, kept.size());
+					if (!inserted) {
+						dropped               = true;
+						NodePtr&   other      = kept[found->second];
+						const bool keep_later = leaf->kind == NodeKind::ALWAYS;
+						if (keep_later ? leaf->origin > other->origin : leaf->origin < other->origin)
+							other = std::move(leaf);
+						continue;
+					}
+				}
+				kept.push_back(std::move(leaf));
+			}
+			if (!dropped) return residual;
+			NodePtr result = kept.back();
+			for (std::size_t index = kept.size() - 1; index-- > 0;)
+				result = factory.make_and(kept[index], std::move(result));
+			return result;
+		}
+
 		Verdict verdict(const NodePtr& residual) noexcept {
 			if (residual->kind == NodeKind::TRUE) return Verdict::TRUE;
 			if (residual->kind == NodeKind::FALSE) return Verdict::FALSE;
@@ -1019,6 +1088,8 @@ namespace ltl {
 			},
 			evaluate_step, implementation_->activations, observation_tick, implementation_->wakeup,
 			implementation_->last_evaluations);
+		if (implementation_->residual != obligation)
+			implementation_->residual = subsume(implementation_->residual, implementation_->factory, observation_tick);
 		implementation_->stutter             = implementation_->residual == obligation;
 		implementation_->stutter_activations = implementation_->activations - previous_activations;
 		if (verdict() == Verdict::FALSE) {
