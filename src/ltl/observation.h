@@ -56,7 +56,7 @@ namespace ltl {
 		std::vector<uint8_t>           uid;
 		std::vector<uint8_t>           data;
 		// Source of a physical module transition on this observation, otherwise zero.
-		uint16_t                      previous_module = 0;
+		uint16_t previous_module = 0;
 
 		bool operator==(const TubSnapshot&) const = default;
 	};
@@ -303,6 +303,7 @@ namespace ltl {
 		void deduplicate(std::vector<uint32_t>& channels) const;
 
 		[[nodiscard]] const std::vector<uint32_t>& changed_channels() const noexcept { return changed_now_; }
+
 		[[nodiscard]] bool volatile_inputs() const noexcept { return time_sensitive_records_; }
 
 	private:
@@ -325,14 +326,14 @@ namespace ltl {
 		std::set<uint16_t>     previous_edge_tubs_;
 		std::size_t            seen_count_ = 0;
 		// Scratch for deduplicate(): the generation in which each channel was last kept.
-		mutable std::vector<uint32_t> channel_stamps_     = std::vector<uint32_t>(channel::COUNT, 0);
-		mutable uint32_t              channel_generation_ = 0;
-		uint64_t                                                  revision_               = 0;
-		uint64_t                                                  previous_tick_          = 0;
-		bool                                                      previous_pulses_        = false;
-		bool                                                      time_sensitive_records_ = false;
-		std::map<uint16_t, bool>                                  previous_stepped_;
-		std::vector<module::ModuleId>                             module_ids_;
+		mutable std::vector<uint32_t> channel_stamps_         = std::vector<uint32_t>(channel::COUNT, 0);
+		mutable uint32_t              channel_generation_     = 0;
+		uint64_t                      revision_               = 0;
+		uint64_t                      previous_tick_          = 0;
+		bool                          previous_pulses_        = false;
+		bool                          time_sensitive_records_ = false;
+		std::map<uint16_t, bool>      previous_stepped_;
+		std::vector<module::ModuleId> module_ids_;
 		std::shared_ptr<const std::map<uint16_t, ModuleSnapshot>> previous_modules_;
 		std::map<uint16_t, TubSnapshot>                           previous_tubs_;
 		std::set<uint16_t>                                        seen_tubs_;

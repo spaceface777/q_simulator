@@ -1203,7 +1203,7 @@ namespace ltl {
 
 	void Monitor::repeat(uint64_t count) {
 		Implementation& state = *implementation_;
-		state.activations = activations_after_repeats(count);
+		state.activations     = activations_after_repeats(count);
 		state.observations += count;
 	}
 
