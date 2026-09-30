@@ -1,5 +1,6 @@
 #include "monitor.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <iomanip>
 #include <limits>
@@ -13,7 +14,8 @@
 namespace ltl {
 
 	namespace {
-		constexpr uint64_t MAINTENANCE_INTERVAL = 1024;
+		constexpr std::size_t MAINTENANCE_NODES    = 4096;
+		constexpr std::size_t MAINTENANCE_FORMULAS = 256;
 
 		enum class NodeKind : uint8_t {
 			FALSE,
@@ -138,6 +140,8 @@ namespace ltl {
 			}
 
 			NodePtr constant(bool value) const { return value ? true_ : false_; }
+
+			[[nodiscard]] std::size_t size() const noexcept { return nodes_.size() + atoms_.size(); }
 
 			NodePtr atom(const Formula& source, const std::string& key) {
 				if (const auto found = atoms_.find(key); found != atoms_.end()) {
@@ -931,7 +935,10 @@ namespace ltl {
 		uint64_t                                     stutter_activations = 0;
 		bool                                         stutter             = false;
 		uint64_t                                     wakeup              = 0;
-		uint64_t                                     next_maintenance    = MAINTENANCE_INTERVAL;
+		// Maintenance runs when the interned nodes or the ground formulas have doubled since the last
+		// sweep, which keeps its cost proportional to the growth it reclaims.
+		std::size_t next_node_sweep    = MAINTENANCE_NODES;
+		std::size_t next_formula_sweep = MAINTENANCE_FORMULAS;
 	};
 
 	Monitor::Monitor(std::string property_name, const Formula& formula, uint64_t activation_tick)
@@ -1033,9 +1040,10 @@ namespace ltl {
 			}
 			implementation_->failure = std::move(explanation);
 		}
-		if (implementation_->observations >= implementation_->next_maintenance) {
-			implementation_->next_maintenance = implementation_->observations + MAINTENANCE_INTERVAL;
+		if (implementation_->factory.size() >= implementation_->next_node_sweep ||
+			implementation_->persistent_formulas.size() >= implementation_->next_formula_sweep) {
 			implementation_->factory.prune_expired();
+			implementation_->next_node_sweep = std::max(MAINTENANCE_NODES, 2 * implementation_->factory.size());
 			if (implementation_->persistent_formulas.empty()) return verdict();
 			// Ground formulas only need to outlive the residual nodes and diagnostics that refer to them.
 			std::unordered_set<const Formula*> sources;
@@ -1048,6 +1056,8 @@ namespace ltl {
 			}
 			std::erase_if(implementation_->persistent_formulas,
 						  [&](const auto& formula) { return !formula_tree_is_referenced(*formula, sources); });
+			implementation_->next_formula_sweep =
+				std::max(MAINTENANCE_FORMULAS, 2 * implementation_->persistent_formulas.size());
 		}
 		return verdict();
 	}
