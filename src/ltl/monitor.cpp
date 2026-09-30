@@ -36,6 +36,18 @@ namespace ltl {
 		struct Node;
 		using NodePtr = std::shared_ptr<const Node>;
 
+		// The outcome of the last progression of a node whose result did not depend on the tick: it
+		// repeated itself or became a constant. Valid while the channels it read are unchanged and
+		// before the next temporal window boundary inside it.
+		struct StepCache {
+			enum class Result : uint8_t { SELF, TRUE, FALSE };
+			Result                result      = Result::SELF;
+			uint64_t              input_tick  = 0;
+			uint64_t              activations = 0;
+			uint64_t              until       = 0;
+			std::vector<uint32_t> reads;
+		};
+
 		struct Node {
 			NodeKind       kind;
 			const Formula* source;
@@ -48,6 +60,7 @@ namespace ltl {
 			mutable std::vector<NodePtr>                  module_instances{};
 			mutable std::unordered_map<uint64_t, NodePtr> tub_instances{};
 			mutable NodePtr                               expansion{};
+			mutable std::unique_ptr<StepCache>            step_cache{};
 		};
 
 		struct NodeKey {
@@ -649,7 +662,62 @@ namespace ltl {
 						 const DomainEvaluator& evaluate_domain, const FormulaOwner& own_formula,
 						 const PersistentGrounder& ground_persistent, const StepEvaluator& evaluate_step,
 						 uint64_t& activations, uint64_t tick, uint64_t& wakeup,
-						 std::vector<std::pair<const Formula*, bool>>& evaluations) {
+						 std::vector<std::pair<const Formula*, bool>>& evaluations, const InputTracker* inputs);
+
+		// Progresses an independent obligation, reusing its last outcome when that outcome repeats.
+		NodePtr progress_cached(const NodePtr& node, const AtomEvaluator& evaluate, NodeFactory& factory,
+								const DomainEvaluator& evaluate_domain, const FormulaOwner& own_formula,
+								const PersistentGrounder& ground_persistent, const StepEvaluator& evaluate_step,
+								uint64_t& activations, uint64_t tick, uint64_t& wakeup,
+								std::vector<std::pair<const Formula*, bool>>& evaluations, const InputTracker* inputs) {
+			if (!inputs || !inputs->reads || !inputs->changed_since)
+				return progress(node, evaluate, factory, evaluate_domain, own_formula, ground_persistent, evaluate_step,
+								activations, tick, wakeup, evaluations, inputs);
+			std::vector<uint32_t>& reads = *inputs->reads;
+			if (const auto& cache = node->step_cache;
+				cache && tick < cache->until && !inputs->changed_since(cache->reads, cache->input_tick)) {
+				activations += cache->activations;
+				wakeup = std::min(wakeup, cache->until);
+				reads.insert(reads.end(), cache->reads.begin(), cache->reads.end());
+				if (cache->result == StepCache::Result::SELF) return node;
+				return factory.constant(cache->result == StepCache::Result::TRUE);
+			}
+			const std::size_t start        = reads.size();
+			const uint64_t    outer_wakeup = wakeup;
+			const uint64_t    before       = activations;
+			wakeup                         = std::numeric_limits<uint64_t>::max();
+			NodePtr        result = progress(node, evaluate, factory, evaluate_domain, own_formula, ground_persistent,
+											 evaluate_step, activations, tick, wakeup, evaluations, inputs);
+			const uint64_t local_wakeup = wakeup;
+			wakeup                      = std::min(outer_wakeup, local_wakeup);
+			const bool repeatable = result == node || result->kind == NodeKind::TRUE || result->kind == NodeKind::FALSE;
+			if (!repeatable) {
+				node->step_cache.reset();
+				return result;
+			}
+			if (!node->step_cache) node->step_cache = std::make_unique<StepCache>();
+			StepCache& cache  = *node->step_cache;
+			cache.result      = result == node                   ? StepCache::Result::SELF
+								: result->kind == NodeKind::TRUE ? StepCache::Result::TRUE
+																 : StepCache::Result::FALSE;
+			cache.input_tick  = inputs->tick;
+			cache.activations = activations - before;
+			cache.until       = local_wakeup;
+			cache.reads.assign(reads.begin() + static_cast<std::ptrdiff_t>(start), reads.end());
+			if (inputs->deduplicate) inputs->deduplicate(cache.reads);
+			else {
+				std::ranges::sort(cache.reads);
+				const auto duplicates = std::ranges::unique(cache.reads);
+				cache.reads.erase(duplicates.begin(), duplicates.end());
+			}
+			return result;
+		}
+
+		NodePtr progress(const NodePtr& node, const AtomEvaluator& evaluate, NodeFactory& factory,
+						 const DomainEvaluator& evaluate_domain, const FormulaOwner& own_formula,
+						 const PersistentGrounder& ground_persistent, const StepEvaluator& evaluate_step,
+						 uint64_t& activations, uint64_t tick, uint64_t& wakeup,
+						 std::vector<std::pair<const Formula*, bool>>& evaluations, const InputTracker* inputs) {
 			const uint64_t elapsed = node->origin ? tick - (node->origin - 1) : 0;
 			// Repeating a self-loop is safe only until the next temporal window boundary.
 			if ((node->kind == NodeKind::ALWAYS || node->kind == NodeKind::EVENTUALLY ||
@@ -663,7 +731,11 @@ namespace ltl {
 			if (node->kind == NodeKind::NEXT && elapsed == 0) wakeup = std::min(wakeup, tick + 1);
 			auto progress_child = [&](const NodePtr& child) {
 				return progress(child, evaluate, factory, evaluate_domain, own_formula, ground_persistent,
-								evaluate_step, activations, tick, wakeup, evaluations);
+								evaluate_step, activations, tick, wakeup, evaluations, inputs);
+			};
+			auto progress_instance = [&](const NodePtr& child) {
+				return progress_cached(child, evaluate, factory, evaluate_domain, own_formula, ground_persistent,
+									   evaluate_step, activations, tick, wakeup, evaluations, inputs);
 			};
 			switch (node->kind) {
 			case NodeKind::FALSE: return factory.constant(false);
@@ -784,7 +856,7 @@ namespace ltl {
 						node->modules_grounded = true;
 					}
 					for (const auto& instance : node->module_instances) {
-						NodePtr item = progress_child(instance);
+						NodePtr item = progress_instance(instance);
 						result       = universal ? factory.make_and(std::move(result), std::move(item), node->source)
 												 : factory.make_or(std::move(result), std::move(item), node->source);
 						if (result->kind == (universal ? NodeKind::FALSE : NodeKind::TRUE)) break;
@@ -799,7 +871,7 @@ namespace ltl {
 					if (!node->source->domain) {
 						auto& instance = node->tub_instances[identity];
 						if (!instance) instance = ground_persistent(*node->source, node->source->binding, identity);
-						item = progress_child(instance);
+						item = progress_instance(instance);
 					} else {
 						auto bindings = node->source->ground_bindings;
 						bindings.emplace_back(node->source->binding, identity);
@@ -1003,6 +1075,7 @@ namespace ltl {
 		uint64_t                                     last_revision       = 0;
 		uint64_t                                     stutter_activations = 0;
 		bool                                         stutter             = false;
+		bool                                         progressed          = false;
 		uint64_t                                     wakeup              = 0;
 		// Maintenance runs when the interned nodes or the ground formulas have doubled since the last
 		// sweep, which keeps its cost proportional to the growth it reclaims.
@@ -1034,6 +1107,10 @@ namespace ltl {
 		return ltl::verdict(implementation_->residual);
 	}
 
+	bool Monitor::progressed() const noexcept {
+		return implementation_->progressed;
+	}
+
 	uint64_t Monitor::activations() const noexcept {
 		return implementation_->activations;
 	}
@@ -1052,10 +1129,11 @@ namespace ltl {
 
 	Verdict Monitor::observe(const AtomEvaluator& evaluate, const AtomValueRenderer& render_actual,
 							 const DomainEvaluator& evaluate_domain, const StepEvaluator& evaluate_step,
-							 uint64_t revision) {
+							 uint64_t revision, const InputTracker* inputs) {
 		if (implementation_->finished) throw std::logic_error("cannot observe a finished LTL monitor");
-		implementation_->observed = true;
-		const Verdict current     = verdict();
+		implementation_->observed   = true;
+		implementation_->progressed = false;
+		const Verdict current       = verdict();
 		if (current != Verdict::PENDING) return current;
 		// A self-loop in progression can repeat only with identical evaluator inputs. This
 		// expires at the next temporal boundary even if the input revision does not change.
@@ -1066,28 +1144,67 @@ namespace ltl {
 			return current;
 		}
 		implementation_->last_revision      = revision;
+		implementation_->progressed         = true;
 		const uint64_t previous_activations = implementation_->activations;
 		const NodePtr  obligation           = implementation_->residual;
 		const uint64_t observation_tick     = implementation_->activation_tick + implementation_->observations++;
 		implementation_->transient_formulas.clear();
 		implementation_->last_evaluations.clear();
-		implementation_->wakeup   = std::numeric_limits<uint64_t>::max();
-		implementation_->residual = progress(
-			implementation_->residual, evaluate, implementation_->factory, evaluate_domain,
-			[&](std::unique_ptr<Formula> formula, bool persistent) {
-				if (persistent) implementation_->persistent_formulas.push_back(std::move(formula));
-				else implementation_->transient_formulas.push_back(std::move(formula));
-			},
-			[&](const Formula& formula, const std::string& binding, uint64_t identity) {
-				auto bindings = formula.ground_bindings;
-				if (identity) bindings.emplace_back(binding, identity);
-				auto    grounded   = clone_formula(identity ? *formula.left : *formula.right, bindings);
-				NodePtr normalized = normalize(*grounded, implementation_->factory);
-				implementation_->persistent_formulas.push_back(std::move(grounded));
-				return normalized;
-			},
-			evaluate_step, implementation_->activations, observation_tick, implementation_->wakeup,
-			implementation_->last_evaluations);
+		implementation_->wakeup = std::numeric_limits<uint64_t>::max();
+		const FormulaOwner own  = [&](std::unique_ptr<Formula> formula, bool persistent) {
+			if (persistent) implementation_->persistent_formulas.push_back(std::move(formula));
+			else implementation_->transient_formulas.push_back(std::move(formula));
+		};
+		const PersistentGrounder ground = [&](const Formula& formula, const std::string& binding, uint64_t identity) {
+			auto bindings = formula.ground_bindings;
+			if (identity) bindings.emplace_back(binding, identity);
+			auto    grounded   = clone_formula(identity ? *formula.left : *formula.right, bindings);
+			NodePtr normalized = normalize(*grounded, implementation_->factory);
+			implementation_->persistent_formulas.push_back(std::move(grounded));
+			return normalized;
+		};
+		NodeFactory& factory = implementation_->factory;
+		if (obligation->kind != NodeKind::AND || !inputs) {
+			implementation_->residual = progress(obligation, evaluate, factory, evaluate_domain, own, ground,
+												 evaluate_step, implementation_->activations, observation_tick,
+												 implementation_->wakeup, implementation_->last_evaluations, inputs);
+		} else {
+			// The conjuncts of the top-level conjunction are independent obligations. Each one is
+			// progressed on its own so that an unchanged obligation can repeat its cached outcome.
+			// The conjunction is false as soon as one conjunct is, and otherwise only rebuilt when a
+			// conjunct changed.
+			std::vector<NodePtr> leaves;
+			std::vector<NodePtr> stack{obligation};
+			while (!stack.empty()) {
+				NodePtr node = std::move(stack.back());
+				stack.pop_back();
+				if (node->kind == NodeKind::AND) {
+					stack.push_back(node->right);
+					stack.push_back(node->left);
+				} else leaves.push_back(std::move(node));
+			}
+			std::vector<NodePtr> results;
+			results.reserve(leaves.size());
+			bool changed = false, refuted = false;
+			for (const NodePtr& leaf : leaves) {
+				NodePtr result = progress_cached(leaf, evaluate, factory, evaluate_domain, own, ground, evaluate_step,
+												 implementation_->activations, observation_tick,
+												 implementation_->wakeup, implementation_->last_evaluations, inputs);
+				if (result->kind == NodeKind::FALSE) {
+					refuted = true;
+					break;
+				}
+				changed |= result != leaf;
+				results.push_back(std::move(result));
+			}
+			if (refuted) implementation_->residual = factory.constant(false);
+			else if (changed) {
+				NodePtr residual = results.back();
+				for (std::size_t index = results.size() - 1; index-- > 0;)
+					residual = factory.make_and(results[index], std::move(residual));
+				implementation_->residual = std::move(residual);
+			}
+		}
 		if (implementation_->residual != obligation)
 			implementation_->residual = subsume(implementation_->residual, implementation_->factory, observation_tick);
 		implementation_->stutter             = implementation_->residual == obligation;

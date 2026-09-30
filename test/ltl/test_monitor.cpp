@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -35,10 +36,77 @@ namespace {
 		return observation.at(atom.value->text);
 	}
 
+	// Drives a monitor the way the scenario runtime does: it records the atoms each step reads, keeps
+	// its input revision while none of them changed, and lets the monitor reuse unchanged obligations.
+	class TrackedMonitor {
+	public:
+		explicit TrackedMonitor(const ltl::Formula& formula) : monitor_("tracked", formula) {}
+
+		ltl::Verdict observe(const Observation& observation, bool granted = true) {
+			const uint64_t tick = ticks_++;
+			if (previous_) {
+				for (const auto& [name, value] : observation)
+					if (previous_->at(name) != value) changed_[channel(name)] = tick;
+				if (granted != previous_granted_) changed_[STEP_CHANNEL] = tick;
+			}
+			previous_         = observation;
+			previous_granted_ = granted;
+			if (!read_tick_ || changed_since(reads_, *read_tick_)) ++revision_;
+			std::vector<uint32_t>   scratch;
+			const ltl::InputTracker inputs{
+				&scratch, [this](const std::vector<uint32_t>& channels, uint64_t since) {
+					return changed_since(channels, since);
+				},
+				tick, {}};
+			const auto atom = [&](const ltl::Formula& formula) {
+				if (formula.value->kind == ltl::Value::Kind::MEMBER) scratch.push_back(channel(formula.value->text));
+				return evaluate(formula, observation);
+			};
+			const auto step = [&](uint16_t) {
+				scratch.push_back(STEP_CHANNEL);
+				return granted;
+			};
+			const ltl::Verdict verdict = monitor_.observe(atom, {}, {}, step, revision_, &inputs);
+			if (monitor_.progressed()) {
+				reads_     = std::move(scratch);
+				read_tick_ = tick;
+			}
+			return verdict;
+		}
+
+		ltl::Monitor& monitor() { return monitor_; }
+
+	private:
+		static constexpr uint32_t STEP_CHANNEL = 0;
+
+		uint32_t channel(const std::string& name) {
+			return channels_.try_emplace(name, static_cast<uint32_t>(channels_.size() + 1)).first->second;
+		}
+
+		bool changed_since(const std::vector<uint32_t>& channels, uint64_t since) const {
+			for (const uint32_t read : channels) {
+				const auto found = changed_.find(read);
+				if (found != changed_.end() && found->second > since) return true;
+			}
+			return false;
+		}
+
+		ltl::Monitor                              monitor_;
+		std::unordered_map<std::string, uint32_t> channels_;
+		std::unordered_map<uint32_t, uint64_t>    changed_;
+		std::optional<Observation>                previous_;
+		bool                                      previous_granted_ = true;
+		std::vector<uint32_t>                     reads_;
+		std::optional<uint64_t>                   read_tick_;
+		uint64_t                                  revision_ = 0;
+		uint64_t                                  ticks_    = 0;
+	};
+
 	std::vector<ltl::Verdict> run(const std::string& formula, const std::vector<Observation>& observations) {
 		CompiledProperty          property(formula);
 		ltl::Monitor              monitor("test", property.formula());
 		ltl::Monitor              cached("cached", property.formula());
+		TrackedMonitor            tracked(property.formula());
 		std::vector<ltl::Verdict> verdicts;
 		uint64_t                  revision = 1;
 		const Observation*        previous = nullptr;
@@ -49,9 +117,12 @@ namespace {
 			verdicts.push_back(monitor.observe(atom));
 			EXPECT_EQ(cached.observe(atom, {}, {}, {}, revision), verdicts.back());
 			EXPECT_EQ(cached.activations(), monitor.activations());
+			EXPECT_EQ(tracked.observe(observation), verdicts.back());
+			EXPECT_EQ(tracked.monitor().activations(), monitor.activations());
 		}
 		verdicts.push_back(monitor.finish());
 		EXPECT_EQ(cached.finish(), verdicts.back());
+		EXPECT_EQ(tracked.monitor().finish(), verdicts.back());
 		return verdicts;
 	}
 
@@ -62,6 +133,7 @@ namespace {
 		CompiledProperty          property(formula);
 		ltl::Monitor              monitor("test", property.formula());
 		ltl::Monitor              cached("cached steps", property.formula());
+		TrackedMonitor            tracked(property.formula());
 		std::vector<ltl::Verdict> verdicts;
 		uint64_t                  revision = 1;
 		for (std::size_t tick = 0; tick < observations.size(); tick++) {
@@ -73,9 +145,12 @@ namespace {
 			verdicts.push_back(monitor.observe(atom, {}, {}, step));
 			EXPECT_EQ(cached.observe(atom, {}, {}, step, revision), verdicts.back());
 			EXPECT_EQ(cached.activations(), monitor.activations());
+			EXPECT_EQ(tracked.observe(observation, granted), verdicts.back());
+			EXPECT_EQ(tracked.monitor().activations(), monitor.activations());
 		}
 		verdicts.push_back(monitor.finish());
 		EXPECT_EQ(cached.finish(), verdicts.back());
+		EXPECT_EQ(tracked.monitor().finish(), verdicts.back());
 		return verdicts;
 	}
 

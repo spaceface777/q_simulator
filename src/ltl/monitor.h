@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,18 @@ namespace ltl {
 	// asks about the global observation tick, which always advances. An absent evaluator reports
 	// every module as advancing, which is the correct reading when no clock model is in play.
 	using StepEvaluator = std::function<bool(uint16_t)>;
+
+	// Records which input channels evaluation reads, so a monitor can reuse the result of an
+	// obligation whose inputs did not change. The caller appends every read to reads while the
+	// monitor progresses, and answers whether any of the given channels changed after a tick.
+	struct InputTracker {
+		std::vector<uint32_t>*                                           reads = nullptr;
+		std::function<bool(const std::vector<uint32_t>&, uint64_t tick)> changed_since;
+		// The input clock of the current observation, the tick passed back to changed_since.
+		uint64_t tick = 0;
+		// Optional. Removes repeated channels in place; the monitor sorts when this is absent.
+		std::function<void(std::vector<uint32_t>&)> deduplicate;
+	};
 
 	struct AtomFact {
 		std::string                expression;
@@ -83,7 +96,11 @@ namespace ltl {
 		// for different inputs, including event pulses and their clearing observations.
 		Verdict observe(const AtomEvaluator& evaluate, const AtomValueRenderer& render_actual = {},
 						const DomainEvaluator& evaluate_domain = {}, const StepEvaluator& evaluate_step = {},
-						uint64_t revision = 0);
+						uint64_t revision = 0, const InputTracker* inputs = nullptr);
+
+		// Whether the last observe() call progressed the formula, as opposed to repeating a
+		// certified self-loop or returning a decided verdict.
+		[[nodiscard]] bool progressed() const noexcept;
 
 		// Applies finite-trace end semantics. A scenario trace always contains at least tick zero, so
 		// finishing before the first observation is a programming error.
