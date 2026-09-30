@@ -55,7 +55,33 @@ namespace ltl {
 		using BytesRef = std::span<const uint8_t>;
 		using EvaluatedValue =
 			std::variant<bool, Numeric, uint32_t, BytesRef, EnumRef, RecordRef, ModuleRef, TubRef, PositionRef>;
-		using BindingMap = std::unordered_map<std::string, uint64_t>;
+
+		// Quantifier bindings in scope. There are only ever a few, so a flat list beats hashing.
+		class BindingMap {
+		public:
+			using Entry = std::pair<std::string_view, uint64_t>;
+
+			const Entry* find(std::string_view name) const {
+				for (auto entry = entries_.rbegin(); entry != entries_.rend(); ++entry)
+					if (entry->first == name) return &*entry;
+				return nullptr;
+			}
+
+			static const Entry* end() { return nullptr; }
+
+			uint64_t& operator[](std::string_view name) {
+				for (Entry& entry : entries_)
+					if (entry.first == name) return entry.second;
+				return entries_.emplace_back(name, 0).second;
+			}
+
+			void erase(std::string_view name) {
+				std::erase_if(entries_, [name](const Entry& entry) { return entry.first == name; });
+			}
+
+		private:
+			std::vector<Entry> entries_;
+		};
 
 		ModuleSnapshot snapshot(const module::Module& hardware) {
 			const auto& calibration = world::calibration_for(hardware.id());
