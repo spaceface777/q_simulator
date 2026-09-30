@@ -384,9 +384,65 @@ namespace sim {
 			const uint64_t from_tick = declaration.scope ? declaration.scope->from_tick : 0;
 			property_monitors_.emplace_back(declaration.name, *declaration.formula, from_tick);
 			property_decisive_ticks_.emplace_back();
+			property_schedules_.emplace_back();
+			property_schedules_.back().wakeup = property_wakeups_.emplace(from_tick, property_monitors_.size() - 1);
 		}
+		property_bitset_words_ = (property_monitors_.size() + 63) / 64;
+		property_subscribers_.resize(ltl::channel::COUNT * property_bitset_words_);
+		property_ready_.resize(property_bitset_words_);
+		property_changed_.resize(property_bitset_words_);
 		scenario_duration_tick_ = duration_tick;
 		property_filename_      = filename;
+	}
+
+	void Runtime::wake_property(std::size_t index, bool input_changed) {
+		PropertySchedule& schedule = property_schedules_[index];
+		// An input wake need not discard its timer: a self-loop often retains the same deadline.
+		// Reuse it until progression changes that deadline, instead of allocating a new timer on
+		// every input pulse. A timer wake consumes the entry that is due now.
+		if (!input_changed && schedule.wakeup) {
+			property_wakeups_.erase(*schedule.wakeup);
+			schedule.wakeup.reset();
+		}
+		schedule.dirty |= input_changed;
+		property_ready_[index / 64] |= uint64_t{1} << (index % 64);
+	}
+
+	void Runtime::wake_properties(const ltl::Observation& observation) {
+		if (observation.volatile_inputs()) {
+			// Out-of-order or future-dated observations need time-dependent visibility. Use the
+			// conservative path: every pending monitor observes every tick.
+			for (std::size_t index = 0; index < property_monitors_.size(); index++)
+				if (!property_decisive_ticks_[index]) wake_property(index, true);
+		} else {
+			std::ranges::fill(property_changed_, 0);
+			for (const uint32_t channel : observation.changed_channels()) {
+				const std::size_t start = channel * property_bitset_words_;
+				for (std::size_t word = 0; word < property_bitset_words_; word++)
+					property_changed_[word] |= property_subscribers_[start + word];
+			}
+			for (std::size_t word = 0; word < property_bitset_words_; word++) {
+				uint64_t changed = property_changed_[word];
+				while (changed) {
+					const std::size_t index = word * 64 + std::countr_zero(changed);
+					changed &= changed - 1;
+					wake_property(index, true);
+				}
+			}
+		}
+		// One live timer per sleeping monitor, removed if input wakes it before its boundary.
+		while (!property_wakeups_.empty() && property_wakeups_.begin()->first <= observation.tick())
+			wake_property(property_wakeups_.begin()->second, false);
+	}
+
+	void Runtime::subscribe_property(std::size_t index, const std::vector<uint32_t>& reads) {
+		PropertySchedule& schedule = property_schedules_[index];
+		if (schedule.reads == reads) return;
+		const std::size_t word = index / 64;
+		const uint64_t    bit  = uint64_t{1} << (index % 64);
+		for (const uint32_t channel : schedule.reads)
+			property_subscribers_[channel * property_bitset_words_ + word] &= ~bit;
+		for (const uint32_t channel : reads) property_subscribers_[channel * property_bitset_words_ + word] |= bit;
 	}
 
 	bool Runtime::failed() const noexcept {
@@ -438,12 +494,19 @@ namespace sim {
 			const ltl::Verdict              verdict =
 				global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
 			const ltl::Monitor& monitor = property_monitors_[index];
-			const std::string&  source  = declaration.span.begin.source_name().empty()
-											  ? property_filename_
-											  : declaration.span.begin.source_name();
+			// Pending self-loops may not have been stepped since they fell asleep. Include those
+			// repetitions when reporting an early-halted run without mutating its monitor state.
+			const uint64_t     last_tick = global_tick_ ? std::min(global_tick_ - 1, scenario_duration_tick_) : 0;
+			const uint64_t     repeats   = global_tick_ && monitor.repeats_until() && last_tick >= monitor.next_tick()
+											   ? last_tick - monitor.next_tick() + 1
+											   : 0;
+			const std::string& source    = declaration.span.begin.source_name().empty()
+											   ? property_filename_
+											   : declaration.span.begin.source_name();
 			results.push_back(PropertyResult{declaration.name, source, declaration.span.begin, verdict,
-											 property_decisive_ticks_[index], monitor.failure(), monitor.activations(),
-											 monitor.has_trigger(), monitor.obligation_at_end()});
+											 property_decisive_ticks_[index], monitor.failure(),
+											 monitor.activations_after_repeats(repeats), monitor.has_trigger(),
+											 monitor.obligation_at_end()});
 		}
 		return results;
 	}
@@ -1509,59 +1572,108 @@ namespace sim {
 					property_observer_->observe(tick, world_, std::move(requests), std::move(responses),
 												std::move(events), std::move(module_stepped));
 				const ltl::Observation& observation = *current_observation_;
-				for (std::size_t index = 0; index < property_monitors_.size(); index++) {
-					if (tick > scenario_duration_tick_) continue;
-					const ltl::PropertyDeclaration& declaration = properties_->properties[index];
-					const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-					const uint64_t                  until_tick =
-						declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
-					if (tick < from_tick || tick > until_tick) continue;
+				// The evaluators only capture the observation, so every monitor shares them this tick.
+				const ltl::AtomEvaluator evaluate = [&observation](const ltl::Formula& atom) {
+					return observation.evaluate(atom);
+				};
+				const ltl::AtomValueRenderer actual = [&observation](const ltl::Formula& atom) {
+					return observation.actual_value(atom);
+				};
+				const ltl::DomainEvaluator domains = [&observation](const ltl::Value* domain, ltl::ValueType type,
+																	const ltl::DomainVisitor& visit) {
+					observation.visit_domain(domain, type, visit);
+				};
+				const ltl::StepEvaluator stepped = [&observation](uint16_t module) {
+					return observation.stepped(module);
+				};
+				const ltl::InputTracker inputs{
+					&property_scratch_reads_,
+					[&observation](const std::vector<uint32_t>& channels, uint64_t since) {
+						return observation.changed_since(channels, since);
+					},
+					tick,
+					[&observation](std::vector<uint32_t>& channels) { observation.deduplicate(channels); }};
+				wake_properties(observation);
+				for (std::size_t word = 0; word < property_bitset_words_; word++) {
+					uint64_t ready = property_ready_[word];
+					while (ready) {
+						const std::size_t index = word * 64 + std::countr_zero(ready);
+						ready &= ready - 1;
+						if (tick > scenario_duration_tick_) continue;
+						const ltl::PropertyDeclaration& declaration = properties_->properties[index];
+						const uint64_t from_tick = declaration.scope ? declaration.scope->from_tick : 0;
+						const uint64_t until_tick =
+							declaration.scope ? declaration.scope->until_tick : scenario_duration_tick_;
+						if (tick < from_tick || tick > until_tick) continue;
 
-					if (property_decisive_ticks_[index]) continue;
+						if (property_decisive_ticks_[index]) continue;
 
-					ltl::Monitor& monitor = property_monitors_[index];
-					if (monitor.verdict() == ltl::Verdict::PENDING) {
-						const auto actual = [&observation](const ltl::Formula& atom) {
-							return observation.actual_value(atom);
-						};
-						(void)monitor.observe(
-							[&observation](const ltl::Formula& atom) { return observation.evaluate(atom); }, actual,
-							[&observation](const ltl::Value* domain, ltl::ValueType type,
-										   const ltl::DomainVisitor& visit) {
-								observation.visit_domain(domain, type, visit);
-							},
-							[&observation](uint16_t module) { return observation.stepped(module); },
-							observation.revision());
-						if (tick == until_tick) (void)monitor.finish(actual);
-					}
-					if (monitor.verdict() != ltl::Verdict::PENDING) {
-						property_decisive_ticks_[index] = tick;
-						if (trace_.enabled()) {
-							trace::Entry entry("property_verdict");
-							entry.field("tick", tick)
-								.field("name", declaration.name)
-								.field("verdict", std::string(verdict_name(monitor.verdict())));
-							if (monitor.failure()) {
-								entry.field("formula", monitor.failure()->formula)
-									.field("obligation", monitor.failure()->obligation)
-									.field("fact_count", static_cast<uint64_t>(monitor.failure()->facts.size()));
-								if (monitor.failure()->obligation_created_tick) {
-									entry.field("obligation_created_tick", *monitor.failure()->obligation_created_tick);
-								}
-								if (monitor.failure()->deadline_tick) {
-									entry.field("deadline_tick", *monitor.failure()->deadline_tick);
+						ltl::Monitor& monitor = property_monitors_[index];
+						if (monitor.verdict() == ltl::Verdict::PENDING) {
+							PropertySchedule& schedule = property_schedules_[index];
+							// The scheduler has certified every skipped tick as an unchanged self-loop.
+							if (monitor.next_tick() > tick) throw std::logic_error("LTL scheduler moved backwards");
+							monitor.repeat(tick - monitor.next_tick());
+							if (schedule.dirty) schedule.revision = ++next_property_revision_;
+							property_scratch_reads_.clear();
+							observation.track(&property_scratch_reads_);
+							(void)monitor.observe(evaluate, actual, domains, stepped, schedule.revision, &inputs);
+							observation.track(nullptr);
+							schedule.dirty = false;
+							if (monitor.progressed()) {
+								observation.deduplicate(property_scratch_reads_);
+								subscribe_property(index, property_scratch_reads_);
+								schedule.reads.swap(property_scratch_reads_);
+							}
+							std::optional<uint64_t> next_wakeup;
+							if (tick == until_tick) (void)monitor.finish(actual);
+							else if (const auto boundary = monitor.repeats_until()) {
+								const uint64_t wakeup = std::min(*boundary, until_tick);
+								if (wakeup > tick + 1) {
+									property_ready_[word] &= ~(uint64_t{1} << (index % 64));
+									next_wakeup = wakeup;
 								}
 							}
-							trace_.write(entry);
-							if (monitor.failure()) {
-								for (const ltl::AtomFact& fact : monitor.failure()->facts) {
-									trace::Entry fact_entry("property_fact");
-									fact_entry.field("tick", tick)
-										.field("name", declaration.name)
-										.field("expression", fact.expression)
-										.field("value", fact.value);
-									if (fact.actual) fact_entry.field("actual", *fact.actual);
-									trace_.write(fact_entry);
+							if (schedule.wakeup && (!next_wakeup || (*schedule.wakeup)->first != *next_wakeup)) {
+								property_wakeups_.erase(*schedule.wakeup);
+								schedule.wakeup.reset();
+							}
+							if (next_wakeup && !schedule.wakeup)
+								schedule.wakeup = property_wakeups_.emplace(*next_wakeup, index);
+						}
+						if (monitor.verdict() != ltl::Verdict::PENDING) {
+							property_decisive_ticks_[index] = tick;
+							subscribe_property(index, {});
+							property_schedules_[index].reads.clear();
+							property_ready_[word] &= ~(uint64_t{1} << (index % 64));
+							if (trace_.enabled()) {
+								trace::Entry entry("property_verdict");
+								entry.field("tick", tick)
+									.field("name", declaration.name)
+									.field("verdict", std::string(verdict_name(monitor.verdict())));
+								if (monitor.failure()) {
+									entry.field("formula", monitor.failure()->formula)
+										.field("obligation", monitor.failure()->obligation)
+										.field("fact_count", static_cast<uint64_t>(monitor.failure()->facts.size()));
+									if (monitor.failure()->obligation_created_tick) {
+										entry.field("obligation_created_tick",
+													*monitor.failure()->obligation_created_tick);
+									}
+									if (monitor.failure()->deadline_tick) {
+										entry.field("deadline_tick", *monitor.failure()->deadline_tick);
+									}
+								}
+								trace_.write(entry);
+								if (monitor.failure()) {
+									for (const ltl::AtomFact& fact : monitor.failure()->facts) {
+										trace::Entry fact_entry("property_fact");
+										fact_entry.field("tick", tick)
+											.field("name", declaration.name)
+											.field("expression", fact.expression)
+											.field("value", fact.value);
+										if (fact.actual) fact_entry.field("actual", *fact.actual);
+										trace_.write(fact_entry);
+									}
 								}
 							}
 						}

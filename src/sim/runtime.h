@@ -212,6 +212,23 @@ namespace sim {
 		std::optional<ltl::File>                          properties_;
 		std::vector<ltl::Monitor>                         property_monitors_;
 		std::vector<std::optional<uint64_t>>              property_decisive_ticks_;
+		using PropertyWakeups = std::multimap<uint64_t, std::size_t>;
+		struct PropertySchedule {
+			std::vector<uint32_t>                    reads;
+			std::optional<PropertyWakeups::iterator> wakeup;
+			uint64_t                                revision = 0;
+			bool                                    dirty    = true;
+		};
+		std::vector<PropertySchedule> property_schedules_;
+		PropertyWakeups               property_wakeups_;
+		// Channel -> monitor bitset, stored as one flat array. A changed channel marks only its
+		// subscribers ready. The ready set also holds monitors that have not reached a self-loop.
+		std::size_t                   property_bitset_words_ = 0;
+		std::vector<uint64_t>          property_subscribers_;
+		std::vector<uint64_t>          property_ready_;
+		std::vector<uint64_t>          property_changed_;
+		std::vector<uint32_t>          property_scratch_reads_;
+		uint64_t                      next_property_revision_ = 0;
 		std::optional<ltl::Observer>                      property_observer_;
 		std::optional<ltl::Observation>                   current_observation_;
 		uint64_t                                          scenario_duration_tick_ = 0;
@@ -227,6 +244,10 @@ namespace sim {
 		std::map<uint8_t, std::string> last_world_;
 
 		void trace_observation(const ltl::Observation& observation);
+
+		void wake_property(std::size_t index, bool input_changed);
+		void wake_properties(const ltl::Observation& observation);
+		void subscribe_property(std::size_t index, const std::vector<uint32_t>& reads);
 
 		// Drops undecodable application frames after ingress accounting. Corrupt mailbox metadata,
 		// which cannot be indexed safely, remains fatal.
