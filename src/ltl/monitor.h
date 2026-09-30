@@ -44,6 +44,9 @@ namespace ltl {
 		std::function<bool(const std::vector<uint32_t>&, uint64_t tick)> changed_since;
 		// The input clock of the current observation, the tick passed back to changed_since.
 		uint64_t tick = 0;
+		// Optional. Evaluates an atom of an unground formula under the given quantifier bindings, which
+		// lets a quantifier over records evaluate a state-only body without grounding a copy of it.
+		std::function<bool(const Formula&, const std::vector<std::pair<std::string, uint64_t>>&)> evaluate_bound;
 		// Optional. Removes repeated channels in place; the monitor sorts when this is absent.
 		std::function<void(std::vector<uint32_t>&)> deduplicate;
 	};

@@ -57,7 +57,7 @@ namespace {
 				&scratch, [this](const std::vector<uint32_t>& channels, uint64_t since) {
 					return changed_since(channels, since);
 				},
-				tick, {}};
+				tick, {}, {}};
 			const auto atom = [&](const ltl::Formula& formula) {
 				if (formula.value->kind == ltl::Value::Kind::MEMBER) scratch.push_back(channel(formula.value->text));
 				return evaluate(formula, observation);

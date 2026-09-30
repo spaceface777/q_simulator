@@ -956,6 +956,12 @@ namespace ltl {
 		return evaluate_formula(atom, *this, bindings);
 	}
 
+	bool Observation::evaluate(const Formula& atom, const std::vector<std::pair<std::string, uint64_t>>& bound) const {
+		BindingMap bindings;
+		for (const auto& [name, identity] : bound) bindings[name] = identity;
+		return evaluate_formula(atom, *this, bindings);
+	}
+
 	std::optional<std::string> Observation::actual_value(const Formula& atom) const {
 		if (atom.kind != Formula::Kind::COMPARISON) return std::nullopt;
 		BindingMap  bindings;

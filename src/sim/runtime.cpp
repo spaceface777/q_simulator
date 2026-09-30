@@ -1592,6 +1592,10 @@ namespace sim {
 						return observation.changed_since(channels, since);
 					},
 					tick,
+					[&observation](const ltl::Formula&                                  atom,
+								   const std::vector<std::pair<std::string, uint64_t>>& bindings) {
+						return observation.evaluate(atom, bindings);
+					},
 					[&observation](std::vector<uint32_t>& channels) { observation.deduplicate(channels); }};
 				wake_properties(observation);
 				for (std::size_t word = 0; word < property_bitset_words_; word++) {
