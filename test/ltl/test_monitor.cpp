@@ -53,12 +53,14 @@ namespace {
 			previous_granted_ = granted;
 			if (!read_tick_ || changed_since(reads_, *read_tick_)) ++revision_;
 			std::vector<uint32_t>   scratch;
-			const ltl::InputTracker inputs{
-				&scratch, [this](const std::vector<uint32_t>& channels, uint64_t since) {
-					return changed_since(channels, since);
-				},
-				tick, {}, {}};
-			const auto atom = [&](const ltl::Formula& formula) {
+			const ltl::InputTracker inputs{&scratch,
+										   [this](const std::vector<uint32_t>& channels, uint64_t since) {
+											   return changed_since(channels, since);
+										   },
+										   tick,
+										   {},
+										   {}};
+			const auto              atom = [&](const ltl::Formula& formula) {
 				if (formula.value->kind == ltl::Value::Kind::MEMBER) scratch.push_back(channel(formula.value->text));
 				return evaluate(formula, observation);
 			};
@@ -233,7 +235,10 @@ TEST(LtlMonitor, BulkRepeatsPreserveTriggersAndAnInclusiveDeadline) {
 	ltl::Monitor     bulk("bulk", property.formula(), 100);
 	ltl::Monitor     reference("reference", property.formula(), 100);
 	unsigned         evaluations = 0;
-	const auto atom = [&](const ltl::Formula&) { ++evaluations; return true; };
+	const auto       atom        = [&](const ltl::Formula&) {
+		++evaluations;
+		return true;
+	};
 	EXPECT_FALSE(bulk.repeats_until());
 	EXPECT_THROW(bulk.repeat(1), std::logic_error);
 	EXPECT_EQ(bulk.observe(atom, {}, {}, {}, 1), ltl::Verdict::PENDING);
@@ -250,8 +255,7 @@ TEST(LtlMonitor, BulkRepeatsPreserveTriggersAndAnInclusiveDeadline) {
 	EXPECT_FALSE(bulk.repeats_until());
 	EXPECT_THROW(bulk.repeat(1), std::logic_error);
 	EXPECT_LE(evaluations, 3u);
-	for (uint64_t tick = 100; tick <= 120; tick++)
-		(void)reference.observe([](const ltl::Formula&) { return true; });
+	for (uint64_t tick = 100; tick <= 120; tick++) (void)reference.observe([](const ltl::Formula&) { return true; });
 	EXPECT_EQ(bulk.verdict(), reference.verdict());
 	EXPECT_EQ(bulk.activations(), reference.activations());
 	EXPECT_EQ(bulk.activations(), 21u);
@@ -261,7 +265,10 @@ TEST(LtlMonitor, BulkRepeatsWakeAtBothMetricWindowBoundaries) {
 	CompiledProperty property("F[4ms, 6ms] module(1).rfid_active");
 	ltl::Monitor     monitor("window", property.formula(), 30);
 	unsigned         evaluations = 0;
-	const auto atom = [&](const ltl::Formula&) { ++evaluations; return false; };
+	const auto       atom        = [&](const ltl::Formula&) {
+		++evaluations;
+		return false;
+	};
 	(void)monitor.observe(atom, {}, {}, {}, 1);
 	(void)monitor.observe(atom, {}, {}, {}, 1);
 	ASSERT_EQ(monitor.repeats_until(), 34u);

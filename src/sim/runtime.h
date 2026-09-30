@@ -209,30 +209,32 @@ namespace sim {
 		trace::Writer trace_;
 
 		// The parsed file owns the formulas referenced by the monitors and therefore precedes them.
-		std::optional<ltl::File>                          properties_;
-		std::vector<ltl::Monitor>                         property_monitors_;
-		std::vector<std::optional<uint64_t>>              property_decisive_ticks_;
+		std::optional<ltl::File>             properties_;
+		std::vector<ltl::Monitor>            property_monitors_;
+		std::vector<std::optional<uint64_t>> property_decisive_ticks_;
 		using PropertyWakeups = std::multimap<uint64_t, std::size_t>;
+
 		struct PropertySchedule {
 			std::vector<uint32_t>                    reads;
 			std::optional<PropertyWakeups::iterator> wakeup;
-			uint64_t                                revision = 0;
-			bool                                    dirty    = true;
+			uint64_t                                 revision = 0;
+			bool                                     dirty    = true;
 		};
+
 		std::vector<PropertySchedule> property_schedules_;
 		PropertyWakeups               property_wakeups_;
 		// Channel -> monitor bitset, stored as one flat array. A changed channel marks only its
 		// subscribers ready. The ready set also holds monitors that have not reached a self-loop.
-		std::size_t                   property_bitset_words_ = 0;
-		std::vector<uint64_t>          property_subscribers_;
-		std::vector<uint64_t>          property_ready_;
-		std::vector<uint64_t>          property_changed_;
-		std::vector<uint32_t>          property_scratch_reads_;
-		uint64_t                      next_property_revision_ = 0;
+		std::size_t                                       property_bitset_words_ = 0;
+		std::vector<uint64_t>                             property_subscribers_;
+		std::vector<uint64_t>                             property_ready_;
+		std::vector<uint64_t>                             property_changed_;
+		std::vector<uint32_t>                             property_scratch_reads_;
+		uint64_t                                          next_property_revision_ = 0;
 		std::optional<ltl::Observer>                      property_observer_;
 		std::optional<ltl::Observation>                   current_observation_;
 		uint64_t                                          scenario_duration_tick_ = 0;
-		bool     halt_on_failure_ = true;
+		bool                                              halt_on_failure_        = true;
 		std::string                                       property_filename_;
 		uint64_t                                          next_rpc_observation_id_ = 1;
 		uint64_t                                          next_rpc_work_id_        = 1;
@@ -346,7 +348,8 @@ namespace sim {
 		// Whether the run stops granting ticks. By default a failure halts the run; with halting
 		// disabled every property is still evaluated to the end of the scenario.
 		[[nodiscard]] bool halted() const noexcept { return halt_on_failure_ && failed(); }
-		void               set_halt_on_failure(bool halt) noexcept { halt_on_failure_ = halt; }
+
+		void set_halt_on_failure(bool halt) noexcept { halt_on_failure_ = halt; }
 
 		[[nodiscard]] std::size_t properties_pending() const noexcept;
 

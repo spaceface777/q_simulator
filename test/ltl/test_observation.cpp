@@ -94,9 +94,9 @@ TEST_F(LtlObservationTest, ReportsChangedChannelsAndTheClearingOfPulses) {
 	const auto quiet = observer.observe(3, world_);
 	EXPECT_EQ(quiet.changed_channels(), std::vector<uint32_t>{ltl::channel::VOLATILE});
 	world_.module(module::ModuleId{MODULE})->set_led_color(module::LedColor{0x123456});
-	const auto output = observer.observe(4, world_);
-	const uint32_t led = ltl::channel::module_field(MODULE, ltl::ModuleField::LED_COLOR);
-	const uint32_t edge = ltl::channel::module_edge(MODULE, ltl::ModuleField::LED_COLOR);
+	const auto     output = observer.observe(4, world_);
+	const uint32_t led    = ltl::channel::module_field(MODULE, ltl::ModuleField::LED_COLOR);
+	const uint32_t edge   = ltl::channel::module_edge(MODULE, ltl::ModuleField::LED_COLOR);
 	EXPECT_TRUE(contains(output, led));
 	EXPECT_TRUE(contains(output, edge));
 	const auto steady = observer.observe(5, world_);
@@ -111,24 +111,24 @@ TEST_F(LtlObservationTest, RecordSubscriptionsDistinguishRequestsResponsesAndEve
 	ltl::Observer observer(modules(), world_);
 	(void)observer.observe(0, world_);
 	ltl::RpcRequest first;
-	first.id = 100;
-	first.tick = 1;
-	first.module = MODULE;
-	ltl::RpcRequest second = first;
-	second.id = 101;
-	const auto requests = observer.observe(1, world_, {first, second});
-	const uint32_t request_channel = ltl::channel::records(MODULE, ltl::channel::RecordList::REQUESTS);
+	first.id                        = 100;
+	first.tick                      = 1;
+	first.module                    = MODULE;
+	ltl::RpcRequest second          = first;
+	second.id                       = 101;
+	const auto     requests         = observer.observe(1, world_, {first, second});
+	const uint32_t request_channel  = ltl::channel::records(MODULE, ltl::channel::RecordList::REQUESTS);
 	const uint32_t response_channel = ltl::channel::records(MODULE, ltl::channel::RecordList::RESPONSES);
-	const uint32_t event_channel = ltl::channel::records(MODULE, ltl::channel::RecordList::EVENTS);
+	const uint32_t event_channel    = ltl::channel::records(MODULE, ltl::channel::RecordList::EVENTS);
 	EXPECT_EQ(std::ranges::count(requests.changed_channels(), request_channel), 1);
 	EXPECT_EQ(std::ranges::count(requests.changed_channels(), response_channel), 0);
 	const auto cleared_requests = observer.observe(2, world_);
 	EXPECT_EQ(std::ranges::count(cleared_requests.changed_channels(), request_channel), 1);
 	ltl::RpcResponse response;
 	response.id = response.request_id = 100;
-	response.tick = 3;
-	response.module = MODULE;
-	const auto responses = observer.observe(3, world_, {}, {response});
+	response.tick                     = 3;
+	response.module                   = MODULE;
+	const auto responses              = observer.observe(3, world_, {}, {response});
 	EXPECT_EQ(std::ranges::count(responses.changed_channels(), response_channel), 1);
 	EXPECT_EQ(std::ranges::count(responses.changed_channels(), request_channel), 0);
 	EXPECT_EQ(std::ranges::count(responses.changed_channels(), event_channel), 0);
@@ -137,9 +137,9 @@ TEST_F(LtlObservationTest, RecordSubscriptionsDistinguishRequestsResponsesAndEve
 	EXPECT_EQ(std::ranges::count(cleared_responses.changed_channels(), response_channel), 1);
 	EXPECT_EQ(std::ranges::count(cleared_responses.changed_channels(), ltl::channel::response(100)), 0);
 	ltl::RpcEvent event;
-	event.id = 200;
-	event.tick = 5;
-	event.module = MODULE;
+	event.id          = 200;
+	event.tick        = 5;
+	event.module      = MODULE;
 	const auto events = observer.observe(5, world_, {}, {}, {event});
 	EXPECT_EQ(std::ranges::count(events.changed_channels(), event_channel), 1);
 	EXPECT_EQ(std::ranges::count(events.changed_channels(), request_channel), 0);
@@ -148,11 +148,12 @@ TEST_F(LtlObservationTest, RecordSubscriptionsDistinguishRequestsResponsesAndEve
 
 TEST_F(LtlObservationTest, PhysicalCoordinatesAndIdentityAreTypedAndGuarded) {
 	ltl::Observer observer(modules(), world_);
-	const auto empty = observer.observe(0, world_);
+	const auto    empty = observer.observe(0, world_);
 	EXPECT_TRUE(evaluate("tub(67).id == 67", empty));
 	EXPECT_FALSE(evaluate("seen(tub(67))", empty));
 	{
-		ltl::File aliased = ltl::parse("let known(t) = seen(t) && initial_uid(t).length == 7;\nprop test = !known(tub(67));", "observation.spec");
+		ltl::File aliased = ltl::parse(
+			"let known(t) = seen(t) && initial_uid(t).length == 7;\nprop test = !known(tub(67));", "observation.spec");
 		ltl::type_check(aliased, ltl::TypeEnvironment{{MODULE}}, "observation.spec");
 		EXPECT_TRUE(empty.evaluate(*aliased.properties[0].formula));
 	}
@@ -180,8 +181,8 @@ TEST_F(LtlObservationTest, PhysicalCoordinatesAndIdentityAreTypedAndGuarded) {
 TEST_F(LtlObservationTest, ContinuousMotionInvalidatesAtomCacheAndKeepsOldCoordinates) {
 	place(world::Position::ENTRY);
 	ltl::Observer observer(modules(), world_);
-	const auto before = observer.observe(0, world_);
-	const auto position = before.tubs().at(TUB).position_um;
+	const auto    before   = observer.observe(0, world_);
+	const auto    position = before.tubs().at(TUB).position_um;
 	world_.module(module::ModuleId{MODULE})->set_small_belt_speed(module::BeltSpeed{-90.0});
 	world_.advance_tick();
 	const auto moving = observer.observe(1, world_);
@@ -200,8 +201,8 @@ TEST_F(LtlObservationTest, ContinuousMotionInvalidatesAtomCacheAndKeepsOldCoordi
 TEST_F(LtlObservationTest, PhysicalTransferSourceIsOneObservationAndItsClearingChangesRevision) {
 	settings::ModuleSettings first{}, second{};
 	first.active = second.active = true;
-	first.right = module::ModuleId{2};
-	second.left = module::ModuleId{1};
+	first.right                  = module::ModuleId{2};
+	second.left                  = module::ModuleId{1};
 	settings::set_module_settings(module::ModuleId{1}, first);
 	settings::set_module_settings(module::ModuleId{2}, second);
 	world_.add_module(module::ModuleId{2});

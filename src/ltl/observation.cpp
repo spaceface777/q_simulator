@@ -200,7 +200,7 @@ namespace ltl {
 				const ModuleRef module = evaluate_module(*value.arguments[1], observation, bindings);
 				observation.note(channel::tub(tub.id, TubField::PRESENT));
 				observation.note(channel::tub(tub.id, TubField::MODULE));
-				const auto      found  = observation.tubs().find(tub.id);
+				const auto found = observation.tubs().find(tub.id);
 				return found != observation.tubs().end() && found->second.module == module.id;
 			}
 			if (value.symbol == Value::Symbol::AT_POSITION) {
@@ -209,7 +209,7 @@ namespace ltl {
 				observation.note(channel::tub(tub.id, TubField::PRESENT));
 				observation.note(channel::tub(tub.id, TubField::MODULE));
 				observation.note(channel::tub(tub.id, TubField::POSITION));
-				const auto        found    = observation.tubs().find(tub.id);
+				const auto found = observation.tubs().find(tub.id);
 				return found != observation.tubs().end() && found->second.module == position.module &&
 					   found->second.position == position.position;
 			}
@@ -486,7 +486,7 @@ namespace ltl {
 					return integer_value(std::get<BytesRef>(evaluate_value(*value.base, observation, bindings)).size());
 				}
 				if (value.base->type == ValueType::TUB) {
-					const TubRef tub   = evaluate_tub(*value.base, observation, bindings);
+					const TubRef tub = evaluate_tub(*value.base, observation, bindings);
 					if (value.symbol == Value::Symbol::ID) return integer_value(tub.id);
 					observation.note(channel::tub(tub.id, TubField::PRESENT));
 					switch (value.symbol) {
@@ -501,14 +501,16 @@ namespace ltl {
 					case Value::Symbol::UID: observation.note(channel::tub(tub.id, TubField::UID)); break;
 					default:                 observation.note(channel::tub(tub.id, TubField::DATA)); break;
 					}
-					const auto   found = observation.tubs().find(tub.id);
+					const auto found = observation.tubs().find(tub.id);
 					if (found == observation.tubs().end())
 						throw std::runtime_error("tub(" + std::to_string(tub.id) +
 												 ") data is unavailable while the tub is not present");
 					if (value.symbol == Value::Symbol::MODULE) return ModuleRef{found->second.module};
-					if (value.symbol == Value::Symbol::BELT) return integer_value(static_cast<uint8_t>(found->second.belt));
+					if (value.symbol == Value::Symbol::BELT)
+						return integer_value(static_cast<uint8_t>(found->second.belt));
 					if (value.symbol == Value::Symbol::POSITION_UM) return integer_value(found->second.position_um);
-					if (value.symbol == Value::Symbol::PREVIOUS_MODULE) return integer_value(found->second.previous_module);
+					if (value.symbol == Value::Symbol::PREVIOUS_MODULE)
+						return integer_value(found->second.previous_module);
 					return value.symbol == Value::Symbol::UID ? BytesRef{found->second.uid}
 															  : BytesRef{found->second.data};
 				}
@@ -524,8 +526,8 @@ namespace ltl {
 				if (value.symbol != Value::Symbol::LEG_LENGTH_UM && value.symbol != Value::Symbol::TUB_RADIUS_UM)
 					observation.note(channel::module_field(module.id, module_field(value.symbol)));
 				switch (value.symbol) {
-				case Value::Symbol::LEG_LENGTH_UM: return integer_value(state.leg_length_um);
-				case Value::Symbol::TUB_RADIUS_UM: return integer_value(state.tub_radius_um);
+				case Value::Symbol::LEG_LENGTH_UM:        return integer_value(state.leg_length_um);
+				case Value::Symbol::TUB_RADIUS_UM:        return integer_value(state.tub_radius_um);
 				case Value::Symbol::BIG_BELT_SPEED:       return physical_value(state.big_belt_speed);
 				case Value::Symbol::SMALL_BELT_SPEED:     return physical_value(state.small_belt_speed);
 				case Value::Symbol::SERVO_ANGLE:          return physical_value(state.servo_angle);
@@ -795,8 +797,7 @@ namespace ltl {
 		bool tub_change = observation.tubs_.size() != previous_tubs_.size();
 		for (const auto& [id, tub] : observation.tubs_) {
 			const auto before = previous_tubs_.find(id);
-			if (before == previous_tubs_.end() || tub != before->second)
-				tub_change = true;
+			if (before == previous_tubs_.end() || tub != before->second) tub_change = true;
 		}
 		const bool pulses = !observation.changed_.empty() || !observation.appeared_.empty() ||
 							!observation.disappeared_.empty() || !observation.entered_.empty() ||

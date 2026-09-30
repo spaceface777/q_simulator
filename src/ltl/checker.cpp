@@ -211,7 +211,8 @@ namespace ltl {
 					if (value.text == "id") return resolve(value, ValueType::NUMBER, Value::Symbol::ID);
 					if (value.text == "module") return resolve(value, ValueType::MODULE, Value::Symbol::MODULE);
 					if (value.text == "belt") return resolve(value, ValueType::NUMBER, Value::Symbol::BELT);
-					if (value.text == "position_um") return resolve(value, ValueType::NUMBER, Value::Symbol::POSITION_UM);
+					if (value.text == "position_um")
+						return resolve(value, ValueType::NUMBER, Value::Symbol::POSITION_UM);
 					if (value.text == "previous_module")
 						return resolve(value, ValueType::NUMBER, Value::Symbol::PREVIOUS_MODULE);
 					if (value.text == "data") return resolve(value, ValueType::BYTES, Value::Symbol::DATA);
