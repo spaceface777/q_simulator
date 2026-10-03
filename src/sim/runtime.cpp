@@ -449,7 +449,9 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (global_tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::FALSE) return true;
+			if (from_tick <= scenario_duration_tick_ && global_tick_ > from_tick &&
+				property_monitors_[index].verdict() == ltl::Verdict::FALSE)
+				return true;
 		}
 		return false;
 	}
@@ -459,7 +461,9 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (global_tick_ <= from_tick || property_monitors_[index].verdict() == ltl::Verdict::PENDING) pending++;
+			if (from_tick > scenario_duration_tick_ || global_tick_ <= from_tick ||
+				property_monitors_[index].verdict() == ltl::Verdict::PENDING)
+				pending++;
 		}
 		return pending;
 	}
@@ -469,7 +473,8 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (global_tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::UNRESOLVED)
+			if (from_tick <= scenario_duration_tick_ && global_tick_ > from_tick &&
+				property_monitors_[index].verdict() == ltl::Verdict::UNRESOLVED)
 				unresolved++;
 		}
 		return unresolved;
@@ -480,7 +485,9 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (global_tick_ > from_tick && property_monitors_[index].verdict() == ltl::Verdict::FALSE) failed++;
+			if (from_tick <= scenario_duration_tick_ && global_tick_ > from_tick &&
+				property_monitors_[index].verdict() == ltl::Verdict::FALSE)
+				failed++;
 		}
 		return failed;
 	}
@@ -491,9 +498,10 @@ namespace sim {
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
 			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			const ltl::Verdict              verdict =
-				global_tick_ <= from_tick ? ltl::Verdict::PENDING : property_monitors_[index].verdict();
-			const ltl::Monitor& monitor = property_monitors_[index];
+			const ltl::Verdict              verdict = (from_tick > scenario_duration_tick_ || global_tick_ <= from_tick)
+														  ? ltl::Verdict::PENDING
+														  : property_monitors_[index].verdict();
+			const ltl::Monitor&             monitor = property_monitors_[index];
 			// Pending self-loops may not have been stepped since they fell asleep. Include those
 			// repetitions when reporting an early-halted run without mutating its monitor state.
 			const uint64_t     last_tick = global_tick_ ? std::min(global_tick_ - 1, scenario_duration_tick_) : 0;
