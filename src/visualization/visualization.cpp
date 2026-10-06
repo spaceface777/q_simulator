@@ -64,6 +64,12 @@ namespace visualization {
 			 {GlyphId::D, 0b110101101101110},
 			 {GlyphId::B, 0b110101110101110},
 			 {GlyphId::G, 0b111100101101111},
+			 {GlyphId::Q, 0b111101101111001},
+			 {GlyphId::S, 0b111100111001111},
+			 {GlyphId::E, 0b111100111100111},
+			 {GlyphId::C, 0b111100100100111},
+			 {GlyphId::T, 0b111010010010010},
+			 {GlyphId::R, 0b110101110101101},
 			 {GlyphId::DOT, 0b000000000000010},
 			 {GlyphId::MINUS, 0b000000111000000},
 			 {GlyphId::PLUS, 0b000010111010000},
@@ -84,6 +90,12 @@ namespace visualization {
 			else if (c == 'b') return get_bitmap(GlyphId::B);
 			else if (c == 'g') return get_bitmap(GlyphId::G);
 			else if (c == 'x') return get_bitmap(GlyphId::X);
+			else if (c == 'q') return get_bitmap(GlyphId::Q);
+			else if (c == 's') return get_bitmap(GlyphId::S);
+			else if (c == 'e') return get_bitmap(GlyphId::E);
+			else if (c == 'c') return get_bitmap(GlyphId::C);
+			else if (c == 't') return get_bitmap(GlyphId::T);
+			else if (c == 'r') return get_bitmap(GlyphId::R);
 			else if (c == '.') return get_bitmap(GlyphId::DOT);
 			else if (c == '-') return get_bitmap(GlyphId::MINUS);
 			else if (c == '+') return get_bitmap(GlyphId::PLUS);
@@ -661,6 +673,14 @@ namespace visualization {
 
 		SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
 		draw_number(renderer_, x + 5, y + 5, module_id.raw(), 2);
+
+		if (module_settings.type == "security") {
+			draw_string(renderer_, x + 5, y + bg.h - 15, "sec", 2);
+		} else if (module_settings.type == "storage") {
+			draw_string(renderer_, x + 5, y + bg.h - 15, "str", 2);
+		} else if (module_settings.type == "quarantine") {
+			draw_string(renderer_, x + 5, y + bg.h - 15, "qr", 2);
+		}
 
 		const module::BeltSpeed big_belt_speed   = module->big_belt_speed();
 		const module::BeltSpeed small_belt_speed = module->small_belt_speed();
