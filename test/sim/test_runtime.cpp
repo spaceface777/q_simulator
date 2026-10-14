@@ -701,14 +701,22 @@ TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 
 TEST_F(RuntimeTest, FailsTheRunWhenAnApplicationExits) {
 	::setenv("TEST_APP_EXIT_AFTER", "5", 1);
+	const auto path = fs::temp_directory_path() / "quercus-failed-grant.ndjson";
 
 	test_app::Runtime runtime(7);
+	runtime.trace_to(path.string(), {});
 	ASSERT_NO_THROW(runtime.start());
 
 	// Carrying on would produce a run the inputs no longer describe, so the run ends instead.
 	EXPECT_THROW(run_for(runtime, std::chrono::milliseconds(160)), std::runtime_error);
+	std::ifstream      input(path);
+	std::ostringstream bytes;
+	bytes << input.rdbuf();
+	EXPECT_NE(bytes.str().find("\"type\":\"rpc_request\""), std::string::npos);
+	EXPECT_EQ(bytes.str().find("\"type\":\"run_complete\""), std::string::npos);
 
 	runtime.stop();
+	fs::remove(path);
 }
 
 TEST_F(RuntimeTest, WaitsForEveryApplicationBeforeCompletingATick) {

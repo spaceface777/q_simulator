@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <iomanip>
 #include <iostream>
 #ifdef __linux__
@@ -41,6 +42,15 @@ namespace sim {
 		constexpr uint64_t TRACE_FLUSH_TICKS = 100;
 
 		using Clock = std::chrono::steady_clock;
+
+		struct FlushTraceOnError {
+			trace::Writer& writer;
+			int            exceptions = std::uncaught_exceptions();
+
+			~FlushTraceOnError() {
+				if (std::uncaught_exceptions() > exceptions) writer.flush();
+			}
+		};
 
 		const char* verdict_name(ltl::Verdict verdict) {
 			switch (verdict) {
@@ -101,6 +111,7 @@ namespace sim {
 	}
 
 	void Runtime::start(std::optional<uint64_t> last_tick) {
+		FlushTraceOnError flush_on_error{trace_};
 		if (running_ || backend_) throw std::logic_error("The runtime is already started");
 		if (global_tick_ != 0) throw std::logic_error("Create a new runtime for another run");
 		for (const module::ModuleId id : active_modules_) {
@@ -177,6 +188,7 @@ namespace sim {
 	}
 
 	void Runtime::trace_to(const std::string& path, const std::vector<std::string>& inputs) {
+		FlushTraceOnError flush_on_error{trace_};
 		trace_ = trace::Writer(path);
 		if (!trace_.enabled()) {
 			return;
@@ -277,6 +289,7 @@ namespace sim {
 	}
 
 	void Runtime::load(const events::Schedule& schedule) {
+		FlushTraceOnError flush_on_error{trace_};
 		if (running_ || global_tick_ != 0) {
 			throw std::logic_error("Scenario events must be loaded before applications launch");
 		}
@@ -311,6 +324,7 @@ namespace sim {
 	}
 
 	void Runtime::load_properties(ltl::File properties, uint64_t duration_tick, const std::string& filename) {
+		FlushTraceOnError flush_on_error{trace_};
 		if (running_ || global_tick_ != 0)
 			throw std::logic_error("LTL properties must be loaded before applications launch");
 		if (properties_) throw std::logic_error("LTL properties have already been loaded");
@@ -463,6 +477,7 @@ namespace sim {
 	}
 
 	void Runtime::advance(std::chrono::microseconds elapsed, double speed, std::chrono::microseconds deadline) {
+		FlushTraceOnError flush_on_error{trace_};
 		if (!running_ || speed <= 0.0 || halted()) {
 			return;
 		}
