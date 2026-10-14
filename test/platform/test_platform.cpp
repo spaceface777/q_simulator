@@ -116,7 +116,7 @@ namespace {
 			std::vector<rpc::Frame> frames;
 			while (true) {
 				const std::vector<rpc::Frame> batch =
-					manager->take_outbound(module::ModuleId{id}, childsync::MAILBOX_CAPACITY);
+					manager->take_outbound(module::ModuleId{id}, QSIM_MAX_BATCH_BYTES);
 				if (batch.empty()) {
 					return frames;
 				}
@@ -697,7 +697,7 @@ TEST_F(PlatformTest, CapsOutboundFramesPerTickAndKeepsTheRestInOrder) {
 	uint8_t expected = 0;
 	for (int round = 0; round < 3; round++) {
 		const std::vector<rpc::Frame> frames =
-			manager->take_outbound(module::ModuleId{NEIGHBOUR}, childsync::MAILBOX_CAPACITY);
+			manager->take_outbound(module::ModuleId{NEIGHBOUR}, QSIM_MAX_BATCH_BYTES);
 		EXPECT_LE(frames.size(), platform::MAX_OUTBOUND_PER_TICK);
 		for (const rpc::Frame& frame : frames) {
 			ASSERT_EQ(frame.payload.size(), 1u);

@@ -108,7 +108,7 @@ namespace settings {
 	}
 
 	// Reads one [module.N] table. Geometry is optional for the tower, required for routing modules.
-	static void parse_module(uint8_t id, const toml::table& table) {
+	static void parse_module(uint8_t id, const toml::table& table, const fs::path& layout_folder) {
 		const bool is_tower            = id == TOWER_MODULE_ID;
 		module_settings[id].configured = true;
 
@@ -125,14 +125,15 @@ namespace settings {
 				module_settings[id].type = opt_type.value();
 			}
 		}
-		{
-			auto opt_binary = table["binary"].value<std::string>();
-			if (opt_binary.has_value()) {
-				util::require(fs::exists(opt_binary.value()),
-							  "No application found at 'binary' of module " + std::to_string(id));
-				module_settings[id].binary = opt_binary.value();
-			}
+		if (table.contains("firmware")) {
+			const auto value = table["firmware"].value<std::string>();
+			util::require(value && !value->empty(), "Invalid firmware source for module " + std::to_string(id));
+			module_settings[id].firmware = fs::absolute(layout_folder / *value).lexically_normal().string();
 		}
+		util::require(!table.contains("binary"), "Module " + std::to_string(id) + ": replace 'binary' with 'firmware'");
+		if (!module_settings[id].firmware.empty())
+			util::require(fs::path(module_settings[id].firmware).extension() == ".dll",
+						  "Module " + std::to_string(id) + ": firmware must name a .dll file");
 		{
 			auto opt_angle = table["angle"].value_exact<int64_t>();
 			if (opt_angle.has_value() || !is_tower) {
@@ -187,7 +188,7 @@ namespace settings {
 		parse_optional_setting("network_very_late_delay_ms", 1100, [](int value) { return value >= 0; });
 		// -1 means: use the profile's delay distribution instead of a fixed delay.
 		parse_optional_setting("network_fixed_delay_ms", -1, [](int value) { return value >= -1 && value <= 10000; });
-		// Local hardware IRQ/RPC latency before the ordinary next-tick child handoff. RFID latency is
+		// Local hardware IRQ/RPC latency before the next executed module-tick handoff. RFID latency is
 		// sampled independently per arrival, rounded to whole milliseconds, and clamped at zero.
 		parse_optional_setting("laser_event_extra_delay_ms", 3, [](int value) { return value >= 0 && value <= 10000; });
 		parse_optional_setting("rfid_event_extra_delay_mean_ms", 35.0,
@@ -240,7 +241,7 @@ namespace settings {
 		parse_optional_setting("rfid_position_sd", calibration_defaults.rfid_position_sd, valid_position_sd);
 	}
 
-	void parse_settings(fs::path settings, fs::path layout, std::optional<fs::path> application_path_override) {
+	void parse_settings(fs::path settings, fs::path layout, std::optional<fs::path> firmware_override) {
 		util::require(fs::exists(settings), "No settings file found at " + settings.string());
 		util::require(fs::exists(layout), "No layout file found at " + layout.string());
 
@@ -253,16 +254,17 @@ namespace settings {
 			throw err;
 		}
 
-		// Apply a CLI or scenario binary before validation. An explicit override must be sufficient
-		// even when the application_path stored in settings.toml belongs to another machine.
-		if (application_path_override) {
-			settings_table.insert_or_assign("application_path", application_path_override->string());
-		}
-
-		parse_setting("application_path", "", [](std::string value) {
-			util::require(std::filesystem::exists(value), "No application found at application_path in settings.toml");
-			return true;
-		});
+		util::require(!settings_table.contains("application_path"),
+					  "Replace 'application_path' with 'firmware' in settings.toml");
+		util::require(!settings_table.contains("binary"), "Replace 'binary' with 'firmware' in settings.toml");
+		parse_optional_setting<std::string>("firmware", "", [](const std::string&) { return true; });
+		if (firmware_override)
+			set_setting<std::string>("firmware", fs::absolute(*firmware_override).lexically_normal().string());
+		else if (const auto path = get_setting<std::string>("firmware"); !path.empty())
+			set_setting<std::string>("firmware",
+									 fs::absolute(settings.parent_path() / path).lexically_normal().string());
+		if (const auto path = get_setting<std::string>("firmware"); !path.empty())
+			util::require(fs::path(path).extension() == ".dll", "firmware must name a .dll file in settings.toml");
 		parse_setting("simulation_speed", -1.0, [](double value) { return value >= 0; });
 		parse_setting("seed", -1, [](int value) { return value >= 0; });
 		parse_setting("scale", -1.0, [](double value) { return value >= 0.25 && value <= 5; });
@@ -278,7 +280,7 @@ namespace settings {
 					continue;
 				}
 
-				parse_module(id, *node->as_table());
+				parse_module(id, *node->as_table(), layout.parent_path());
 			}
 		}
 
@@ -320,12 +322,9 @@ namespace settings {
 		return configured;
 	}
 
-	std::string get_module_binary(module::ModuleId id) {
-		const std::string& override_path = module_settings[id.raw()].binary;
-		if (!override_path.empty()) {
-			return override_path;
-		}
-		return get_setting<std::string>("application_path");
+	std::string get_module_firmware(module::ModuleId id) {
+		const auto& path = module_settings[id.raw()].firmware;
+		return path.empty() ? get_setting<std::string>("firmware") : path;
 	}
 
 	ModuleSettings get_module_settings(module::ModuleId id) {
@@ -341,6 +340,7 @@ namespace settings {
 	void install_test_defaults() {
 		settings_table = toml::table{};
 		set_setting<std::string>("application_path", "");
+		set_setting<std::string>("firmware", "");
 		set_setting("simulation_speed", 1.0);
 		set_setting("seed", 1);
 		set_setting("scale", 1.0);

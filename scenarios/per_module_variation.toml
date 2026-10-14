@@ -11,7 +11,7 @@
 
 [scenario]
 layout = "../layouts/default.toml"
-binary = "../external/q_applets/out/module_movement.exe"
+firmware = "../external/q_applets/out/module_movement.dll"
 duration = "30s"
 properties = "per_module_variation.spec"
 

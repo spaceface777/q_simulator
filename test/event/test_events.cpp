@@ -191,23 +191,23 @@ TEST_F(EventsTest, ParsesPropertyConfigurationWithTheLtlDurationSyntax) {
 }
 
 TEST_F(EventsTest, ResolvesScenarioLayoutAndBinaryFromTheScenarioFolder) {
-	write("[scenario]\nlayout = \"../layouts/one.toml\"\nbinary = \"bin/application.exe\"\n");
+	write("[scenario]\nlayout = \"../layouts/one.toml\"\nfirmware = \"bin/application.dll\"\n");
 	const events::ScenarioFiles files = events::parse_scenario_files(path);
 	ASSERT_TRUE(files.layout.has_value());
-	ASSERT_TRUE(files.binary.has_value());
+	ASSERT_TRUE(files.firmware.has_value());
 	EXPECT_EQ(*files.layout, (path.parent_path() / "../layouts/one.toml").lexically_normal());
-	EXPECT_EQ(*files.binary, (path.parent_path() / "bin/application.exe").lexically_normal());
+	EXPECT_EQ(*files.firmware, (path.parent_path() / "bin/application.dll").lexically_normal());
 }
 
 TEST_F(EventsTest, ScenarioLayoutAndBinaryAreOptionalButMustBeNonEmptyStrings) {
 	write("");
 	const events::ScenarioFiles files = events::parse_scenario_files(path);
 	EXPECT_FALSE(files.layout.has_value());
-	EXPECT_FALSE(files.binary.has_value());
+	EXPECT_FALSE(files.firmware.has_value());
 
 	write("[scenario]\nlayout = \"\"\n");
 	EXPECT_THROW((void)events::parse_scenario_files(path), std::invalid_argument);
-	write("[scenario]\nbinary = 42\n");
+	write("[scenario]\nfirmware = 42\n");
 	EXPECT_THROW((void)events::parse_scenario_files(path), std::invalid_argument);
 }
 
@@ -222,4 +222,17 @@ TEST_F(EventsTest, RejectsMissingFileAndRemovedAssertionFormat) {
 	EXPECT_THROW((void)events::parse_events(path.string() + ".missing"), std::exception);
 	write("[assert.old]\ncheck = \"arrived_at\"\n");
 	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+}
+
+TEST_F(EventsTest, RejectsRemovedScenarioKeysWithReplacement) {
+	for (const char* key : {"binary", "application_path"}) {
+		write(std::string("[scenario]\n") + key + "=\"old.exe\"\n");
+		try {
+			(void)events::parse_scenario_files(path);
+			FAIL();
+		} catch (const std::invalid_argument& error) {
+			EXPECT_NE(std::string(error.what()).find(key), std::string::npos);
+			EXPECT_NE(std::string(error.what()).find("firmware"), std::string::npos);
+		}
+	}
 }

@@ -10,18 +10,11 @@
 #include "../../src/settings.h"
 #include "../../src/sim/runtime.h"
 #include "../../src/world/world.h"
+#include "firmware_images.h"
 
 namespace fs = std::filesystem;
 
 namespace {
-
-	std::string applet_path(const std::string& applet) {
-		const fs::path path = fs::path(REPO_ROOT) / "external" / "q_applets" / "out" / (applet + ".exe");
-		if (!fs::exists(path)) {
-			return "";
-		}
-		return path.string();
-	}
 
 	class AppletTest : public ::testing::Test {
 	protected:
@@ -67,13 +60,9 @@ namespace {
 } // namespace
 
 TEST_F(AppletTest, LaserAlignmentDrivesTheServoAndLedFromLaserState) {
-	const std::string binary = applet_path("laser_alignment");
-	if (binary.empty()) {
-		GTEST_SKIP() << "No laser_alignment applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
-	}
-	settings::set_setting<std::string>("application_path", binary);
-
-	sim::Runtime runtime(1);
+	const auto slots = test_applets::bindings("laser_alignment");
+	if (!slots) GTEST_SKIP() << "Missing laser_alignment.dll";
+	sim::Runtime runtime(1, *slots);
 	ASSERT_NO_THROW(runtime.start());
 
 	// The application enables both lasers, waits half a second, then polls them every 50 ms.
@@ -97,13 +86,9 @@ TEST_F(AppletTest, LaserAlignmentDrivesTheServoAndLedFromLaserState) {
 }
 
 TEST_F(AppletTest, ApplicationsActivateAndKeepTheirHeartbeatUp) {
-	const std::string binary = applet_path("laser_alignment");
-	if (binary.empty()) {
-		GTEST_SKIP() << "No laser_alignment applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
-	}
-	settings::set_setting<std::string>("application_path", binary);
-
-	sim::Runtime runtime(1);
+	const auto slots = test_applets::bindings("laser_alignment");
+	if (!slots) GTEST_SKIP() << "Missing laser_alignment.dll";
+	sim::Runtime runtime(1, *slots);
 	ASSERT_NO_THROW(runtime.start());
 
 	EXPECT_TRUE(runtime.platform().is_activated(module::ModuleId{MODULE}));

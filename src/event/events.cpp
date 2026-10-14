@@ -120,7 +120,10 @@ namespace events {
 		};
 
 		files.layout = read_path("layout");
-		files.binary = read_path("binary");
+		util::require(!scenario->contains("binary"), "Replace '[scenario].binary' with '[scenario].firmware'");
+		util::require(!scenario->contains("application_path"),
+					  "Replace '[scenario].application_path' with '[scenario].firmware'");
+		files.firmware = read_path("firmware");
 		return files;
 	}
 

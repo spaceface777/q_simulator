@@ -6,7 +6,9 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#ifdef __linux__
 #include <sched.h>
+#endif
 #include <sstream>
 #include <string>
 
@@ -14,12 +16,13 @@
 #include "../../src/ltl/parser.h"
 #include "../../src/module/module.h"
 #include "../../src/settings.h"
-#include "../../src/sim/runtime.h"
+#include "scripted_image.h"
 
 namespace fs = std::filesystem;
 
 namespace {
 	TEST(Runtime, PinsLockstepToOneCpu) {
+#ifdef __linux__
 		cpu_set_t original;
 		ASSERT_EQ(::sched_getaffinity(0, sizeof(original), &original), 0);
 
@@ -32,40 +35,38 @@ namespace {
 		}
 
 		EXPECT_EQ(::sched_setaffinity(0, sizeof(original), &original), 0);
+#endif
 	}
 
-	// Runs the whole simulation-side loop against real child processes and shared mailboxes.
+	// Exercises host runtime semantics through the bounded image ABI.
 	class RuntimeTest : public ::testing::Test {
 	protected:
 		static constexpr uint8_t FIRST  = 1;
 		static constexpr uint8_t SECOND = 2;
 
-		static void clear_fake_child_environment() {
-			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY_1");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_EVERY_2");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL_1");
-			::unsetenv("FAKE_CHILD_HEARTBEAT_UNTIL_2");
-			::unsetenv("FAKE_CHILD_SUBSCRIBE");
-			::unsetenv("FAKE_CHILD_EXIT_AFTER");
-			::unsetenv("FAKE_CHILD_QUERY_TICK");
-			::unsetenv("FAKE_CHILD_INGRESS_PROBE");
-			::unsetenv("FAKE_CHILD_INGRESS_PROBE_1");
-			::unsetenv("FAKE_CHILD_INGRESS_PROBE_2");
-			::unsetenv("FAKE_CHILD_RATE_BURST");
-			::unsetenv("FAKE_CHILD_RATE_BURST_1");
-			::unsetenv("FAKE_CHILD_RATE_BURST_2");
-			::unsetenv("FAKE_CHILD_STARTUP_RPC");
-			::unsetenv("FAKE_CHILD_RECORD");
-			::unsetenv("FAKE_CHILD_RECORD_TICKS");
-			::unsetenv("FAKE_CHILD_CERTIFY_QUIET");
-			::unsetenv("FAKE_CHILD_GRANT_RECORD");
-			::unsetenv("FAKE_CHILD_STATUS_RECORD");
-			::unsetenv("FAKE_CHILD_MUTANT");
-			::unsetenv("FAKE_CHILD_REPLY_TO_MESSAGE");
-			::unsetenv("QSIM_RUNAHEAD_STATS");
-			::unsetenv("QSIM_RUNAHEAD_STATS_MODULES");
+		static void clear_test_app_environment() {
+			::unsetenv("TEST_APP_HEARTBEAT_EVERY");
+			::unsetenv("TEST_APP_HEARTBEAT_EVERY_1");
+			::unsetenv("TEST_APP_HEARTBEAT_EVERY_2");
+			::unsetenv("TEST_APP_HEARTBEAT_UNTIL");
+			::unsetenv("TEST_APP_HEARTBEAT_UNTIL_1");
+			::unsetenv("TEST_APP_HEARTBEAT_UNTIL_2");
+			::unsetenv("TEST_APP_SUBSCRIBE");
+			::unsetenv("TEST_APP_EXIT_AFTER");
+			::unsetenv("TEST_APP_QUERY_TICK");
+			::unsetenv("TEST_APP_INGRESS_PROBE");
+			::unsetenv("TEST_APP_INGRESS_PROBE_1");
+			::unsetenv("TEST_APP_INGRESS_PROBE_2");
+			::unsetenv("TEST_APP_RATE_BURST");
+			::unsetenv("TEST_APP_RATE_BURST_1");
+			::unsetenv("TEST_APP_RATE_BURST_2");
+			::unsetenv("TEST_APP_STARTUP_RPC");
+			::unsetenv("TEST_APP_NEVER_ACTIVATE");
+			::unsetenv("TEST_APP_RECORD");
+			::unsetenv("TEST_APP_RECORD_TICKS");
+			::unsetenv("TEST_APP_STATUS_RECORD");
+			::unsetenv("TEST_APP_MUTANT");
+			::unsetenv("TEST_APP_REPLY_TO_MESSAGE");
 		}
 
 		void SetUp() override {
@@ -79,7 +80,6 @@ namespace {
 			}
 			settings::set_module_settings(module::ModuleId{TOWER_MODULE_ID}, settings::ModuleSettings{});
 
-			settings::set_setting<std::string>("application_path", FAKE_CHILD_PATH);
 			settings::set_setting("simulation_speed", 1.0);
 			// Runtime mechanics tests use exact historical tick boundaries. Dedicated clock tests below
 			// enable skew/loss explicitly; real scenario tests retain the physical defaults.
@@ -96,7 +96,7 @@ namespace {
 				settings::set_module_settings(module::ModuleId{id}, module_settings);
 			}
 
-			clear_fake_child_environment();
+			clear_test_app_environment();
 		}
 
 		void TearDown() override {
@@ -105,11 +105,11 @@ namespace {
 			for (uint8_t id = 1; id < MAX_MODULES; id++) {
 				settings::set_module_settings(module::ModuleId{id}, settings::ModuleSettings{});
 			}
-			clear_fake_child_environment();
+			clear_test_app_environment();
 		}
 
 		// Grants the runtime a fixed amount of simulated time, one call per frame like the main loop.
-		static void run_for(sim::Runtime& runtime, std::chrono::milliseconds simulated) {
+		static void run_for(test_app::Runtime& runtime, std::chrono::milliseconds simulated) {
 			const int frames = static_cast<int>(simulated.count() / 16);
 			for (int frame = 0; frame < frames; frame++) {
 				runtime.advance(std::chrono::microseconds(16000), 1.0, std::chrono::milliseconds(50));
@@ -120,7 +120,7 @@ namespace {
 } // namespace
 
 TEST_F(RuntimeTest, StartsApplicationsAndWaitsForThemToActivate) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
 	// Activation is the first heartbeat, so reaching this point means the whole loop ran.
@@ -132,30 +132,29 @@ TEST_F(RuntimeTest, StartsApplicationsAndWaitsForThemToActivate) {
 	runtime.stop();
 }
 
-TEST_F(RuntimeTest, DeliversSynchronousRpcResponsesDuringBatchedActivation) {
-	::setenv("FAKE_CHILD_STARTUP_RPC", "1", 1);
+TEST_F(RuntimeTest, DeliversSynchronousRpcResponsesDuringActivation) {
+	::setenv("TEST_APP_STARTUP_RPC", "1", 1);
 
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, std::chrono::milliseconds(200), 2);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 	EXPECT_TRUE(runtime.platform().is_activated(module::ModuleId{FIRST}));
 	EXPECT_TRUE(runtime.platform().is_activated(module::ModuleId{SECOND}));
 	runtime.stop();
 }
 
-TEST_F(RuntimeTest, DropsAndAccountsForAShortMalformedMailboxFrame) {
-	::setenv("FAKE_CHILD_INGRESS_PROBE_1", "1", 1);
+TEST_F(RuntimeTest, RejectsAShortMalformedOutputBatch) {
+	::setenv("TEST_APP_INGRESS_PROBE_1", "1", 1);
 
-	sim::Runtime runtime(7);
-	ASSERT_NO_THROW(runtime.start());
-	EXPECT_EQ(runtime.platform().rate_sample_count(module::ModuleId{FIRST}, platform::Bucket::GLOBAL),
-			  runtime.platform().rate_sample_count(module::ModuleId{SECOND}, platform::Bucket::GLOBAL) + 1);
+	test_app::Runtime runtime(7);
+	// Byte batches require complete RPC headers to recover frame boundaries.
+	EXPECT_THROW(runtime.start(), std::runtime_error);
 	runtime.stop();
 }
 
 TEST_F(RuntimeTest, DropsAndAccountsForAnUnexpectedResponseFrame) {
-	::setenv("FAKE_CHILD_INGRESS_PROBE_1", "2", 1);
+	::setenv("TEST_APP_INGRESS_PROBE_1", "2", 1);
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 	EXPECT_EQ(runtime.platform().rate_sample_count(module::ModuleId{FIRST}, platform::Bucket::GLOBAL),
 			  runtime.platform().rate_sample_count(module::ModuleId{SECOND}, platform::Bucket::GLOBAL) + 1);
@@ -163,9 +162,9 @@ TEST_F(RuntimeTest, DropsAndAccountsForAnUnexpectedResponseFrame) {
 }
 
 TEST_F(RuntimeTest, HeartbeatDeathStopsOnlyTheFailedModule) {
-	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL_1", "100", 1);
+	::setenv("TEST_APP_HEARTBEAT_UNTIL_1", "100", 1);
 
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 5);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 	ASSERT_EQ(runtime.platform().lifecycle(module::ModuleId{FIRST}), platform::Lifecycle::RUNNING);
 	ASSERT_EQ(runtime.platform().lifecycle(module::ModuleId{SECOND}), platform::Lifecycle::RUNNING);
@@ -191,11 +190,24 @@ TEST_F(RuntimeTest, HeartbeatDeathStopsOnlyTheFailedModule) {
 TEST_F(RuntimeTest, RateStopDeliversTryAgainBeforeRetiringOnlyTheOffendingModule) {
 	const fs::path statuses = fs::temp_directory_path() / ("quercus_rate_stop_" + std::to_string(::getpid()));
 	fs::remove(statuses);
-	::setenv("FAKE_CHILD_RATE_BURST_1", "4", 1);
-	::setenv("FAKE_CHILD_STATUS_RECORD", statuses.c_str(), 1);
+	::setenv("TEST_APP_STATUS_RECORD", statuses.c_str(), 1);
 
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, sim::MAX_TICK_BATCH);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
+	// Strict grants honor pauses before another burst. Preload ingress to isolate the stop handshake.
+	const platform::ModuleTime now{runtime.tick(), runtime.module_tick(module::ModuleId{FIRST})};
+	platform::IngressAdmission admission;
+	for (unsigned i = 0; i < 200 && !admission.stop_triggered; ++i)
+		admission = runtime.platform().account_ingress(module::ModuleId{FIRST}, now);
+	ASSERT_TRUE(admission.stop_triggered);
+	rpc::Frame request;
+	request.type    = MT_REQ;
+	request.cmd     = CMD_LASER_LEFT_GET;
+	request.call_id = 0x1234;
+	auto terminal   = runtime.platform().handle_request(module::ModuleId{FIRST}, request, now, admission);
+	ASSERT_TRUE(terminal.has_value());
+	ASSERT_TRUE(terminal->stop_after_delivery);
+	runtime.platform().enqueue(module::ModuleId{FIRST}, std::move(*terminal));
 	ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(200), 1.0, std::chrono::seconds(10)));
 
 	EXPECT_EQ(runtime.platform().lifecycle(module::ModuleId{FIRST}), platform::Lifecycle::STOPPED);
@@ -213,8 +225,8 @@ TEST_F(RuntimeTest, RateStopDeliversTryAgainBeforeRetiringOnlyTheOffendingModule
 	const uint64_t world_before = runtime.tick();
 	const uint64_t live_before  = runtime.module_tick(module::ModuleId{SECOND});
 	ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(100), 1.0, std::chrono::seconds(5)));
-	EXPECT_EQ(runtime.tick() - world_before, 96u);
-	EXPECT_EQ(runtime.module_tick(module::ModuleId{SECOND}) - live_before, 96u);
+	EXPECT_EQ(runtime.tick() - world_before, 100u);
+	EXPECT_EQ(runtime.module_tick(module::ModuleId{SECOND}) - live_before, 100u);
 
 	runtime.stop();
 	fs::remove(statuses);
@@ -231,7 +243,7 @@ TEST_F(RuntimeTest, AppliesEarlyScenarioEventsWhileStartupSkewAdvancesTime) {
 	tub.module = module::ModuleId{FIRST};
 	schedule.tubs.push_back(tub);
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load(schedule);
 	ASSERT_NO_THROW(runtime.start());
 	EXPECT_GT(runtime.tick(), tub.tick);
@@ -252,14 +264,19 @@ TEST_F(RuntimeTest, TracesScheduledAndYeetedTubRemovalsOnceWithTheirReason) {
 	scheduled.module       = module::ModuleId{FIRST};
 	schedule.tubs.push_back(scheduled);
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load(schedule);
 	runtime.world().place(5, module::ModuleId{FIRST}, world::Position::CENTER, RfidPayload{});
 	runtime.world().module(module::ModuleId{FIRST})->set_servo_angle(module::ServoAngle{0});
 	runtime.world().module(module::ModuleId{FIRST})->set_big_belt_speed(module::BeltSpeed{100});
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start());
-	ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(3000), 1.0, std::chrono::seconds(10)));
+	const uint64_t endpoint = runtime.tick() + 3000;
+	while (runtime.tick() < endpoint) {
+		const uint64_t before = runtime.tick();
+		ASSERT_NO_THROW(runtime.advance(std::chrono::milliseconds(1), 1.0, std::chrono::seconds(5)));
+		ASSERT_GT(runtime.tick(), before);
+	}
 	EXPECT_EQ(runtime.world().tub(4), nullptr);
 	EXPECT_EQ(runtime.world().tub(5), nullptr);
 	runtime.stop();
@@ -291,7 +308,7 @@ TEST_F(RuntimeTest, TracesScheduledAndYeetedTubRemovalsOnceWithTheirReason) {
 }
 
 TEST_F(RuntimeTest, RejectsScenariosLoadedAfterLogicalTimeStarts) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
 	events::Schedule schedule;
@@ -316,7 +333,7 @@ prop global_time_still_reaches_the_end at 3ms = true;
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("quercus_tick_skip_" + std::to_string(::getpid()) + ".ndjson");
 	fs::remove(trace_path);
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 3, "clock-skips.spec");
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start(3));
@@ -348,7 +365,7 @@ TEST_F(RuntimeTest, RecordsSampledModuleClockStateAndStartupActivity) {
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("quercus_startup_trace_" + std::to_string(::getpid()) + ".ndjson");
 	fs::remove(trace_path);
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start(4));
 	runtime.stop();
@@ -367,13 +384,13 @@ TEST_F(RuntimeTest, RecordsSampledModuleClockStateAndStartupActivity) {
 }
 
 TEST_F(RuntimeTest, AdvancesSimulatedTimeInProportionToElapsedTime) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
 	const uint64_t started = runtime.tick();
 	run_for(runtime, std::chrono::milliseconds(160));
 
-	// Up to 160 ticks; less if the children could not keep up inside the per-frame budget.
+	// The host deadline can prevent completion of all 160 ticks.
 	const uint64_t advanced = runtime.tick() - started;
 	EXPECT_GT(advanced, 0u);
 	EXPECT_LE(advanced, 160u);
@@ -382,7 +399,7 @@ TEST_F(RuntimeTest, AdvancesSimulatedTimeInProportionToElapsedTime) {
 }
 
 TEST_F(RuntimeTest, UsesTheTimeDeadlineRatherThanAnArbitraryTickLimit) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
 	const uint64_t started = runtime.tick();
@@ -393,8 +410,8 @@ TEST_F(RuntimeTest, UsesTheTimeDeadlineRatherThanAnArbitraryTickLimit) {
 	runtime.stop();
 }
 
-TEST_F(RuntimeTest, ReplaysEveryTickOfABatch) {
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 3);
+TEST_F(RuntimeTest, ReplaysEveryTickOfAnAdvance) {
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
 	const uint64_t started        = runtime.tick();
@@ -408,253 +425,23 @@ TEST_F(RuntimeTest, ReplaysEveryTickOfABatch) {
 	runtime.stop();
 }
 
-TEST_F(RuntimeTest, GrantsMultipleTicksInOneBarrierWhenClockSkipsAreDisabled) {
-	const fs::path record = fs::temp_directory_path() / ("quercus_batch_grants_" + std::to_string(::getpid()));
-	fs::remove(record);
-	::setenv("FAKE_CHILD_GRANT_RECORD", record.c_str(), 1);
-
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 3);
-	ASSERT_NO_THROW(runtime.start());
-	fs::remove(record);
-	runtime.advance(std::chrono::milliseconds(3), 1.0, std::chrono::seconds(5));
-	runtime.stop();
-
-	std::ifstream file(record);
-	std::string   grant;
-	ASSERT_TRUE(std::getline(file, grant));
-	EXPECT_EQ(grant, "3:7");
-	EXPECT_FALSE(std::getline(file, grant));
-	fs::remove(record);
-}
-
-TEST_F(RuntimeTest, ExactRunaheadUsesOneCompactGrantAndCommitsEveryLogicalTick) {
-	const fs::path record = fs::temp_directory_path() / ("quercus_runahead_grants_" + std::to_string(::getpid()));
-	fs::remove(record);
-	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
-	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
-	::setenv("FAKE_CHILD_GRANT_RECORD", record.c_str(), 1);
-
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, 100);
-	ASSERT_NO_THROW(runtime.start());
-	fs::remove(record);
-	const uint64_t global_before = runtime.tick();
-	const uint64_t local_before  = runtime.module_tick(module::ModuleId{FIRST});
-	runtime.advance(std::chrono::milliseconds(100), 1.0, std::chrono::seconds(5));
-	runtime.stop();
-
-	EXPECT_EQ(runtime.tick() - global_before, 100u);
-	EXPECT_EQ(runtime.module_tick(module::ModuleId{FIRST}) - local_before, 100u);
-	EXPECT_EQ(runtime.runahead_windows(), 1u);
-	EXPECT_GE(runtime.runahead_ticks(), 90u);
-
-	std::ifstream grants(record);
-	std::string   line;
-	bool          saw_compact_grant = false;
-	while (std::getline(grants, line)) {
-		if (!line.empty() && line.front() == 'R') saw_compact_grant = true;
-	}
-	EXPECT_TRUE(saw_compact_grant);
-	fs::remove(record);
-}
-
-TEST_F(RuntimeTest, ExactRunaheadInstrumentationIsDisabledByDefault) {
-	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
-	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, 100);
-	ASSERT_NO_THROW(runtime.start());
-	runtime.advance(std::chrono::milliseconds(10), 1.0, std::chrono::seconds(5));
-	testing::internal::CaptureStderr();
-	runtime.stop();
-	EXPECT_EQ(testing::internal::GetCapturedStderr().find("synchronization performance:"), std::string::npos);
-}
-
-TEST_F(RuntimeTest, ExactRunaheadInstrumentationReportsBoundaryAndWakeDistributions) {
-	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
-	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
-	::setenv("QSIM_RUNAHEAD_STATS", "1", 1);
-	::setenv("QSIM_RUNAHEAD_STATS_MODULES", "1", 1);
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, 100);
-	ASSERT_NO_THROW(runtime.start());
-	runtime.advance(std::chrono::milliseconds(10), 1.0, std::chrono::seconds(5));
-	testing::internal::CaptureStderr();
-	runtime.stop();
-	const std::string report = testing::internal::GetCapturedStderr();
-	EXPECT_NE(report.find("logical_ticks="), std::string::npos);
-	EXPECT_NE(report.find("sync_boundaries="), std::string::npos);
-	EXPECT_NE(report.find("ticks_between_sync_histogram="), std::string::npos);
-	EXPECT_NE(report.find("required_wake_set_histogram="), std::string::npos);
-	EXPECT_NE(report.find("wake_amplification_ratio="), std::string::npos);
-	EXPECT_NE(report.find("boundary_limit_hard_lookahead_cap="), std::string::npos);
-	EXPECT_NE(report.find("per_module_wakes="), std::string::npos);
-}
-
-TEST_F(RuntimeTest, ExactRunaheadFallsBackToStrictWhenAChildHasNoCertificate) {
-	const fs::path record = fs::temp_directory_path() / ("quercus_runahead_fallback_" + std::to_string(::getpid()));
-	fs::remove(record);
-	::setenv("FAKE_CHILD_GRANT_RECORD", record.c_str(), 1);
-
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, 100);
-	ASSERT_NO_THROW(runtime.start());
-	fs::remove(record);
-	runtime.advance(std::chrono::milliseconds(4), 1.0, std::chrono::seconds(5));
-	runtime.stop();
-
-	EXPECT_EQ(runtime.runahead_windows(), 0u);
-	EXPECT_EQ(runtime.runahead_fallbacks(), 4u);
-	std::ifstream grants(record);
-	std::string   line;
-	for (int tick = 0; tick < 4; tick++) {
-		ASSERT_TRUE(std::getline(grants, line));
-		EXPECT_EQ(line, "1:1");
-	}
-	EXPECT_FALSE(std::getline(grants, line));
-	fs::remove(record);
-}
-
-TEST_F(RuntimeTest, ExactRunaheadAndStrictModeProduceByteIdenticalSkippedTickTraces) {
-	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
-	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
+TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossAdvanceSizes) {
 	settings::set_setting("module_tick_skip_mean_ppm", 300'000.0);
 	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
 	settings::set_setting("module_clock_drift_sd_ppm", 137.0);
-
-	const auto execute = [](uint32_t runahead_cap, const std::string& suffix) {
-		const fs::path path =
-			fs::temp_directory_path() / ("quercus_exact_skip_" + std::to_string(::getpid()) + suffix + ".ndjson");
-		fs::remove(path);
-		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, runahead_cap);
-		runtime.trace_to(path.string(), {});
-		runtime.start();
-		runtime.advance(std::chrono::milliseconds(300), 1.0, std::chrono::seconds(5));
-		runtime.stop();
-		std::ifstream      input(path, std::ios::binary);
-		std::ostringstream contents;
-		contents << input.rdbuf();
-		fs::remove(path);
-		return contents.str();
-	};
-
-	const std::string strict = execute(0, "_strict");
-	const std::string exact  = execute(100, "_exact");
-	EXPECT_FALSE(strict.empty());
-	EXPECT_EQ(exact, strict);
-}
-
-TEST_F(RuntimeTest, LtlFailureInsideExactRunaheadStopsAtTheStrictTickAndKeepsTheTraceIdentical) {
-	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
-	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
-
-	const auto execute = [](uint32_t runahead_cap, const std::string& suffix) {
-		const fs::path path =
-			fs::temp_directory_path() / ("quercus_exact_ltl_" + std::to_string(::getpid()) + suffix + ".ndjson");
-		fs::remove(path);
-		ltl::File    properties = ltl::parse("prop fails during [10ms, 20ms] = always false;", "exact.spec");
-		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, runahead_cap);
-		runtime.load_properties(std::move(properties), 20, "exact.spec");
-		runtime.trace_to(path.string(), {});
-		runtime.start();
-		runtime.advance(std::chrono::milliseconds(50), 1.0, std::chrono::seconds(5));
-		const auto results = runtime.property_results();
-		EXPECT_TRUE(runtime.failed());
-		EXPECT_EQ(runtime.tick(), 11u);
-		EXPECT_EQ(results.size(), 1u);
-		if (!results.empty()) {
-			EXPECT_EQ(results.front().decisive_tick, 10u);
-		}
-		runtime.stop();
-		std::ifstream      input(path, std::ios::binary);
-		std::ostringstream contents;
-		contents << input.rdbuf();
-		fs::remove(path);
-		return contents.str();
-	};
-
-	const std::string strict = execute(0, "_strict");
-	const std::string exact  = execute(100, "_exact");
-	EXPECT_EQ(exact, strict);
-}
-
-TEST_F(RuntimeTest, UsesRequestedBatchWhenClockSkipsAreEnabled) {
-	settings::set_setting("module_tick_skip_mean_ppm", 500'000.0);
-	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
-	const fs::path trace_path =
-		fs::temp_directory_path() / ("quercus_effective_batch_" + std::to_string(::getpid()) + ".ndjson");
-	const fs::path grant_path = fs::temp_directory_path() / ("quercus_skip_batch_grants_" + std::to_string(::getpid()));
-	fs::remove(trace_path);
-	fs::remove(grant_path);
-	::setenv("FAKE_CHILD_GRANT_RECORD", grant_path.c_str(), 1);
-
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 5);
-	runtime.trace_to(trace_path.string(), {});
-	testing::internal::CaptureStderr();
-	ASSERT_NO_THROW(runtime.start());
-	const std::string warning = testing::internal::GetCapturedStderr();
-	fs::remove(grant_path);
-	runtime.advance(std::chrono::milliseconds(5), 1.0, std::chrono::seconds(5));
-	runtime.stop();
-
-	std::ifstream      input(trace_path);
-	std::ostringstream trace;
-	trace << input.rdbuf();
-	fs::remove(trace_path);
-	EXPECT_EQ(warning.find("effective tick batch is 1"), std::string::npos);
-	EXPECT_NE(trace.str().find("\"tick_batch_requested\":5,\"tick_batch_effective\":5"), std::string::npos);
-	EXPECT_NE(trace.str().find("\"type\":\"module_tick_skipped\""), std::string::npos);
-
-	std::ifstream grant_input(grant_path);
-	std::string   grant;
-	ASSERT_TRUE(std::getline(grant_input, grant));
-	EXPECT_EQ(grant.substr(0, 2), "5:");
-	EXPECT_NE(grant, "5:31");
-	fs::remove(grant_path);
-}
-
-TEST_F(RuntimeTest, SelectiveSynchronizationMatchesReferenceForEveryBatchSize) {
-	settings::set_setting("module_tick_skip_mean_ppm", 250'000.0);
-	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
-	settings::set_setting("module_clock_drift_sd_ppm", 137.0);
-	::setenv("FAKE_CHILD_CERTIFY_QUIET", "1", 1);
-	::setenv("FAKE_CHILD_HEARTBEAT_UNTIL", "0", 1);
-
-	const auto execute = [](uint32_t batch, bool selective) {
-		const fs::path path =
-			fs::temp_directory_path() / ("quercus_selective_" + std::to_string(::getpid()) + "_" +
-										 std::to_string(batch) + (selective ? "_new" : "_v0") + ".ndjson");
-		fs::remove(path);
-		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch, 0, selective);
-		runtime.start();
-		runtime.trace_to(path.string(), {});
-		runtime.advance(std::chrono::milliseconds(batch * 12), 1.0, std::chrono::seconds(10));
-		runtime.stop();
-		std::ifstream      input(path, std::ios::binary);
-		std::ostringstream bytes;
-		bytes << input.rdbuf();
-		fs::remove(path);
-		return bytes.str();
-	};
-
-	for (uint32_t batch = 1; batch <= sim::MAX_TICK_BATCH; batch++) {
-		EXPECT_EQ(execute(batch, true), execute(batch, false)) << "batch " << batch;
-	}
-}
-
-TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossBatchSizes) {
-	settings::set_setting("module_tick_skip_mean_ppm", 300'000.0);
-	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
-	settings::set_setting("module_clock_drift_sd_ppm", 137.0);
-	::setenv("FAKE_CHILD_HEARTBEAT_EVERY", "4294967295", 1);
+	::setenv("TEST_APP_HEARTBEAT_EVERY", "4294967295", 1);
 
 	const auto execute = [](uint32_t batch) {
 		const fs::path path = fs::temp_directory_path() / ("quercus_skip_trace_" + std::to_string(::getpid()) + "_" +
 														   std::to_string(batch) + ".ndjson");
 		fs::remove(path);
-		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch);
-		runtime.start();
-		// Begin after activation so the comparison isolates skipped-tick batching from the documented
-		// batch-boundary delay of responses to startup heartbeats.
+		test_app::Runtime runtime(7);
 		runtime.trace_to(path.string(), {});
+		runtime.start();
 		const uint64_t before = runtime.tick();
-		runtime.advance(std::chrono::milliseconds(300), 1.0, std::chrono::seconds(10));
+		for (unsigned advanced = 0; advanced < 300; advanced += batch)
+			runtime.advance(std::chrono::milliseconds(std::min<unsigned>(batch, 300 - advanced)), 1.0,
+							std::chrono::seconds(10));
 		EXPECT_EQ(runtime.tick() - before, 300u);
 		runtime.stop();
 
@@ -662,10 +449,7 @@ TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossBatchSizes) {
 		std::ostringstream trace;
 		trace << input.rdbuf();
 		fs::remove(path);
-		const std::string complete  = trace.str();
-		const std::size_t first_end = complete.find('\n');
-		EXPECT_NE(first_end, std::string::npos);
-		return first_end == std::string::npos ? std::string{} : complete.substr(first_end + 1);
+		return trace.str();
 	};
 
 	const std::string strict   = execute(1);
@@ -679,12 +463,12 @@ TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossBatchSizes) {
 TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 	settings::set_setting("module_tick_skip_mean_ppm", 900'000.0);
 	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
-	::setenv("FAKE_CHILD_QUERY_TICK", "2", 1);
+	::setenv("TEST_APP_QUERY_TICK", "2", 1);
 
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("quercus_local_rpc_delay_" + std::to_string(::getpid()) + ".ndjson");
 	fs::remove(trace_path);
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start());
 	runtime.advance(std::chrono::milliseconds(1000), 1.0, std::chrono::seconds(10));
@@ -716,50 +500,16 @@ TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 		<< "90% skipped module ticks must stretch local RPC service delays in global time";
 }
 
-TEST_F(RuntimeTest, LargerBatchesReduceLockstepRuntimeByAtLeastTwentyPercentEach) {
-	settings::set_setting("module_tick_skip_mean_ppm", 1000.0);
-	settings::set_setting("module_tick_skip_sd_ppm", 100.0);
-	settings::set_setting("module_clock_drift_sd_ppm", 100.0);
-	::setenv("FAKE_CHILD_HEARTBEAT_EVERY", "100", 1);
-
-	const auto measure = [](uint32_t batch) {
-		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch);
-		runtime.start();
-		runtime.advance(std::chrono::milliseconds(300), 1.0, std::chrono::seconds(10));
-		const uint64_t before_tick = runtime.tick();
-		const auto     before_time = std::chrono::steady_clock::now();
-		runtime.advance(std::chrono::milliseconds(6000), 1.0, std::chrono::seconds(30));
-		const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - before_time).count();
-		EXPECT_EQ(runtime.tick() - before_tick, 6000u);
-		runtime.stop();
-		return elapsed;
-	};
-	const auto fastest_of_three = [&measure](uint32_t batch) {
-		return std::min({measure(batch), measure(batch), measure(batch)});
-	};
-
-	const double strict   = fastest_of_three(1);
-	const double batch_5  = fastest_of_three(5);
-	const double batch_15 = fastest_of_three(15);
-	RecordProperty("batch_1_seconds", strict);
-	RecordProperty("batch_5_seconds", batch_5);
-	RecordProperty("batch_15_seconds", batch_15);
-	EXPECT_LT(batch_5, strict * 0.8) << "1x=" << strict << "s, 5x=" << batch_5 << "s";
-	EXPECT_LT(batch_15, batch_5 * 0.8) << "5x=" << batch_5 << "s, 15x=" << batch_15 << "s";
-}
-
-TEST_F(RuntimeTest, RetainsTheLastInboundSlotAcrossAdvanceCalls) {
+TEST_F(RuntimeTest, RetainsPendingResponsesAcrossAdvanceCalls) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_child_record_" + std::to_string(::getpid()));
 	fs::remove(record);
-	::setenv("FAKE_CHILD_QUERY_TICK", "2", 1);
-	::setenv("FAKE_CHILD_RECORD", record.c_str(), 1);
+	::setenv("TEST_APP_QUERY_TICK", "2", 1);
+	::setenv("TEST_APP_RECORD", record.c_str(), 1);
 
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 3);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
-	// The child sends the query from relative slot zero. Its response is produced in slot two while
-	// the parent replays the first batch, then must survive a one-tick budget tail until the next
-	// complete batch consumes it at its relative slot two.
+	// A response queued during one advance must survive until the next grant consumes it.
 	runtime.advance(std::chrono::milliseconds(3), 1.0, std::chrono::seconds(5));
 	runtime.advance(std::chrono::milliseconds(1), 1.0, std::chrono::seconds(5));
 	runtime.advance(std::chrono::milliseconds(2), 1.0, std::chrono::seconds(5));
@@ -778,7 +528,7 @@ TEST_F(RuntimeTest, RetainsTheLastInboundSlotAcrossAdvanceCalls) {
 }
 
 TEST_F(RuntimeTest, WarnsOnlyAfterTenFramesOfSustainedPacingShortfall) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
 	testing::internal::CaptureStderr();
@@ -800,7 +550,7 @@ TEST_F(RuntimeTest, WarnsOnlyAfterTenFramesOfSustainedPacingShortfall) {
 }
 
 TEST_F(RuntimeTest, GrantsNoTicksWhilePaused) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
 	const uint64_t started = runtime.tick();
@@ -816,8 +566,8 @@ TEST_F(RuntimeTest, GrantsNoTicksWhilePaused) {
 TEST_F(RuntimeTest, DeliversEventsToASubscribedApplication) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_child_record_" + std::to_string(::getpid()));
 	fs::remove(record);
-	::setenv("FAKE_CHILD_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str(), 1);
-	::setenv("FAKE_CHILD_RECORD", record.c_str(), 1);
+	::setenv("TEST_APP_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str(), 1);
+	::setenv("TEST_APP_RECORD", record.c_str(), 1);
 
 	events::Schedule schedule;
 
@@ -827,7 +577,7 @@ TEST_F(RuntimeTest, DeliversEventsToASubscribedApplication) {
 	tub.module = module::ModuleId{FIRST};
 	schedule.tubs.push_back(tub);
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load(schedule);
 	ltl::File properties = ltl::parse(R"(
 prop observes_the_rfid_delivery =
@@ -871,9 +621,9 @@ prop never_delivers_duplicate_rfid_events_on_one_tick =
 TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_hardware_event_ticks_" + std::to_string(::getpid()));
 	fs::remove(record);
-	::setenv("FAKE_CHILD_SUBSCRIBE", std::to_string(EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT).c_str(), 1);
-	::setenv("FAKE_CHILD_RECORD", record.c_str(), 1);
-	::setenv("FAKE_CHILD_RECORD_TICKS", "1", 1);
+	::setenv("TEST_APP_SUBSCRIBE", std::to_string(EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT).c_str(), 1);
+	::setenv("TEST_APP_RECORD", record.c_str(), 1);
+	::setenv("TEST_APP_RECORD_TICKS", "1", 1);
 	settings::set_setting("laser_event_extra_delay_ms", 3);
 	settings::set_setting("rfid_event_extra_delay_mean_ms", 35.0);
 	settings::set_setting("rfid_event_extra_delay_sd_ms", 0.0);
@@ -893,7 +643,7 @@ TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 	rfid.uid    = {1, 2, 3, 4, 5, 6, 7};
 	schedule.tubs.push_back(rfid);
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load(schedule);
 	ASSERT_NO_THROW(runtime.start());
 	runtime.world().module(module::ModuleId{FIRST})->set_left_laser_enabled(true);
@@ -919,9 +669,9 @@ TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 }
 
 TEST_F(RuntimeTest, FailsTheRunWhenAnApplicationExits) {
-	::setenv("FAKE_CHILD_EXIT_AFTER", "5", 1);
+	::setenv("TEST_APP_EXIT_AFTER", "5", 1);
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
 	// Carrying on would produce a run the inputs no longer describe, so the run ends instead.
@@ -931,10 +681,10 @@ TEST_F(RuntimeTest, FailsTheRunWhenAnApplicationExits) {
 }
 
 TEST_F(RuntimeTest, WaitsForEveryApplicationBeforeCompletingATick) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
-	// The barrier keeps every application on the same tick, which is what makes a run reproducible.
+	// Every module must complete its grant before the world completes a tick.
 	for (int frame = 0; frame < 5; frame++) {
 		const uint64_t before = runtime.tick();
 		runtime.advance(std::chrono::microseconds(16000), 1.0, std::chrono::milliseconds(200));
@@ -944,17 +694,38 @@ TEST_F(RuntimeTest, WaitsForEveryApplicationBeforeCompletingATick) {
 	runtime.stop();
 }
 
-TEST_F(RuntimeTest, FailsWhenAnApplicationCannotBeStarted) {
-	settings::set_setting<std::string>("application_path", "/nonexistent/quercus/application");
-
-	sim::Runtime runtime(7, std::chrono::milliseconds(200), std::chrono::milliseconds(200));
-	EXPECT_THROW(runtime.start(), std::runtime_error);
+TEST_F(RuntimeTest, StartupReportsMissingFirmwareKeyOrImagePath) {
+	const auto folder =
+		fs::temp_directory_path() /
+		("quercus-missing-firmware-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	fs::create_directory(folder);
+	const auto settings_file = folder / "settings.toml";
+	const auto layout_file   = folder / "layout.toml";
+	const auto missing_image = folder / "missing.dll";
+	std::ofstream(layout_file) << "[module.1]\nactive=true\nneighbors=[0,0,0]\npos=[0,0]\nangle=0\n";
+	for (const bool has_path : {false, true}) {
+		std::ofstream settings_file_output(settings_file);
+		settings_file_output << "simulation_speed=1.0\nscale=1.0\nseed=7\n";
+		if (has_path) settings_file_output << "firmware=\"" << missing_image.string() << "\"\n";
+		settings_file_output.close();
+		ASSERT_NO_THROW(settings::parse_settings(settings_file, layout_file));
+		sim::Runtime runtime(7);
+		try {
+			runtime.start();
+			FAIL() << "Started without a firmware image";
+		} catch (const std::exception& error) {
+			EXPECT_NE(std::string(error.what()).find("Module 1"), std::string::npos);
+			EXPECT_NE(std::string(error.what()).find(has_path ? missing_image.string() : "firmware"),
+					  std::string::npos);
+		}
+	}
+	fs::remove_all(folder);
 }
 
 TEST_F(RuntimeTest, TreatsAnEmptyPropertyFileAsAVacuousPass) {
 	ltl::File properties = ltl::parse("", "empty.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 0, "empty.spec");
 	ASSERT_NO_THROW(runtime.start());
 	EXPECT_EQ(runtime.properties_total(), 0u);
@@ -975,7 +746,7 @@ TEST_F(RuntimeTest, ReportsTheImportedFileAsAPropertySource) {
 	const fs::path main_file  = directory / "main.spec";
 	ltl::File      properties = ltl::parse("import \"imported.spec\";\n", main_file.string());
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 1, main_file.string());
 	const auto results = runtime.property_results();
 	ASSERT_EQ(results.size(), 1u);
@@ -1000,7 +771,7 @@ prop whole_trace = always true;
 )",
 									  "runtime.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load(schedule);
 	runtime.load_properties(std::move(properties), 2, "runtime.spec");
 	EXPECT_EQ(runtime.properties_total(), 3u);
@@ -1019,7 +790,7 @@ prop future_falsehood at 100ms = false;
 )",
 									  "runtime.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 100, "runtime.spec");
 	EXPECT_EQ(runtime.properties_pending(), 2u);
 	EXPECT_EQ(runtime.properties_failed(), 0u);
@@ -1055,7 +826,7 @@ prop future_falsehood at 100ms = false;
 TEST_F(RuntimeTest, StopsStartupAtAnInclusiveExecutionLimit) {
 	ltl::File properties = ltl::parse("prop future during [0ms, 100ms] = eventually false;", "runtime.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 100, "runtime.spec");
 	ASSERT_NO_THROW(runtime.start(0));
 	EXPECT_EQ(runtime.tick(), 1u);
@@ -1072,7 +843,7 @@ prop resolved_early during [1ms, 4ms] = eventually true;
 )",
 									  "runtime.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 2, "runtime.spec");
 	ASSERT_NO_THROW(runtime.start(2));
 	const auto results = runtime.property_results();
@@ -1089,7 +860,7 @@ prop resolved_early during [1ms, 4ms] = eventually true;
 TEST_F(RuntimeTest, DoesNotExtendPropertyObservationsPastTheSemanticScenarioEnd) {
 	ltl::File properties = ltl::parse("prop unavailable at 4ms = true;", "runtime.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 2, "runtime.spec");
 	ASSERT_NO_THROW(runtime.start(5));
 	const auto results = runtime.property_results();
@@ -1105,7 +876,7 @@ prop relative during [3ms, 8ms] = eventually[1ms, 2ms] module(1).led_color == 0x
 )",
 									  "runtime.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 8, "runtime.spec");
 	ASSERT_NO_THROW(runtime.start(8));
 	while (runtime.properties_pending() > 0 && runtime.tick() <= 8) {
@@ -1134,7 +905,7 @@ TEST_F(RuntimeTest, WakesAllSubscriberBitsetWordsOnATubPulse) {
 		   << "prop new_domain = F (exists item: Tub: appeared(item));\n"
 		   << "prop clearing = G (appeared(tub(4)) -> (X (!appeared(tub(4)))));\n"
 		   << "prop removal = F disappeared(tub(4));\n";
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load(schedule);
 	runtime.load_properties(ltl::parse(source.str(), "subscriptions.spec"), 50, "subscriptions.spec");
 	ASSERT_NO_THROW(runtime.start(50));
@@ -1155,7 +926,7 @@ TEST_F(RuntimeTest, WakesAllSubscriberBitsetWordsOnATubPulse) {
 }
 
 TEST_F(RuntimeTest, UpdatesSubscriptionsWhenAShortCircuitChangesItsReadSet) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(ltl::parse("prop guarded = G (module(1).big_belt_speed == 0 || module(2).led_value == 0);",
 									   "subscriptions.spec"),
 							100, "subscriptions.spec");
@@ -1182,7 +953,7 @@ TEST_F(RuntimeTest, UpdatesSubscriptionsWhenAShortCircuitChangesItsReadSet) {
 }
 
 TEST_F(RuntimeTest, ReportsSleepingTriggerCountsExactlyAfterAnEarlyFailure) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(ltl::parse(R"(
 prop counted = G (true -> module(1).led_value == 0);
 prop halt at 20ms = false;
@@ -1202,7 +973,7 @@ prop halt at 20ms = false;
 }
 
 TEST_F(RuntimeTest, SleepingTriggerCountsDoNotExtendPastTheSemanticScenarioEnd) {
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(
 		ltl::parse("prop counted during [1ms, 100ms] = G (true -> module(1).led_value == 0);", "subscriptions.spec"),
 		10, "subscriptions.spec");
@@ -1219,7 +990,7 @@ TEST_F(RuntimeTest, StopsWhenAPropertyFails) {
 	ltl::File properties =
 		ltl::parse("prop impossible at 1ms = module(1).rfid_active && !module(1).rfid_active;", "runtime.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 2, "runtime.spec");
 	ASSERT_NO_THROW(runtime.start());
 	run_for(runtime, std::chrono::milliseconds(16));
@@ -1241,7 +1012,7 @@ TEST_F(RuntimeTest, ObservesStartupTubEdgesAtLogicalTimeZero) {
 
 	ltl::File properties =
 		ltl::parse("prop startup at 0ms = appeared(tub(4)) && entered(tub(4), module(1).entry);", "startup.spec");
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load(schedule);
 	runtime.load_properties(std::move(properties), 0, "startup.spec");
 	ASSERT_NO_THROW(runtime.start(0));
@@ -1265,8 +1036,8 @@ TEST_F(RuntimeTest, RecordsFailureFormulaObligationFactsAndCanonicalObservation)
 	tub.module = module::ModuleId{FIRST};
 	schedule.tubs.push_back(tub);
 
-	ltl::File    properties = ltl::parse("prop broken at 0ms = !present(tub(4));", "failure.spec");
-	sim::Runtime runtime(7);
+	ltl::File         properties = ltl::parse("prop broken at 0ms = !present(tub(4));", "failure.spec");
+	test_app::Runtime runtime(7);
 	runtime.load(schedule);
 	runtime.load_properties(std::move(properties), 0, "failure.spec");
 	runtime.trace_to(trace_path.string(), {});
@@ -1299,7 +1070,7 @@ TEST_F(RuntimeTest, RecordsMetricObligationCreationAndDeadline) {
 
 	ltl::File properties =
 		ltl::parse("prop deadline = eventually[1ms, 2ms] module(1).led_color == 0xffffff;", "deadline.spec");
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 4, "deadline.spec");
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start(4));
@@ -1326,11 +1097,11 @@ TEST_F(RuntimeTest, RecordsMetricObligationCreationAndDeadline) {
 	EXPECT_NE(trace.str().find("\"actual\":\"0x000000\""), std::string::npos);
 }
 
-TEST_F(RuntimeTest, ObservesRpcTrafficAtExactBatchedLogicalBoundaries) {
+TEST_F(RuntimeTest, ObservesRpcTrafficAtExactLogicalBoundaries) {
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("ltlf_rpc_trace_" + std::to_string(::getpid()) + ".ndjson");
 	fs::remove(trace_path);
-	::setenv("FAKE_CHILD_QUERY_TICK", "2", 1);
+	::setenv("TEST_APP_QUERY_TICK", "2", 1);
 
 	ltl::File properties = ltl::parse(R"(
 prop every_query_receives_a_successful_response =
@@ -1347,7 +1118,7 @@ prop every_delivered_response_is_correlated_and_successful =
 )",
 									  "rpc-boundary.spec");
 
-	sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 3);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 8, "rpc-boundary.spec");
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start(8));
@@ -1367,9 +1138,7 @@ prop every_delivered_response_is_correlated_and_successful =
 	fs::remove(trace_path);
 	const std::string records = trace.str();
 
-	// The request is replayed at tick two. Its response becomes ready while the parent replays the
-	// rest of that child grant, is observed at the tick-four boundary, and is consumed on the child's
-	// first executable tick in the following window.
+	// The receive and transmit delays each consume one executed module tick.
 	const std::string request =
 		"\"type\":\"rpc_request\",\"tick\":2,\"id\":3,\"module\":1,\"cmd\":" + std::to_string(CMD_LASER_LEFT_GET);
 	const std::string response =
@@ -1380,7 +1149,7 @@ prop every_delivered_response_is_correlated_and_successful =
 }
 
 TEST_F(RuntimeTest, MessageDeliveryProducesThePayloadCheckedReplyOnExactlyTheNextTick) {
-	::setenv("FAKE_CHILD_REPLY_TO_MESSAGE", "1", 1);
+	::setenv("TEST_APP_REPLY_TO_MESSAGE", "1", 1);
 	ltl::File properties = ltl::parse(R"(
 prop replies_on_the_next_tick =
     always (
@@ -1396,7 +1165,7 @@ prop replies_on_the_next_tick =
 )",
 									  "message-reply.spec");
 
-	sim::Runtime runtime(7);
+	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 10, "message-reply.spec");
 	ASSERT_NO_THROW(runtime.start(10));
 	rpc::Frame message;
@@ -1434,9 +1203,9 @@ TEST_F(RuntimeTest, ControlledApplicationMutantsFailTheirIntendedProperties) {
 	};
 
 	for (const MutantCase& mutant : mutants) {
-		::setenv("FAKE_CHILD_MUTANT", mutant.mode, 1);
+		::setenv("TEST_APP_MUTANT", mutant.mode, 1);
 		ltl::File properties = ltl::parse("prop rejects_mutant = " + std::string(mutant.formula) + ";", "mutant.spec");
-		sim::Runtime runtime(7);
+		test_app::Runtime runtime(7);
 		runtime.load_properties(std::move(properties), 8, "mutant.spec");
 		ASSERT_NO_THROW(runtime.start(8)) << mutant.mode;
 		while (runtime.properties_pending() > 0) {
@@ -1451,10 +1220,10 @@ TEST_F(RuntimeTest, ControlledApplicationMutantsFailTheirIntendedProperties) {
 		else EXPECT_EQ(*results[0].decisive_tick, 8u) << mutant.mode;
 		runtime.stop();
 	}
-	::unsetenv("FAKE_CHILD_MUTANT");
+	::unsetenv("TEST_APP_MUTANT");
 }
 
-TEST_F(RuntimeTest, StrictAndBatchedModesProduceIdenticalLtlResultsAndObservationRecords) {
+TEST_F(RuntimeTest, AdvanceSizesProduceIdenticalLtlResultsAndObservationRecords) {
 	struct Run {
 		std::vector<sim::PropertyResult> results;
 		std::string                      relevant_trace;
@@ -1479,13 +1248,13 @@ prop arrival_persists_on_the_next_logical_tick =
 )",
 										  "batch.spec");
 
-		sim::Runtime runtime(7, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch);
+		test_app::Runtime runtime(7);
 		runtime.load(schedule);
 		runtime.load_properties(std::move(properties), 12, "batch.spec");
 		runtime.trace_to(trace_path.string(), {});
 		runtime.start(12);
 		while (runtime.properties_pending() > 0) {
-			runtime.advance(std::chrono::milliseconds(48), 1.0, std::chrono::seconds(5));
+			runtime.advance(std::chrono::milliseconds(batch), 1.0, std::chrono::seconds(5));
 		}
 		Run run;
 		run.results = runtime.property_results();
@@ -1512,4 +1281,39 @@ prop arrival_persists_on_the_next_logical_tick =
 		EXPECT_EQ(strict.results[index].decisive_tick, batched.results[index].decisive_tick);
 	}
 	EXPECT_EQ(strict.relevant_trace, batched.relevant_trace);
+}
+
+TEST_F(RuntimeTest, LtlFailureInsideAnAdvanceStopsAtTheExactTickAndKeepsTheTraceIdentical) {
+	::setenv("TEST_APP_HEARTBEAT_UNTIL", "0", 1);
+
+	const auto execute = [](uint32_t advance_ticks, const std::string& suffix) {
+		const fs::path path =
+			fs::temp_directory_path() / ("quercus_exact_ltl_" + std::to_string(::getpid()) + suffix + ".ndjson");
+		fs::remove(path);
+		ltl::File         properties = ltl::parse("prop fails during [10ms, 20ms] = always false;", "exact.spec");
+		test_app::Runtime runtime(7);
+		runtime.load_properties(std::move(properties), 20, "exact.spec");
+		runtime.trace_to(path.string(), {});
+		runtime.start();
+		for (unsigned advanced = 0; advanced < 50 && !runtime.halted(); advanced += advance_ticks)
+			runtime.advance(std::chrono::milliseconds(std::min<unsigned>(advance_ticks, 50 - advanced)), 1.0,
+							std::chrono::seconds(5));
+		const auto results = runtime.property_results();
+		EXPECT_TRUE(runtime.failed());
+		EXPECT_EQ(runtime.tick(), 11u);
+		EXPECT_EQ(results.size(), 1u);
+		if (!results.empty()) {
+			EXPECT_EQ(results.front().decisive_tick, 10u);
+		}
+		runtime.stop();
+		std::ifstream      input(path, std::ios::binary);
+		std::ostringstream contents;
+		contents << input.rdbuf();
+		fs::remove(path);
+		return contents.str();
+	};
+
+	const std::string strict = execute(1, "_single");
+	const std::string exact  = execute(50, "_wide");
+	EXPECT_EQ(exact, strict);
 }

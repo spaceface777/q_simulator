@@ -22,12 +22,12 @@ protected:
 
 		temp_settings_path    = fs::temp_directory_path() / ("test_settings_" + std::to_string(dist(rng)) + ".toml");
 		temp_layout_path      = fs::temp_directory_path() / ("test_layout_" + std::to_string(dist(rng)) + ".toml");
-		temp_application_path = fs::temp_directory_path() / ("zephyr_" + std::to_string(dist(rng)) + ".exe");
+		temp_application_path = fs::temp_directory_path() / ("zephyr_" + std::to_string(dist(rng)) + ".dll");
 
 		std::ofstream outfile(temp_application_path);
 		outfile << "dummy content";
 
-		write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+		write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 					   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -65,7 +65,7 @@ TEST_F(SettingsTest, GetNonExistentSettingThrows) {
 }
 
 TEST_F(SettingsTest, ParseValidSettings) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.5
 scale = 2.0
@@ -117,16 +117,16 @@ angle = 90
 			  std::vector<module::ModuleId>({module::ModuleId{1}, module::ModuleId{2}}));
 }
 
-TEST_F(SettingsTest, ApplicationOverrideIsAppliedBeforeSettingsValidation) {
-	write_settings("application_path = \"/path/that/does/not/exist\"\nseed = 1\n" +
+TEST_F(SettingsTest, FirmwareOverrideIsAppliedBeforeSettingsValidation) {
+	write_settings("firmware = \"/path/that/does/not/exist\"\nseed = 1\n" +
 				   std::string("simulation_speed = 1.0\nscale = 1.0\n"));
 
 	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path, temp_application_path));
-	EXPECT_EQ(settings::get_setting<std::string>("application_path"), temp_application_path.string());
+	EXPECT_EQ(settings::get_setting<std::string>("firmware"), temp_application_path.string());
 }
 
 TEST_F(SettingsTest, ParseSettingsAcceptsFiniteHardwarePositionSettings) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -145,7 +145,7 @@ rfid_position_sd = 0.25
 }
 
 TEST_F(SettingsTest, ParseSettingsUsesCanonicalHardwarePositionDefaults) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -169,7 +169,7 @@ TEST_F(SettingsTest, ParseSettingsUsesHardwareEventDelayDefaults) {
 }
 
 TEST_F(SettingsTest, ParseSettingsAcceptsHardwareEventDelayOverrides) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -185,7 +185,7 @@ rfid_event_extra_delay_sd_ms = 1.25
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNegativeHardwareEventDelay) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -196,7 +196,7 @@ rfid_event_extra_delay_sd_ms = -1.0
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNegativeHardwarePositionStandardDeviation) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -212,7 +212,7 @@ rfid_position_sd = 0.1
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNonfiniteHardwarePositionSetting) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -228,7 +228,7 @@ rfid_position_sd = 0.1
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsHardwarePositionsThatOverflowWorldArithmetic) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -267,17 +267,8 @@ TEST_F(SettingsTest, ParseSettingsMissingFile) {
 	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
 }
 
-TEST_F(SettingsTest, ParseSettingsMissingRouterPath) {
-	std::string invalid_toml = R"(simulation_speed = 1.0
-scale = 1.0
-)";
-
-	write_settings(invalid_toml);
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
-}
-
 TEST_F(SettingsTest, ParseSettingsInvalidScale) {
-	std::string invalid_toml = "application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	std::string invalid_toml = "firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
 							   R"(simulation_speed = 1.0
 scale = 10.0
 )";
@@ -362,4 +353,38 @@ angle = 0
 )");
 
 	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+}
+
+TEST_F(SettingsTest, ResolvesRelativeFirmwareFromEachDeclaringFile) {
+	write_settings("firmware = \"default.dll\"\nseed=1\nsimulation_speed=1.0\nscale=1.0\n");
+	write_layout("[module.1]\nactive=true\nneighbors=[0,0,0]\npos=[0,0]\nangle=0\nfirmware=\"module.dll\"\n");
+	settings::parse_settings(temp_settings_path, temp_layout_path);
+	EXPECT_EQ(settings::get_setting<std::string>("firmware"),
+			  (temp_settings_path.parent_path() / "default.dll").string());
+	EXPECT_EQ(settings::get_module_firmware(module::ModuleId{1}),
+			  (temp_layout_path.parent_path() / "module.dll").string());
+}
+
+TEST_F(SettingsTest, RejectsRemovedSettingsKeysWithReplacement) {
+	for (const char* key : {"application_path", "binary"}) {
+		write_settings(std::string(key) + "=\"old.exe\"\nseed=1\nsimulation_speed=1.0\nscale=1.0\n");
+		try {
+			settings::parse_settings(temp_settings_path, temp_layout_path);
+			FAIL();
+		} catch (const std::invalid_argument& error) {
+			EXPECT_NE(std::string(error.what()).find(key), std::string::npos);
+			EXPECT_NE(std::string(error.what()).find("firmware"), std::string::npos);
+		}
+	}
+}
+
+TEST_F(SettingsTest, RejectsRemovedModuleBinaryWithReplacement) {
+	write_layout("[module.1]\nactive=true\nneighbors=[0,0,0]\npos=[0,0]\nangle=0\nbinary=\"old.exe\"\n");
+	try {
+		settings::parse_settings(temp_settings_path, temp_layout_path);
+		FAIL();
+	} catch (const std::invalid_argument& error) {
+		EXPECT_NE(std::string(error.what()).find("Module 1"), std::string::npos);
+		EXPECT_NE(std::string(error.what()).find("firmware"), std::string::npos);
+	}
 }

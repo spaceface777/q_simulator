@@ -1,4 +1,9 @@
-cmake_minimum_required(VERSION 3.12.0)
+cmake_minimum_required(VERSION 3.20)
+
+if(CMAKE_HOST_APPLE AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum macOS version")
+endif()
+
 project(simulation VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -9,7 +14,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(COMPILATION_FLAGS -Wall -Wextra -Werror)
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto=auto -g")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
 
 # Opt in to the checked build while chasing a bug, rather than paying for it on every run.
 option(ENABLE_DEBUG_CONTAINERS "Enable libstdc++ debug containers" OFF)
@@ -19,21 +24,25 @@ endif()
 
 option(ENABLE_SANITIZERS "Enable the address and undefined behaviour sanitizers" OFF)
 if(ENABLE_SANITIZERS)
-    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
+    # Keep instrumented host execution fast enough for bounded startup and pacing tests.
+    add_compile_options(-O1 -fsanitize=address,undefined -fno-omit-frame-pointer -g)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
 # === Libraries ===
 
 include(FetchContent)
+include(CTest)
 
-FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.17.0
-    GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(googletest)
+if(BUILD_TESTING)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.17.0
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(googletest)
+endif()
 
 FetchContent_Declare(
     tomlplusplus
@@ -68,17 +77,18 @@ if(NOT EXISTS "${QUERCUS_SDK_ROOT}/include/quercus/rpc_wire.h")
         "Run: git submodule update --init --recursive")
 endif()
 
+set(QSIM_TEST_FIRMWARE_DIR "${CMAKE_SOURCE_DIR}/external/q_applets/out" CACHE PATH "Directory with applet .dll images")
+
 # === Builds ===
 
 add_library(core STATIC
     src/firmware/image.cpp
-    src/childproc/launcher.cpp
+    src/firmware/inprocess_backend.cpp
     src/sim/runtime.cpp
+    src/sim/module_clock.cpp
     src/sim/pacing.cpp
     src/platform/platform.cpp
     src/platform/rpc_worker_pool.cpp
-    src/childsync/mailbox.cpp
-    src/childsync/barrier.cpp
     src/rpc/frame.cpp
     src/seed/seed.cpp
     src/engine/task_queue.cpp
@@ -97,12 +107,12 @@ add_library(core STATIC
 )
 
 target_link_libraries(core PUBLIC
-    pthread
     tomlplusplus::tomlplusplus
     ${CMAKE_DL_LIBS}
 )
 
-target_include_directories(core PUBLIC "${QUERCUS_SDK_ROOT}/include")
+target_include_directories(core PUBLIC
+    "${QUERCUS_SDK_ROOT}/include")
 
 target_compile_options(core PRIVATE ${COMPILATION_FLAGS})
 
@@ -131,11 +141,11 @@ file(GLOB_RECURSE FORMAT_FILES
 )
 
 add_custom_target(format
-    COMMAND clang-format-22 -style=file -i ${FORMAT_FILES}
+    COMMAND "${CLANG_FORMAT}" -style=file -i ${FORMAT_FILES}
     VERBATIM)
 
 add_custom_target(format-check
-    COMMAND clang-format-22 -style=file --dry-run --Werror ${FORMAT_FILES}
+    COMMAND "${CLANG_FORMAT}" -style=file --dry-run --Werror ${FORMAT_FILES}
     VERBATIM)
 
 # === Subdirectories ===
@@ -144,6 +154,6 @@ if(NOT TESTING_CONSOLE_BUILD)
     add_subdirectory(src)
 endif()
 
-include(CTest)
-enable_testing()
-add_subdirectory(test)
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()

@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -40,7 +41,7 @@ namespace events {
 	// scenario file, just like the sibling LTLf property file.
 	struct ScenarioFiles {
 		std::optional<fs::path> layout;
-		std::optional<fs::path> binary;
+		std::optional<fs::path> firmware;
 	};
 
 	struct Schedule {

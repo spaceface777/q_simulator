@@ -468,7 +468,7 @@ TEST_F(CalibrationStatisticsTest, WeakMotorsAppearAtTheConfiguredRate) {
 }
 
 TEST_F(CalibrationStatisticsTest, TheWeakMotorRateIsConfigurable) {
-	const auto measured_rate = [this]() {
+	const auto measured_rate = []() {
 		const std::vector<Calibration> drawn = population();
 		int                            weak  = 0;
 		for (const Calibration& calibration : drawn) {

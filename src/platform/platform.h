@@ -11,12 +11,12 @@
 #include <string>
 #include <vector>
 
-#include "../childsync/mailbox.h"
 #include "../defs.h"
 #include "../module/module.h"
 #include "../module/types.h"
 #include "../net/network.h"
 #include "../rpc/frame.h"
+#include <quercus/sim_transport.h>
 
 namespace world {
 	class State;
@@ -41,9 +41,8 @@ namespace platform {
 	inline constexpr int16_t STATUS_RANGE     = -34; // -ERANGE
 	inline constexpr int16_t STATUS_NO_SYS    = -38; // -ENOSYS
 
-	// Frames the platform may deliver to one application per tick. The child's mailbox is one page
-	// holding four messages, so the byte budget can bite before the frame count does.
-	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = childsync::MAX_FRAMES_PER_TICK;
+	// A grant carries at most four frames within its bounded byte buffer.
+	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = QSIM_MAX_GRANT_FRAMES;
 
 	// Physical rate windows use Core0 uptime, so they keep aging while Core1 is paused.
 	inline constexpr uint64_t RATE_LIMIT_WINDOW_TICKS = 1000;
@@ -108,7 +107,7 @@ namespace platform {
 	// The per-category mutex a command uses on Core0.
 	[[nodiscard]] Bucket request_bucket(uint8_t cmd);
 
-	// Per-application state the platform owns. None of it lives in the child.
+	// Per-module lifecycle and RPC state owned by the platform.
 	struct Runtime {
 		bool                     present                  = false;
 		uint32_t                 subscriptions            = 0;
@@ -174,8 +173,7 @@ namespace platform {
 		std::map<std::pair<uint8_t, uint32_t>, uint64_t> hardware_event_draw_ordinals_;
 		std::vector<PendingHardwareEvent>                pending_hardware_events_;
 
-		world::State* world_                   = nullptr;
-		bool          emit_application_output_ = true;
+		world::State* world_ = nullptr;
 
 		std::vector<Diagnostic> diagnostics_;
 
@@ -209,10 +207,6 @@ namespace platform {
 
 	public:
 		explicit Manager(world::State& world);
-
-		// Makes a deterministic parent-side lookahead copy. It has independent world, network, event,
-		// and RNG state and suppresses console output while it is advanced speculatively.
-		[[nodiscard]] Manager clone_for_lookahead(world::State& world) const;
 
 		// Exposed for tests; parse_settings drives this normally.
 		void add_module(module::ModuleId id);

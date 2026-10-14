@@ -8,6 +8,8 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unistd.h>
+#include <vector>
 
 #include "defs.h"
 #include "event/events.h"
@@ -67,9 +69,6 @@ static void handle_close(int code) {
 
 int main(int argc, char const* argv[]) {
 	std::chrono::milliseconds timeout        = std::chrono::milliseconds(std::numeric_limits<int64_t>::max());
-	uint32_t                  tick_batch     = 1;
-	uint32_t                  runahead_cap   = 0;
-	bool                      selective_sync = true;
 	std::filesystem::path     scenario_file  = "events.toml";
 	bool                      scenario_given = false;
 
@@ -96,43 +95,6 @@ int main(int argc, char const* argv[]) {
 				std::cout << "Missing <sec> for option '--timeout'" << std::endl;
 				return EXIT_SUCCESS;
 			}
-		} else if (arg == "--tick-batch") {
-			if (i + 1 < argc) {
-				const auto batch = util::parse_int(argv[i + 1]);
-				if (batch && *batch > 0 && static_cast<uint32_t>(*batch) <= sim::MAX_TICK_BATCH) {
-					tick_batch = static_cast<uint32_t>(*batch);
-					i++;
-					continue;
-				}
-				std::cout << "Tick batch must be between 1 and " << sim::MAX_TICK_BATCH << std::endl;
-				return EXIT_FAILURE;
-			}
-			std::cout << "Missing <n> for option '--tick-batch'" << std::endl;
-			return EXIT_FAILURE;
-		} else if (arg == "--exact-runahead") {
-			runahead_cap   = sim::DEFAULT_RUNAHEAD_TICKS;
-			selective_sync = false;
-			continue;
-		} else if (arg == "--runahead-cap") {
-			if (i + 1 < argc) {
-				const auto cap = util::parse_int(argv[i + 1]);
-				if (cap && *cap > 0 && static_cast<uint32_t>(*cap) <= sim::MAX_RUNAHEAD_TICKS) {
-					runahead_cap   = static_cast<uint32_t>(*cap);
-					selective_sync = false;
-					i++;
-					continue;
-				}
-				std::cout << "Runahead cap must be between 1 and " << sim::MAX_RUNAHEAD_TICKS << std::endl;
-				return EXIT_FAILURE;
-			}
-			std::cout << "Missing <n> for option '--runahead-cap'" << std::endl;
-			return EXIT_FAILURE;
-		} else if (arg == "--selective-sync") {
-			selective_sync = true;
-			continue;
-		} else if (arg == "--all-child-sync") {
-			selective_sync = false;
-			continue;
 		} else if (!arg.empty() && arg.front() != '-') {
 			if (scenario_given) {
 				std::cout << "More than one scenario given" << std::endl;
@@ -156,15 +118,10 @@ int main(int argc, char const* argv[]) {
 		std::cout << "  -h, --help              Prints all options" << std::endl;
 		std::cout << "  --no-gui                Runs without a window" << std::endl;
 		std::cout << "  --timeout <sec>         Closes the simulation after <sec> seconds" << std::endl;
-		std::cout << "  --tick-batch <n>        Runs up to n child ticks per barrier" << std::endl;
-		std::cout << "  --exact-runahead        Enables reference all-child exact runahead" << std::endl;
-		std::cout << "  --selective-sync        Uses selective synchronization (default)" << std::endl;
-		std::cout << "  --all-child-sync        Uses the reference all-child barrier" << std::endl;
-		std::cout << "  --runahead-cap <n>      Enables exact runahead with a cap up to 100 ticks" << std::endl;
 		std::cout << "  -v, --version           Prints version" << std::endl;
 		std::cout << std::endl;
 		std::cout << "A scenario may select its layout and application with [scenario].layout" << std::endl;
-		std::cout << "and [scenario].binary. Relative paths start from the scenario's folder." << std::endl;
+		std::cout << "and [scenario].firmware. Relative paths start from the scenario's folder." << std::endl;
 		std::cout << std::endl;
 		std::cout << "To run a scenario to a pass or fail verdict with no window and no" << std::endl;
 		std::cout << "operator, use ./simulation-scenario instead." << std::endl;
@@ -179,17 +136,20 @@ int main(int argc, char const* argv[]) {
 	sim::pin_to_one_cpu();
 
 	std::filesystem::path                layout_file = "layout.toml";
-	std::optional<std::filesystem::path> binary_file;
+	std::optional<std::filesystem::path> firmware_file;
 	events::Schedule                     schedule;
+	std::map<std::string, std::string>   environment;
 	uint64_t                             master_seed = 0;
 	try {
+		events::ScenarioFiles files;
+		if (std::filesystem::exists(scenario_file)) files = events::parse_scenario_files(scenario_file);
 		if (scenario_given) {
-			const events::ScenarioFiles files = events::parse_scenario_files(scenario_file);
 			if (files.layout) layout_file = *files.layout;
-			binary_file = files.binary;
+			firmware_file = files.firmware;
 		}
 
-		settings::parse_settings("settings.toml", layout_file, binary_file);
+		settings::parse_settings("settings.toml", layout_file, firmware_file);
+		if (files.firmware) settings::set_setting<std::string>("firmware", files.firmware->string());
 		master_seed = static_cast<uint64_t>(settings::get_setting<int>("seed"));
 		schedule    = events::parse_events(scenario_file, master_seed);
 	} catch (const std::exception& error) {
@@ -203,17 +163,7 @@ int main(int argc, char const* argv[]) {
 	world::configure_calibration_from_settings();
 	world::set_calibration_seed(master_seed);
 
-	if (selective_sync && runahead_cap != 0) {
-		std::cerr << "--selective-sync and --exact-runahead are separate execution paths" << std::endl;
-		return EXIT_FAILURE;
-	}
-	if (runahead_cap != 0 && tick_batch != 1) {
-		std::cerr << "Exact runahead requires --tick-batch 1" << std::endl;
-		return EXIT_FAILURE;
-	}
-
-	sim::Runtime runtime(master_seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, tick_batch, runahead_cap,
-						 selective_sync);
+	sim::Runtime runtime(master_seed, {}, std::move(environment));
 
 	try {
 		runtime.load(schedule);

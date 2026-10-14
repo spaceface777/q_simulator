@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <toml++/toml.hpp>
 #include <vector>
 
 #include "../defs.h"
@@ -25,7 +26,7 @@ namespace {
 	// Simulated time granted per iteration.
 	constexpr std::chrono::microseconds SLICE{50000};
 
-	// How long a slice waits on child applications before the runner gives up on keeping pace.
+	// Host-time budget for one slice of completed firmware grants.
 	constexpr std::chrono::milliseconds CHILD_BUDGET{5000};
 
 	constexpr int EXIT_PROPERTY_FAILED = 1;
@@ -35,16 +36,12 @@ namespace {
 		std::string             scenario = "events.toml";
 		std::string             settings = "settings.toml";
 		std::string             layout   = "layout.toml";
-		std::string             binary;
 		std::string             trace;
 		std::optional<uint64_t> seed;
 		std::optional<double>   timeout;
-		uint32_t                tick_batch     = 1;
-		uint32_t                runahead_cap   = 0;
-		bool                    selective_sync = true;
-		bool                    quiet          = false;
-		bool                    keep_going     = false;
-		bool                    layout_given   = false;
+		bool                    quiet        = false;
+		bool                    keep_going   = false;
+		bool                    layout_given = false;
 	};
 
 	void usage() {
@@ -54,23 +51,17 @@ namespace {
 				  << "exits non-zero if any temporal property does not hold.\n"
 				  << "\n"
 				  << "Options:\n"
-				  << "  -b, --binary <path>     The application to run (default: scenario or settings)\n"
 				  << "  -s, --settings <path>   The settings file (default: settings.toml)\n"
 				  << "  -l, --layout <path>     The layout file (default: scenario or layout.toml)\n"
 				  << "      --seed <n>          The master seed, overriding the one in settings\n"
 				  << "      --timeout <sec>     Override the scenario's simulated-time limit\n"
-				  << "      --tick-batch <n>    Run up to n child ticks per barrier (default: 1)\n"
-				  << "      --exact-runahead    Enable reference all-child exact runahead\n"
-				  << "      --selective-sync    Use selective synchronization (default)\n"
-				  << "      --all-child-sync    Use the reference all-child barrier\n"
-				  << "      --runahead-cap <n>  Enable exact runahead with a cap up to 100 ticks\n"
 				  << "      --trace <path>      Write an NDJSON trace of the run\n"
 				  << "  -k, --keep-going        Evaluate every property to the end after a failure\n"
 				  << "  -q, --quiet             Print only failures\n"
 				  << "  -h, --help              Print all options\n"
 				  << "  -v, --version           Print version\n"
 				  << "\n"
-				  << "A scenario may set [scenario].layout and [scenario].binary. Relative paths\n"
+				  << "A scenario may set [scenario].layout and [scenario].firmware. Relative paths\n"
 				  << "are resolved from the scenario's folder; command-line options override them.\n"
 				  << "\n"
 				  << "Exit codes:\n"
@@ -104,9 +95,7 @@ namespace {
 				std::cout << "Quercus Airport Simulation scenario runner version " << APP_VERSION << std::endl;
 				return std::nullopt;
 			}
-			if (argument == "-b" || argument == "--binary") {
-				options.binary = take_value(argc, argv, index, argument);
-			} else if (argument == "-s" || argument == "--settings") {
+			if (argument == "-s" || argument == "--settings") {
 				options.settings = take_value(argc, argv, index, argument);
 			} else if (argument == "-l" || argument == "--layout") {
 				options.layout       = take_value(argc, argv, index, argument);
@@ -124,26 +113,6 @@ namespace {
 				util::require(timeout.has_value() && std::isfinite(*timeout) && *timeout > 0.0,
 							  "Invalid timeout: " + value);
 				options.timeout = *timeout;
-			} else if (argument == "--tick-batch") {
-				const std::string        value = take_value(argc, argv, index, argument);
-				const std::optional<int> batch = util::parse_int(value);
-				util::require(batch.has_value() && *batch > 0 && static_cast<uint32_t>(*batch) <= sim::MAX_TICK_BATCH,
-							  "Tick batch must be between 1 and " + std::to_string(sim::MAX_TICK_BATCH));
-				options.tick_batch = static_cast<uint32_t>(*batch);
-			} else if (argument == "--exact-runahead") {
-				options.runahead_cap   = sim::DEFAULT_RUNAHEAD_TICKS;
-				options.selective_sync = false;
-			} else if (argument == "--selective-sync") {
-				options.selective_sync = true;
-			} else if (argument == "--all-child-sync") {
-				options.selective_sync = false;
-			} else if (argument == "--runahead-cap") {
-				const std::string        value = take_value(argc, argv, index, argument);
-				const std::optional<int> cap   = util::parse_int(value);
-				util::require(cap.has_value() && *cap > 0 && static_cast<uint32_t>(*cap) <= sim::MAX_RUNAHEAD_TICKS,
-							  "Runahead cap must be between 1 and " + std::to_string(sim::MAX_RUNAHEAD_TICKS));
-				options.runahead_cap   = static_cast<uint32_t>(*cap);
-				options.selective_sync = false;
 			} else if (argument == "-k" || argument == "--keep-going") {
 				options.keep_going = true;
 			} else if (argument == "-q" || argument == "--quiet") {
@@ -156,9 +125,6 @@ namespace {
 				scenario_given   = true;
 			}
 		}
-		util::require(options.runahead_cap == 0 || options.tick_batch == 1, "Exact runahead requires --tick-batch 1");
-		util::require(!options.selective_sync || options.runahead_cap == 0,
-					  "--selective-sync and --exact-runahead are separate execution paths");
 
 		return options;
 	}
@@ -197,14 +163,16 @@ int main(int argc, char const* argv[]) {
 	sim::pin_to_one_cpu();
 
 	std::filesystem::path                layout_file = options.layout;
-	std::optional<std::filesystem::path> binary_file;
+	std::optional<std::filesystem::path> firmware_file;
 	events::Schedule                     schedule;
+	std::map<std::string, std::string>   environment;
 	try {
 		const events::ScenarioFiles files = events::parse_scenario_files(options.scenario);
 		if (!options.layout_given && files.layout) layout_file = *files.layout;
-		binary_file = options.binary.empty() ? files.binary : std::optional<std::filesystem::path>(options.binary);
+		firmware_file = files.firmware;
 
-		settings::parse_settings(options.settings, layout_file, binary_file);
+		settings::parse_settings(options.settings, layout_file, firmware_file);
+		if (files.firmware) settings::set_setting<std::string>("firmware", files.firmware->string());
 		if (options.seed) {
 			settings::set_setting<int>("seed", static_cast<int>(*options.seed));
 		}
@@ -236,8 +204,7 @@ int main(int argc, char const* argv[]) {
 	// same on the real platform either. The master seed keeps the fleet reproducible.
 	world::set_calibration_seed(master_seed);
 
-	sim::Runtime runtime(master_seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, options.tick_batch,
-						 options.runahead_cap, options.selective_sync);
+	sim::Runtime runtime(master_seed, {}, std::move(environment));
 	uint64_t     timeout_tick = schedule.properties->duration_tick;
 	if (options.timeout) {
 		const double ticks = (*options.timeout * 1'000'000.0) / static_cast<double>(sim::TICK_DURATION.count());
@@ -283,12 +250,9 @@ int main(int argc, char const* argv[]) {
 			const uint64_t ticks_left    = timeout_tick - before + 1;
 			const uint64_t slice_ticks   = static_cast<uint64_t>(SLICE.count() / sim::TICK_DURATION.count());
 			uint64_t       granted_ticks = std::min(ticks_left, slice_ticks);
-			if (granted_ticks % options.tick_batch != 0) {
-				granted_ticks += options.tick_batch - (granted_ticks % options.tick_batch);
-			}
 			runtime.advance(std::chrono::microseconds(granted_ticks * sim::TICK_DURATION.count()), 1.0, CHILD_BUDGET);
 
-			// No progress means a wedged child; stop now or the run would spin without a timeout.
+			// A host time limit can prevent another complete grant.
 			if (runtime.tick() == before) {
 				std::cerr << "The applications stopped making progress at tick " << runtime.tick() << std::endl;
 				timed_out = true;

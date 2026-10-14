@@ -7,7 +7,7 @@
 
 [scenario]
 layout = "../layouts/one_module.toml"
-binary = "../external/q_applets/out/hardware_test.exe"
+firmware = "../external/q_applets/out/hardware_test.dll"
 duration = "6s"
 properties = "hardware_test_blocked_beam.spec"
 

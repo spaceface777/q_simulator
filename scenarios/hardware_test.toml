@@ -9,7 +9,7 @@
 
 [scenario]
 layout = "../layouts/one_module.toml"
-binary = "../external/q_applets/out/hardware_test.exe"
+firmware = "../external/q_applets/out/hardware_test.dll"
 # Includes deployment skew and missed local ticks; the diagnostic itself is paced by local uptime.
 duration = "120s"
 properties = "hardware_test.spec"

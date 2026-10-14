@@ -118,4 +118,4 @@ angle = 90
 #
 # [module.255]
 # active = true
-# binary = "/home/user/q_applets/build/atc_tower/zephyr/zephyr.exe"
+# firmware = "external/q_applets/out/atc_fixed.dll"

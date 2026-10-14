@@ -17,26 +17,21 @@
 #include "../../src/sim/runtime.h"
 #include "../../src/world/calibration.h"
 #include "../../src/world/world.h"
+#include "firmware_images.h"
 
 namespace fs = std::filesystem;
 
 namespace {
 
-	// Skips unless a real applet binary is built; see external/q_applets, built via
-	// `(cd external/q_applets && ./q_sdk/qbuild sim)`.
 	std::string applet_path(const std::string& applet) {
-		const fs::path path = fs::path(REPO_ROOT) / "external" / "q_applets" / "out" / (applet + ".exe");
-		if (!fs::exists(path)) {
-			return "";
-		}
-		return path.string();
+		return test_applets::image_path(applet);
 	}
 
 	struct ScenarioCase {
 		std::string           scenario; // file under scenarios/
 		std::string           layout;   // file under layouts/, matching the -l the scenario's header documents
 		std::string           applet;   // applet name under external/q_applets/out
-		uint32_t              tick_batch;
+		uint32_t              advance_ticks;
 		std::optional<double> tick_skip_ppm;
 	};
 
@@ -53,18 +48,18 @@ namespace {
 		};
 		std::vector<ScenarioCase> result;
 		for (const ScenarioCase& scenario : base) {
-			for (const uint32_t tick_batch : {1u, 5u, 15u}) {
-				result.push_back({scenario.scenario, scenario.layout, scenario.applet, tick_batch, std::nullopt});
+			for (const uint32_t advance_ticks : {1u, 5u, 15u}) {
+				result.push_back({scenario.scenario, scenario.layout, scenario.applet, advance_ticks, std::nullopt});
 			}
 			result.push_back({scenario.scenario, scenario.layout, scenario.applet, 15, 200'000.0});
 		}
 		return result;
 	}();
 
-	// parse_settings validates application_path against disk, so it must be baked in before parsing.
+	// Keep the scenario application label in the settings used by the trace.
 	std::string settings_with_binary(const fs::path& example, const std::string& binary) {
 		toml::table table = toml::parse_file(example.string());
-		table.insert_or_assign("application_path", binary);
+		table.insert_or_assign("firmware", binary);
 
 		const fs::path temp =
 			fs::temp_directory_path() / ("scenario_test_settings_" + std::to_string(::getpid()) + ".toml");
@@ -75,7 +70,7 @@ namespace {
 
 	std::string scenario_name(const ::testing::TestParamInfo<ScenarioCase>& info) {
 		const std::string& file = info.param.scenario;
-		std::string name = file.substr(0, file.rfind(".toml")) + "_batch_" + std::to_string(info.param.tick_batch);
+		std::string name = file.substr(0, file.rfind(".toml")) + "_advance_" + std::to_string(info.param.advance_ticks);
 		if (info.param.tick_skip_ppm) name += "_tick_loss_20_percent";
 		return name;
 	}
@@ -92,24 +87,24 @@ namespace {
 
 } // namespace
 
-// Runs every scenario in scenarios/ against the applet it documents, as simulation-scenario does.
+// Preserve the bundled specifications and vary caller advance granularity instead of removed barriers.
 TEST_P(ScenarioTest, AllLtlPropertiesHold) {
 	const ScenarioCase& scenario = GetParam();
 	const std::string   binary   = applet_path(scenario.applet);
 	if (binary.empty()) {
-		GTEST_SKIP() << "No " << scenario.applet << " applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
+		GTEST_SKIP() << "No linked " << scenario.applet << " image. See README test compositions.";
 	}
 
 	const fs::path              root(REPO_ROOT);
 	const fs::path              scenario_path = root / "scenarios" / scenario.scenario;
 	const events::ScenarioFiles files         = events::parse_scenario_files(scenario_path);
 	ASSERT_TRUE(files.layout.has_value());
-	ASSERT_TRUE(files.binary.has_value());
+	ASSERT_TRUE(files.firmware.has_value());
 	EXPECT_EQ(*files.layout, root / "layouts" / scenario.layout);
-	EXPECT_EQ(*files.binary, root / "external" / "q_applets" / "out" / (scenario.applet + ".exe"));
+	EXPECT_EQ(*files.firmware, root / "external" / "q_applets" / "out" / (scenario.applet + ".dll"));
 
-	const std::string settings_path = settings_with_binary(root / "settings_example.toml", files.binary->string());
-	settings::parse_settings(settings_path, *files.layout);
+	const std::string settings_path = settings_with_binary(root / "settings_example.toml", files.firmware->string());
+	settings::parse_settings(settings_path, *files.layout, std::nullopt);
 	if (scenario.tick_skip_ppm) {
 		settings::set_setting("module_tick_skip_mean_ppm", *scenario.tick_skip_ppm);
 		settings::set_setting("module_tick_skip_sd_ppm", 0.0);
@@ -123,7 +118,9 @@ TEST_P(ScenarioTest, AllLtlPropertiesHold) {
 	world::configure_calibration_from_settings();
 	world::set_calibration_seed(seed);
 
-	sim::Runtime runtime(seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, scenario.tick_batch);
+	auto slots = test_applets::bindings(scenario.applet);
+	if (!slots) GTEST_SKIP() << "Missing applet .dll for the active layout";
+	sim::Runtime runtime(seed, *slots);
 	runtime.load(schedule);
 	runtime.load_properties(std::move(properties), schedule.properties->duration_tick,
 							schedule.properties->property_file.string());
@@ -140,9 +137,7 @@ TEST_P(ScenarioTest, AllLtlPropertiesHold) {
 		const uint64_t ticks_left  = schedule.properties->duration_tick - before + 1;
 		const uint64_t slice_ticks = static_cast<uint64_t>(SLICE.count() / sim::TICK_DURATION.count());
 		uint64_t       granted     = std::min(ticks_left, slice_ticks);
-		if (granted % scenario.tick_batch != 0) {
-			granted += scenario.tick_batch - (granted % scenario.tick_batch);
-		}
+		granted                    = std::min<uint64_t>(granted, scenario.advance_ticks);
 		runtime.advance(std::chrono::microseconds(granted * sim::TICK_DURATION.count()), 1.0, CHILD_BUDGET);
 		if (runtime.tick() == before) {
 			stalled = true;
@@ -170,7 +165,7 @@ TEST_P(ScenarioTest, AllLtlPropertiesHold) {
 
 INSTANTIATE_TEST_SUITE_P(AllScenarios, ScenarioTest, ::testing::ValuesIn(kScenarios), scenario_name);
 
-TEST(ScenarioExactRunahead, MatchesStrictTraceBytesAcrossEventsSeedsAndManyChildren) {
+TEST(ScenarioAdvanceTrace, CompleteTraceMatchesAcrossSeedsEventsAndManyModules) {
 	struct ExactCase {
 		const char* scenario;
 		const char* layout;
@@ -188,14 +183,14 @@ TEST(ScenarioExactRunahead, MatchesStrictTraceBytesAcrossEventsSeedsAndManyChild
 	for (const ExactCase& test_case : cases) {
 		const std::string binary = applet_path(test_case.applet);
 		if (binary.empty()) {
-			GTEST_SKIP() << "No " << test_case.applet << " applet built; run qbuild sim";
+			GTEST_SKIP() << "No linked " << test_case.applet << " applet. See README test compositions.";
 		}
 
 		const fs::path scenario_path = root / "scenarios" / test_case.scenario;
 		const fs::path layout_path   = root / "layouts" / test_case.layout;
-		const auto     execute       = [&](uint32_t runahead_cap, const std::string& mode) {
+		const auto     execute       = [&](uint32_t advance_ticks, const std::string& mode) {
 			const std::string settings_path = settings_with_binary(root / "settings_example.toml", binary);
-			settings::parse_settings(settings_path, layout_path);
+			settings::parse_settings(settings_path, layout_path, std::nullopt);
 			settings::set_setting("seed", static_cast<int>(test_case.seed));
 			const events::Schedule schedule = events::parse_events(scenario_path, test_case.seed);
 			if (!schedule.properties) {
@@ -211,7 +206,7 @@ TEST(ScenarioExactRunahead, MatchesStrictTraceBytesAcrossEventsSeedsAndManyChild
 				("quercus_exact_scenario_" + std::to_string(::getpid()) + "_" + test_case.scenario + "_" + mode);
 			fs::remove(trace_path);
 
-			sim::Runtime runtime(test_case.seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, 1, runahead_cap);
+			sim::Runtime runtime(test_case.seed, *test_applets::bindings(test_case.applet));
 			runtime.load(schedule);
 			runtime.load_properties(std::move(properties), schedule.properties->duration_tick,
 									schedule.properties->property_file.string());
@@ -220,7 +215,7 @@ TEST(ScenarioExactRunahead, MatchesStrictTraceBytesAcrossEventsSeedsAndManyChild
 			while (!runtime.failed() && runtime.properties_pending() > 0) {
 				const uint64_t before     = runtime.tick();
 				const uint64_t ticks_left = schedule.properties->duration_tick - before + 1;
-				const uint64_t ticks      = std::min<uint64_t>(50, ticks_left);
+				const uint64_t ticks      = std::min<uint64_t>(advance_ticks, ticks_left);
 				runtime.advance(std::chrono::microseconds(ticks * sim::TICK_DURATION.count()), 1.0,
 								std::chrono::seconds(5));
 				if (runtime.tick() == before) {
@@ -238,8 +233,8 @@ TEST(ScenarioExactRunahead, MatchesStrictTraceBytesAcrossEventsSeedsAndManyChild
 			return contents.str();
 		};
 
-		const std::string strict = execute(0, "strict");
-		const std::string exact  = execute(sim::DEFAULT_RUNAHEAD_TICKS, "exact");
+		const std::string strict = execute(1, "single");
+		const std::string exact  = execute(50, "wide");
 		EXPECT_FALSE(strict.empty()) << test_case.scenario;
 		EXPECT_EQ(exact, strict) << test_case.scenario << " changed strict trace bytes";
 	}
@@ -248,7 +243,7 @@ TEST(ScenarioExactRunahead, MatchesStrictTraceBytesAcrossEventsSeedsAndManyChild
 TEST(ScenarioSeedCorpus, ModuleMovementPassesTheStableV01SeedsWithoutSpecEdits) {
 	const std::string binary = applet_path("module_movement");
 	if (binary.empty()) {
-		GTEST_SKIP() << "No module_movement applet built; run (cd external/q_applets && ./q_sdk/qbuild sim)";
+		GTEST_SKIP() << "No linked module_movement applet. See README test compositions.";
 	}
 
 	// The short corpus runs on every commit. The documented large corpus is selected by scheduled CI
@@ -263,7 +258,7 @@ TEST(ScenarioSeedCorpus, ModuleMovementPassesTheStableV01SeedsWithoutSpecEdits) 
 
 	for (const uint64_t seed : seeds) {
 		const std::string settings_path = settings_with_binary(root / "settings_example.toml", binary);
-		settings::parse_settings(settings_path, root / "layouts" / "one_module.toml");
+		settings::parse_settings(settings_path, root / "layouts" / "one_module.toml", std::nullopt);
 		settings::set_setting("seed", static_cast<int>(seed));
 		const events::Schedule schedule = events::parse_events(scenario_path, seed);
 		ASSERT_TRUE(schedule.properties.has_value());
@@ -271,7 +266,7 @@ TEST(ScenarioSeedCorpus, ModuleMovementPassesTheStableV01SeedsWithoutSpecEdits) 
 
 		world::configure_calibration_from_settings();
 		world::set_calibration_seed(seed);
-		sim::Runtime runtime(seed);
+		sim::Runtime runtime(seed, *test_applets::bindings("module_movement"));
 		runtime.load(schedule);
 		runtime.load_properties(std::move(properties), schedule.properties->duration_tick,
 								schedule.properties->property_file.string());
@@ -302,12 +297,12 @@ TEST(ScenarioSeedCorpus, ModuleMovementPassesTheStableV01SeedsWithoutSpecEdits) 
 TEST(ScenarioClockLoss, ExistingModuleMovementScenarioIsSafeWithThirtyPercentSkippedTicks) {
 	const std::string binary = applet_path("module_movement");
 	if (binary.empty()) {
-		GTEST_SKIP() << "No module_movement applet built; run qbuild sim module_movement";
+		GTEST_SKIP() << "No linked module_movement applet. See README test compositions.";
 	}
 
 	const fs::path    root(REPO_ROOT);
 	const std::string settings_path = settings_with_binary(root / "settings_example.toml", binary);
-	settings::parse_settings(settings_path, root / "layouts" / "one_module.toml");
+	settings::parse_settings(settings_path, root / "layouts" / "one_module.toml", std::nullopt);
 	settings::set_setting("seed", 42);
 	settings::set_setting("module_start_offset_mean_ms", 300.0);
 	settings::set_setting("module_start_offset_sd_ms", 100.0);
@@ -322,20 +317,19 @@ TEST(ScenarioClockLoss, ExistingModuleMovementScenarioIsSafeWithThirtyPercentSki
 		world::configure_calibration_from_settings();
 		world::set_calibration_seed(42);
 
-		sim::Runtime runtime(42, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch);
+		sim::Runtime runtime(42, *test_applets::bindings("module_movement"));
 		runtime.load(schedule);
 		runtime.load_properties(std::move(properties), schedule.properties->duration_tick,
 								schedule.properties->property_file.string());
 		runtime.start(schedule.properties->duration_tick);
 
-		constexpr std::chrono::microseconds SLICE{50000};
 		constexpr std::chrono::milliseconds CHILD_BUDGET{5000};
 		while (!runtime.failed() && runtime.properties_pending() > 0) {
 			const uint64_t before = runtime.tick();
 			ASSERT_LE(before, schedule.properties->duration_tick) << "batch " << batch;
 			const uint64_t ticks_left = schedule.properties->duration_tick - before + 1;
 			uint64_t       ticks      = std::min<uint64_t>(50, ticks_left);
-			if (ticks % batch != 0) ticks += batch - (ticks % batch);
+			ticks                     = std::min<uint64_t>(ticks, batch);
 			runtime.advance(std::chrono::microseconds(ticks * sim::TICK_DURATION.count()), 1.0, CHILD_BUDGET);
 			ASSERT_GT(runtime.tick(), before) << "batch " << batch;
 		}
@@ -355,25 +349,19 @@ TEST(ScenarioClockLoss, ExistingModuleMovementScenarioIsSafeWithThirtyPercentSki
 	fs::remove(settings_path);
 }
 
-TEST(ScenarioBatchTrace, RealScenarioDiffersOnlyAtDocumentedBatchHandoffBoundaries) {
+TEST(ScenarioAdvanceTrace, RealScenarioHasIdenticalCompleteTraceAtEveryAdvanceSize) {
 	const std::string binary = applet_path("module_movement");
 	if (binary.empty()) {
-		GTEST_SKIP() << "No module_movement applet built; run qbuild sim module_movement";
+		GTEST_SKIP() << "No linked module_movement applet. See README test compositions.";
 	}
 
 	const fs::path    root(REPO_ROOT);
 	const std::string settings_path = settings_with_binary(root / "settings_example.toml", binary);
-	settings::parse_settings(settings_path, root / "layouts" / "one_module.toml");
+	settings::parse_settings(settings_path, root / "layouts" / "one_module.toml", std::nullopt);
 	const uint64_t seed = static_cast<uint64_t>(settings::get_setting<int>("seed"));
 
 	const events::Schedule schedule = events::parse_events(root / "scenarios" / "module_movement.toml", seed);
 	ASSERT_TRUE(schedule.properties.has_value());
-
-	struct CapturedRun {
-		std::vector<std::string> batch_independent_records;
-		std::vector<std::string> skipped_tick_records;
-		std::vector<std::string> property_verdict_records;
-	};
 
 	const auto execute = [&](uint32_t batch) {
 		const fs::path trace_path =
@@ -385,14 +373,13 @@ TEST(ScenarioBatchTrace, RealScenarioDiffersOnlyAtDocumentedBatchHandoffBoundari
 		world::configure_calibration_from_settings();
 		world::set_calibration_seed(seed);
 
-		sim::Runtime runtime(seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, batch);
+		sim::Runtime runtime(seed, *test_applets::bindings("module_movement"));
 		runtime.load(schedule);
 		runtime.load_properties(std::move(properties), schedule.properties->duration_tick,
 								schedule.properties->property_file.string());
 		runtime.trace_to(trace_path.string(), {});
 		runtime.start(schedule.properties->duration_tick);
 
-		constexpr std::chrono::microseconds SLICE{50000};
 		constexpr std::chrono::milliseconds CHILD_BUDGET{5000};
 		while (!runtime.failed() && runtime.properties_pending() > 0) {
 			const uint64_t before = runtime.tick();
@@ -402,7 +389,7 @@ TEST(ScenarioBatchTrace, RealScenarioDiffersOnlyAtDocumentedBatchHandoffBoundari
 			}
 			const uint64_t ticks_left = schedule.properties->duration_tick - before + 1;
 			uint64_t       ticks      = std::min<uint64_t>(50, ticks_left);
-			if (ticks % batch != 0) ticks += batch - (ticks % batch);
+			ticks                     = std::min<uint64_t>(ticks, batch);
 			runtime.advance(std::chrono::microseconds(ticks * sim::TICK_DURATION.count()), 1.0, CHILD_BUDGET);
 			if (runtime.tick() == before) {
 				ADD_FAILURE() << "batch " << batch << " stopped making progress at tick " << before;
@@ -422,52 +409,16 @@ TEST(ScenarioBatchTrace, RealScenarioDiffersOnlyAtDocumentedBatchHandoffBoundari
 		EXPECT_EQ(runtime.properties_pending(), 0u) << "batch " << batch << "\n" << detail;
 		runtime.stop();
 
-		CapturedRun   captured;
-		std::ifstream trace(trace_path);
-		std::string   line;
-		while (std::getline(trace, line)) {
-			const std::string marker = "\"type\":\"";
-			const std::size_t begin  = line.find(marker);
-			const std::size_t end    = begin == std::string::npos ? begin : line.find('"', begin + marker.size());
-			if (begin == std::string::npos || end == std::string::npos) {
-				ADD_FAILURE() << "malformed trace record: " << line;
-				continue;
-			}
-			const std::string type = line.substr(begin + marker.size(), end - begin - marker.size());
-			if (type == "module_tick_skipped") captured.skipped_tick_records.push_back(line);
-			if (type == "property_verdict") captured.property_verdict_records.push_back(line);
-
-			// These records can move when requests and responses wait for the next batch handoff.
-			// Everything else describes batch-independent clock/skip/completion semantics and must
-			// remain byte-identical to strict mode.
-			const bool handoff_dependent = type == "run_start" || type == "rpc_event" || type == "rpc_request" ||
-										   type == "rpc_response" || type == "tub" || type == "property_activation" ||
-										   type == "property_verdict";
-			if (!handoff_dependent) captured.batch_independent_records.push_back(line);
-		}
+		std::ifstream      input(trace_path, std::ios::binary);
+		std::ostringstream bytes;
+		bytes << input.rdbuf();
 		fs::remove(trace_path);
-		return captured;
+		return bytes.str();
 	};
 
-	const CapturedRun strict   = execute(1);
-	const CapturedRun batch_5  = execute(5);
-	const CapturedRun batch_15 = execute(15);
-	ASSERT_FALSE(strict.skipped_tick_records.empty());
-	EXPECT_EQ(strict.skipped_tick_records.size(), 45u);
-	EXPECT_EQ(batch_5.skipped_tick_records, strict.skipped_tick_records)
-		<< "5x batching changed the exact global/local skipped-tick sequence";
-	EXPECT_EQ(batch_15.skipped_tick_records, strict.skipped_tick_records)
-		<< "15x batching changed the exact global/local skipped-tick sequence";
-	EXPECT_EQ(batch_5.batch_independent_records, strict.batch_independent_records)
-		<< "5x batching changed trace data outside documented batch-boundary handoff timing";
-	EXPECT_EQ(batch_15.batch_independent_records, strict.batch_independent_records)
-		<< "15x batching changed trace data outside documented batch-boundary handoff timing";
-	ASSERT_EQ(batch_5.property_verdict_records.size(), strict.property_verdict_records.size());
-	ASSERT_EQ(batch_15.property_verdict_records.size(), strict.property_verdict_records.size());
-	for (const CapturedRun* run : {&strict, &batch_5, &batch_15}) {
-		for (const std::string& verdict : run->property_verdict_records) {
-			EXPECT_NE(verdict.find("\"verdict\":\"true\""), std::string::npos) << verdict;
-		}
-	}
+	const std::string strict = execute(1);
+	ASSERT_FALSE(strict.empty());
+	EXPECT_EQ(execute(5), strict);
+	EXPECT_EQ(execute(15), strict);
 	fs::remove(settings_path);
 }

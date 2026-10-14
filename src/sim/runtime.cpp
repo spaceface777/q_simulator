@@ -10,19 +10,20 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#ifdef __linux__
 #include <sched.h>
+#endif
 #include <sstream>
 #include <stdexcept>
-#include <thread>
 #include <unistd.h>
 
+#include "../firmware/inprocess_backend.h"
 #include "../ltl/checker.h"
 #include "../module/module.h"
 #include "../seed/seed.h"
 #include "../settings.h"
 #include "../trace/trace.h"
 #include "../world/world.h"
-#include "runahead.h"
 
 namespace sim {
 
@@ -36,6 +37,8 @@ namespace sim {
 
 		// A log message requires a sustained shortfall; the GUI can still show smaller fluctuations.
 		constexpr double WARNING_THRESHOLD = 0.95;
+
+		constexpr uint64_t TRACE_FLUSH_TICKS = 100;
 
 		using Clock = std::chrono::steady_clock;
 
@@ -70,51 +73,27 @@ namespace sim {
 			return std::sqrt(-2.0 * std::log(u1)) * std::cos(6.283185307179586 * u2);
 		}
 
-		uint64_t splitmix_next(uint64_t& state) {
-			state += 0x9E3779B97F4A7C15ULL;
-			uint64_t value = state;
-			value          = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ULL;
-			value          = (value ^ (value >> 27)) * 0x94D049BB133111EBULL;
-			return value ^ (value >> 31);
-		}
-
 	} // namespace
 
 	void pin_to_one_cpu() noexcept {
+#ifdef __linux__
 		const int cpu = ::sched_getcpu();
-		if (cpu < 0) {
-			std::cerr << "Could not select a CPU for lockstep affinity: " << std::strerror(errno) << std::endl;
-			return;
-		}
-		if (cpu >= CPU_SETSIZE) {
-			std::cerr << "Could not pin lockstep simulation: CPU " << cpu << " is outside CPU_SETSIZE" << std::endl;
-			return;
-		}
-
+		if (cpu < 0 || cpu >= CPU_SETSIZE) return;
 		cpu_set_t selected;
 		CPU_ZERO(&selected);
 		CPU_SET(cpu, &selected);
-		if (::sched_setaffinity(0, sizeof(selected), &selected) != 0) {
-			std::cerr << "Could not pin lockstep simulation to CPU " << cpu << ": " << std::strerror(errno)
-					  << std::endl;
-			return;
-		}
-		std::cout << "Pinned lockstep simulation to CPU " << cpu << std::endl;
+		if (::sched_setaffinity(0, sizeof(selected), &selected) != 0)
+			std::cerr << "Could not pin simulation: " << std::strerror(errno) << std::endl;
+#endif
 	}
 
-	Runtime::Runtime(uint64_t seed, std::chrono::milliseconds connect_timeout,
-					 std::chrono::milliseconds activation_timeout, uint32_t tick_batch, uint32_t runahead_cap,
-					 bool selective_sync)
-		: seed_(seed), connect_timeout_(connect_timeout), activation_timeout_(activation_timeout),
-		  tick_batch_(tick_batch), runahead_cap_(runahead_cap), selective_sync_(selective_sync),
-		  active_modules_(settings::get_active_modules()), queue_(seed) {
+	Runtime::Runtime(uint64_t seed, std::vector<firmware::ImageBinding> firmware,
+					 std::map<std::string, std::string> environment, std::chrono::milliseconds activation_timeout)
+		: activation_timeout_(activation_timeout), seed_(seed), environment_(std::move(environment)),
+		  firmware_bindings_(std::move(firmware)), active_modules_(settings::get_active_modules()), queue_(seed) {
 		if (active_modules_.empty()) throw std::runtime_error("No active modules in layout.toml");
 		for (const module::ModuleId id : active_modules_) world_.add_module(id);
 		property_observer_.emplace(active_modules_, world_);
-		const char* stats   = std::getenv("QSIM_RUNAHEAD_STATS");
-		sync_stats_enabled_ = stats != nullptr && std::strcmp(stats, "0") != 0;
-		const char* modules = std::getenv("QSIM_RUNAHEAD_STATS_MODULES");
-		sync_stats_modules_ = modules != nullptr && std::strcmp(modules, "0") != 0;
 	}
 
 	Runtime::~Runtime() {
@@ -122,103 +101,73 @@ namespace sim {
 	}
 
 	void Runtime::start(std::optional<uint64_t> last_tick) {
-		if (tick_batch_ == 0 || tick_batch_ > MAX_TICK_BATCH) {
-			throw std::invalid_argument("Tick batch must be between 1 and " + std::to_string(MAX_TICK_BATCH));
-		}
-		if (runahead_cap_ > MAX_RUNAHEAD_TICKS) {
-			throw std::invalid_argument("Exact runahead cap must be between 1 and " +
-										std::to_string(MAX_RUNAHEAD_TICKS));
-		}
-		if (runahead_cap_ != 0 && tick_batch_ != 1) {
-			throw std::invalid_argument("Exact runahead requires --tick-batch 1");
-		}
-
-		control_.emplace();
-		childsync::Control& control = control_->get();
-
-		// Published before any application launches, so a stale binary fails at startup with a
-		// clear message rather than silently reading the segment at the wrong offsets.
-		childsync::store_release(control.abi, QUERCUS_SHM_ABI);
-		childsync::store_relaxed(control.selective_enabled, selective_sync_ ? 1U : 0U);
-
-		// All children participate initially. Heartbeat supervision can reduce this before a later
-		// generation after the failed child has been reaped.
-		childsync::store_relaxed(control.expected, static_cast<uint32_t>(active_modules_.size()));
-		control_->mapping().keep_across_exec();
-
+		if (running_ || backend_) throw std::logic_error("The runtime is already started");
+		if (global_tick_ != 0) throw std::logic_error("Create a new runtime for another run");
 		for (const module::ModuleId id : active_modules_) {
-			Child child;
-			child.id                          = id;
-			child.scheduler_index             = static_cast<uint8_t>(children_.size());
-			control.scheduler_index[id.raw()] = child.scheduler_index;
+			ModuleRuntime instance;
+			instance.id = id;
 			seed::SplitMix64 timing(seed::derive(seed_, "module-clock/" + std::to_string(id.raw())));
 			const double     start_ms =
 				settings::get_setting<double>("module_start_offset_mean_ms") +
 				settings::get_setting<double>("module_start_offset_sd_ms") * standard_normal(timing);
-			child.start_tick     = start_ms <= 0.0 ? 0u : static_cast<uint64_t>(std::llround(start_ms));
-			const double drift   = settings::get_setting<double>("module_clock_drift_sd_ppm") * standard_normal(timing);
-			child.clock_rate_ppm = std::max<int64_t>(1, 1'000'000 + static_cast<int64_t>(std::llround(drift)));
-			const double skip_ppm = settings::get_setting<double>("module_tick_skip_mean_ppm") +
-									settings::get_setting<double>("module_tick_skip_sd_ppm") * standard_normal(timing);
-			child.tick_skip_ppm   = static_cast<uint32_t>(std::clamp(std::llround(skip_ppm), 0LL, 1'000'000LL));
-			child.tick_skip_rng   = seed::derive(seed_, "module-clock-skips/" + std::to_string(id.raw()));
-			child.segment.emplace();
-			child.segment->mapping().keep_across_exec();
-
-			childproc::LaunchSpec spec;
-			spec.id         = id;
-			spec.binary     = settings::get_module_binary(id);
-			spec.control_fd = control_->mapping().fd();
-			spec.mailbox_fd = child.segment->mapping().fd();
-			spec.seed       = seed_;
-
-			std::cout << "Starting module " << static_cast<unsigned>(id.raw()) << " from " << spec.binary << " at tick "
-					  << child.start_tick << " with clock " << child.clock_rate_ppm << " ppm" << std::endl;
-			std::cout << "  tick skip chance " << child.tick_skip_ppm << " ppm" << std::endl;
+			const uint64_t start_tick = start_ms <= 0.0 ? 0u : static_cast<uint64_t>(std::llround(start_ms));
+			const double   drift = settings::get_setting<double>("module_clock_drift_sd_ppm") * standard_normal(timing);
+			const int64_t  rate_ppm = std::max<int64_t>(1, 1'000'000 + static_cast<int64_t>(std::llround(drift)));
+			const double   skip_ppm_sample =
+				settings::get_setting<double>("module_tick_skip_mean_ppm") +
+				settings::get_setting<double>("module_tick_skip_sd_ppm") * standard_normal(timing);
+			const uint32_t skip_ppm =
+				static_cast<uint32_t>(std::clamp(std::llround(skip_ppm_sample), 0LL, 1'000'000LL));
+			instance.clock = ModuleClock(start_tick, rate_ppm, skip_ppm,
+										 seed::derive(seed_, "module-clock-skips/" + std::to_string(id.raw())));
+			std::cout << "Starting module " << static_cast<unsigned>(id.raw());
+			std::cout << " at tick " << instance.clock.start_tick() << " with clock " << instance.clock.rate_ppm()
+					  << " ppm" << std::endl;
+			std::cout << "  tick skip chance " << instance.clock.skip_ppm() << " ppm" << std::endl;
 			if (trace_.enabled()) {
 				trace_.write(trace::Entry("module_clock")
 								 .field("module", static_cast<uint64_t>(id.raw()))
-								 .field("start_tick", child.start_tick)
-								 .field("rate_ppm", child.clock_rate_ppm)
-								 .field("skip_ppm", static_cast<uint64_t>(child.tick_skip_ppm)));
+								 .field("start_tick", instance.clock.start_tick())
+								 .field("rate_ppm", instance.clock.rate_ppm())
+								 .field("skip_ppm", static_cast<uint64_t>(instance.clock.skip_ppm())));
 			}
-			child.process = childproc::launch(spec);
-			children_.push_back(std::move(child));
+			modules_.push_back(std::move(instance));
+		}
+		grants_.resize(modules_.size());
+		try {
+			auto bindings = firmware_bindings_;
+			if (bindings.empty())
+				for (const auto id : active_modules_) bindings.push_back({id, settings::get_module_firmware(id)});
+			for (const auto id : active_modules_) {
+				if (std::ranges::count(bindings, id, &firmware::ImageBinding::module) != 1)
+					throw std::invalid_argument("Module " + std::to_string(id.raw()) + " requires one firmware image");
+				const auto binding = std::ranges::find(bindings, id, &firmware::ImageBinding::module);
+				if (binding->path.empty())
+					throw std::invalid_argument("Module " + std::to_string(id.raw()) + " has no firmware");
+			}
+			for (const auto& binding : bindings)
+				if (std::ranges::find(active_modules_, binding.module) == active_modules_.end())
+					throw std::invalid_argument("Firmware configured for inactive module " +
+												std::to_string(binding.module.raw()));
+			backend_ = std::make_unique<firmware::InProcessBackend>(bindings, seed_, environment_);
+		} catch (...) {
+			stop();
+			throw;
 		}
 
 		running_ = true;
 		platform_.emplace(world_);
-
-		// The segments exist before any application launches, so mapping order does not matter.
-		const Clock::time_point connect_deadline = Clock::now() + connect_timeout_;
-		std::size_t             mapped           = 0;
-		while (mapped < children_.size()) {
-			if (Clock::now() > connect_deadline) {
-				stop();
-				throw std::runtime_error("Timed out waiting for module applications to connect");
-			}
-
-			mapped = 0;
-			for (const Child& child : children_) {
-				if (control.ready[child.id.raw()] != 0) {
-					mapped++;
-				}
-			}
-
-			if (mapped < children_.size()) {
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			}
-		}
 
 		std::cout << "Waiting for applications to activate" << std::endl;
 
 		// An application activates by sending its first heartbeat, which requires being ticked first.
 		const Clock::time_point activation_deadline = Clock::now() + activation_timeout_;
 		while (true) {
-			const bool all_active = std::all_of(children_.begin(), children_.end(), [this](const Child& child) {
-				return platform_->is_activated(child.id) ||
-					   platform_->lifecycle(child.id) == platform::Lifecycle::STOPPED;
-			});
+			const bool all_active =
+				std::all_of(modules_.begin(), modules_.end(), [this](const ModuleRuntime& instance) {
+					return platform_->is_activated(instance.id) ||
+						   platform_->lifecycle(instance.id) == platform::Lifecycle::STOPPED;
+				});
 			if (all_active) {
 				break;
 			}
@@ -226,8 +175,7 @@ namespace sim {
 				stop();
 				throw std::runtime_error("Timed out waiting for module applications to activate");
 			}
-			if (selective_sync_) step_selective(1);
-			else step(1);
+			step();
 			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) break;
 			if (last_tick && global_tick_ > *last_tick) break;
 		}
@@ -249,8 +197,7 @@ namespace sim {
 			entry.field(input, trace::digest_file(input));
 		}
 		entry.field("modules", static_cast<uint64_t>(active_modules_.size()));
-		entry.field("tick_batch_requested", static_cast<uint64_t>(tick_batch_))
-			.field("tick_batch_effective", static_cast<uint64_t>(tick_batch_));
+		entry.field("tick_batch_requested", uint64_t{1}).field("tick_batch_effective", uint64_t{1});
 		trace_.write(entry);
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
 			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
@@ -527,11 +474,6 @@ namespace sim {
 		budget_us_ += static_cast<int64_t>(static_cast<double>(elapsed.count()) * speed);
 
 		int64_t granted = budget_us_ / TICK_DURATION.count();
-		if (tick_batch_ > 1) {
-			// Every batched grant has the same relative-slot layout. Keep a short tail for the
-			// next frame rather than using it as a smaller batch and misaligning inbound frames.
-			granted -= granted % tick_batch_;
-		}
 		budget_us_ -= granted * TICK_DURATION.count();
 		if (budget_us_ < 0) {
 			budget_us_ = 0;
@@ -541,12 +483,8 @@ namespace sim {
 		const Clock::time_point limit       = started + deadline;
 		const uint64_t          tick_before = global_tick_;
 
-		for (int64_t index = 0; index < granted;) {
-			const uint32_t remaining = static_cast<uint32_t>(std::min<int64_t>(granted - index, UINT32_MAX));
-			const uint32_t batch     = runahead_cap_ == 0 ? tick_batch_ : std::min(runahead_cap_, remaining);
-			const uint32_t advanced =
-				selective_sync_ ? step_selective(tick_batch_) : (runahead_cap_ == 0 ? step(batch) : step_exact(batch));
-			index += advanced;
+		for (int64_t index = 0; index < granted; ++index) {
+			step();
 
 			// A decisive property result ends the run inside the tick that produced it, state intact.
 			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) {
@@ -624,717 +562,96 @@ namespace sim {
 		pacing_warning_ = sustained_shortfall;
 	}
 
-	std::vector<Runtime::FutureGrant> Runtime::plan_future_grants(uint32_t ticks) const {
-		std::vector<FutureGrant> plans(children_.size());
-		for (std::size_t child_index = 0; child_index < children_.size(); child_index++) {
-			const Child& child = children_[child_index];
-			if (!child.active) continue;
+	void Runtime::step() {
+		for (std::size_t index = 0; index < modules_.size(); index++) {
+			ModuleRuntime&            instance = modules_[index];
+			firmware::ExecutionGrant& grant    = grants_[index];
+			grant.reset_metadata(instance.id, instance.active);
+			instance.tick_skipped = false;
+			if (!instance.active) continue;
 
-			uint64_t skip_rng        = child.tick_skip_rng;
-			int64_t  clock_remainder = child.clock_remainder;
-			for (uint32_t index = 0; index < ticks; index++) {
-				FutureGrant&   plan     = plans[child_index];
-				const uint64_t tick     = global_tick_ + index;
-				const bool     started  = tick >= child.start_tick;
-				const bool     eligible = started && !platform_->is_paused(child.id, tick);
-				const bool     skipped  = eligible && child.tick_skip_ppm != 0 &&
-										  (splitmix_next(skip_rng) % 1'000'000u) < child.tick_skip_ppm;
-				plan.skipped[index]     = skipped;
-				plan.granted[index]     = eligible && !skipped;
-				if (!plan.granted[index]) continue;
+			const bool paused =
+				global_tick_ >= instance.clock.start_tick() && platform_->is_paused(instance.id, global_tick_);
+			const ModuleClockTick clock_tick = instance.clock.advance(global_tick_, true, paused);
+			grant.granted                    = clock_tick.granted;
+			grant.delta_us                   = clock_tick.delta_us;
+			grant.global_tick                = global_tick_;
+			grant.local_tick                 = module_ticks_[instance.id.raw()];
+			instance.tick_skipped            = clock_tick.skipped;
+			if (!clock_tick.granted) continue;
 
-				clock_remainder += TICK_DURATION.count() * child.clock_rate_ppm;
-				const int64_t delta = clock_remainder / 1'000'000;
-				clock_remainder %= 1'000'000;
-				plan.delta_us[index] = static_cast<uint32_t>(std::max<int64_t>(1, delta));
-			}
-		}
-		return plans;
-	}
+			while (!instance.staged_outbound.empty()) {
+				const rpc::Frame&          frame = instance.staged_outbound.front();
+				const std::vector<uint8_t> bytes = rpc::encode(frame);
+				if (qsim_frame_batch_append(&grant.inbound, &grant.inbound_used, grant.inbound_count, bytes.data(),
+											static_cast<uint32_t>(bytes.size())) != QSIM_BATCH_OK)
+					break;
 
-	uint32_t Runtime::child_safe_horizon(const std::vector<FutureGrant>& grants, uint32_t max_ticks,
-										 BoundaryProbe* probe) const {
-		const childsync::Control& control = control_->get();
-		uint32_t                  safe    = max_ticks;
-		if (probe != nullptr) probe->probed_ticks = max_ticks;
-
-		for (std::size_t child_index = 0; child_index < children_.size(); child_index++) {
-			const Child& child = children_[child_index];
-			if (!child.active) continue;
-
-			const FutureGrant& plan     = grants[child_index];
-			const bool         advances = std::any_of(plan.granted.begin(), plan.granted.begin() + max_ticks,
-													  [](bool granted) { return granted; });
-			if (!advances) continue;
-
-			const quercus_runahead_certificate_t& certificate = control.certificate[child.id.raw()];
-			if (childsync::load_acquire(certificate.valid) == 0 || certificate.generation != generation_ ||
-				certificate.next_event_us <= certificate.now_us) {
-				if (probe == nullptr) return 0;
-				probe->child_horizon[child.id.raw()] = 0;
-				safe                                 = 0;
-				continue;
-			}
-			const uint32_t horizon = runahead::safe_prefix(
-				certificate.now_us, certificate.next_event_us,
-				std::span<const bool>(plan.granted.data(), plan.granted.size()), probe == nullptr ? safe : max_ticks,
-				std::span<const uint32_t>(plan.delta_us.data(), plan.delta_us.size()));
-			if (probe != nullptr) {
-				probe->child_horizon[child.id.raw()] = horizon;
-				probe->child_proven[child.id.raw()]  = true;
-			}
-			safe = std::min(safe, horizon);
-			if (safe == 0 && probe == nullptr) return 0;
-		}
-		return safe;
-	}
-
-	uint32_t Runtime::parent_safe_horizon(uint32_t max_ticks, BoundaryProbe* probe) const {
-		for (const Child& child : children_) {
-			if (!child.staged_outbound.empty() || !child.pending_requests.empty() || !child.pending_responses.empty() ||
-				!child.rpc_work.empty() || child.rpc_workers.occupied() != 0 || child.rpc_workers.queued() != 0 ||
-				child.retire_pending || child.retire_after_ack) {
-				if (probe != nullptr) {
-					probe->limit = BoundaryLimit::CONSERVATIVE_FALLBACK;
-					if (!child.staged_outbound.empty() || !child.pending_requests.empty() ||
-						!child.pending_responses.empty() || !child.rpc_work.empty() ||
-						child.rpc_workers.occupied() != 0 || child.rpc_workers.queued() != 0) {
-						probe->engine_delivery[child.id.raw()] = true;
-						probe->limit                           = BoundaryLimit::ENGINE_DELIVERY;
+				const uint64_t completed_work_id = frame.handler_work_id;
+				const bool     stop_after_ack    = frame.stop_after_delivery;
+				instance.staged_outbound.pop_front();
+				grant.inbound_count++;
+				if (stop_after_ack) instance.retire_after_ack = true;
+				if (completed_work_id != 0) {
+					for (const uint64_t work_id : instance.rpc_workers.complete(completed_work_id)) {
+						start_rpc_work(instance, work_id, global_tick_, module_ticks_[instance.id.raw()]);
 					}
 				}
-				return 0;
 			}
 		}
 
-		const std::optional<uint64_t> next_task = queue_.next_due_tick();
-		if (next_task && *next_task <= global_tick_) {
-			if (probe != nullptr) probe->limit = BoundaryLimit::CONSERVATIVE_FALLBACK;
-			return 0;
-		}
-		if (next_task) {
-			const uint32_t task_horizon = static_cast<uint32_t>(
-				std::min<uint64_t>(max_ticks, *next_task > global_tick_ ? *next_task - global_tick_ : 0));
-			if (task_horizon < max_ticks && probe != nullptr) {
-				probe->limit = BoundaryLimit::CONSERVATIVE_FALLBACK;
-			}
-			max_ticks = task_horizon;
-		}
-		if (max_ticks == 0) return 0;
-
-		try {
-			world::State      future_world    = world_;
-			platform::Manager future_platform = platform_->clone_for_lookahead(future_world);
-			for (uint32_t index = 0; index < max_ticks; index++) {
-				const uint64_t tick = global_tick_ + index;
-				future_platform.prepare_tick(tick);
-				future_world.advance_tick();
-				future_platform.advance(tick);
-
-				bool produced_delivery = false;
-				for (const Child& child : children_) {
-					if (!child.active) continue;
-					if (!future_platform.take_outbound(child.id, childsync::MAILBOX_CAPACITY).empty()) {
-						produced_delivery = true;
-						if (probe != nullptr) probe->engine_delivery[child.id.raw()] = true;
-					}
-				}
-				if (produced_delivery) {
-					// The frame is produced after this logical tick and is child-visible at a later
-					// handoff. This tick itself is still part of the certified quiet prefix.
-					if (probe != nullptr) probe->limit = BoundaryLimit::ENGINE_DELIVERY;
-					return index + 1;
-				}
-
-				if (!future_platform.check_supervision(tick).empty()) {
-					if (probe != nullptr) probe->limit = BoundaryLimit::CONSERVATIVE_FALLBACK;
-					return index + 1;
-				}
-				(void)future_platform.take_diagnostics();
-			}
-		} catch (const std::exception&) {
-			if (probe != nullptr) probe->limit = BoundaryLimit::CONSERVATIVE_FALLBACK;
-			return 0;
-		}
-
-		return max_ticks;
-	}
-
-	void Runtime::grant_runahead(const std::vector<FutureGrant>& grants, uint32_t ticks) {
-		childsync::Control& control = control_->get();
-		control.grant_mode          = QUERCUS_GRANT_EXACT_RUNAHEAD;
-		control.runahead_ticks      = ticks;
-
-		for (std::size_t child_index = 0; child_index < children_.size(); child_index++) {
-			Child& child = children_[child_index];
-			for (uint32_t word = 0; word < QUERCUS_RUNAHEAD_MASK_WORDS; word++) {
-				control.runahead[child.id.raw()].active[word] = 0;
-			}
-			for (uint32_t index = 0; index < ticks; index++) {
-				if (grants[child_index].granted[index]) {
-					control.runahead[child.id.raw()].active[index / 64U] |= UINT64_C(1) << (index % 64U);
-				}
-				control.runahead[child.id.raw()].delta_us[index] = grants[child_index].delta_us[index];
-			}
-			for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
-				childsync::mailbox_clear(child.segment->get().to_parent[index]);
-				childsync::mailbox_clear(child.segment->get().to_child[index]);
-			}
-		}
-
+		// Complete preparation for every module before any firmware output can be observed.
 		platform_->prepare_tick(global_tick_);
-		childsync::store_relaxed(control.done_count, 0);
-		const uint32_t expected =
-			static_cast<uint32_t>(std::ranges::count_if(children_, [](const Child& child) { return child.active; }));
-		childsync::store_relaxed(control.expected, expected);
 		generation_++;
-		childsync::store_release(control.generation, generation_);
-		childsync::futex_wake(control.generation, INT_MAX);
-	}
+		backend_->execute_epoch(grants_);
 
-	void Runtime::capture_active_modules(BoundaryProbe& probe) const {
-		for (const Child& child : children_) {
-			if (child.active) probe.active[child.id.raw()] = true;
+		for (ModuleRuntime& instance : modules_) {
+			if (instance.active && instance.retire_after_ack) retire_module(instance.id, global_tick_);
 		}
-	}
-
-	void Runtime::mark_required_child_wakes(BoundaryProbe& probe, uint32_t boundary_ticks) const {
-		for (const Child& child : children_) {
-			const uint8_t id = child.id.raw();
-			if (probe.child_proven[id] && probe.child_horizon[id] <= boundary_ticks &&
-				probe.child_horizon[id] < probe.probed_ticks) {
-				probe.child_wake[id] = true;
+		for (std::size_t index = 0; index < modules_.size(); index++) {
+			ModuleRuntime&                  instance = modules_[index];
+			const firmware::ExecutionGrant& grant    = grants_[index];
+			instance.tick_granted                    = instance.active && grant.granted;
+			if (instance.tick_skipped && trace_.enabled()) {
+				trace_.write(trace::Entry("module_tick_skipped")
+								 .field("tick", global_tick_)
+								 .field("module", static_cast<uint64_t>(instance.id.raw()))
+								 .field("local_tick", module_ticks_[instance.id.raw()]));
 			}
-		}
-	}
+			if (!instance.tick_granted) continue;
 
-	void Runtime::record_synchronization(uint32_t logical_ticks, BoundaryProbe probe) {
-		if (!sync_stats_enabled_) return;
-
-		bool child_required  = false;
-		bool engine_required = false;
-		for (const Child& child : children_) {
-			const uint8_t id = child.id.raw();
-			if (child.active && !child.staged_outbound.empty()) probe.engine_delivery[id] = true;
-			child_required  = child_required || probe.child_wake[id];
-			engine_required = engine_required || probe.engine_delivery[id];
-		}
-		if (child_required) {
-			probe.limit = BoundaryLimit::CHILD_WAKE;
-		} else if (engine_required) {
-			probe.limit = BoundaryLimit::ENGINE_DELIVERY;
+			const uint64_t local_tick = module_ticks_[instance.id.raw()];
+			intake(instance, global_tick_, local_tick, grant.outbound);
+			release_local_rpc(instance, global_tick_, local_tick);
+			module_ticks_[instance.id.raw()]++;
 		}
 
-		sync_stats_.logical_ticks += logical_ticks;
-		sync_stats_.boundaries++;
-		sync_stats_.ticks_per_boundary[std::min<uint32_t>(logical_ticks, MAX_RUNAHEAD_TICKS)]++;
-		sync_stats_.limits[static_cast<std::size_t>(probe.limit)]++;
-
-		uint32_t wake_set_size = 0;
-		for (const Child& child : children_) {
-			const uint8_t id = child.id.raw();
-			if (probe.active[id]) {
-				sync_stats_.current_child_wakeups++;
-				sync_stats_.current_module_wakes[id]++;
-			}
-			if (probe.active[id] && (probe.child_wake[id] || probe.engine_delivery[id])) {
-				wake_set_size++;
-				sync_stats_.required_child_wakeups++;
-				sync_stats_.required_module_wakes[id]++;
-			}
-		}
-		sync_stats_.required_wake_set_sizes[wake_set_size]++;
-	}
-
-	bool Runtime::selective_child_due(const Child& child, const FutureGrant& grant, uint32_t batch_ticks) const {
-		if (!child.active) return false;
-		if (!platform_->is_activated(child.id)) return true;
-		if (!child.staged_outbound.empty() || !child.pending_requests.empty() || !child.pending_responses.empty() ||
-			!child.rpc_work.empty() || child.rpc_workers.occupied() != 0 || child.rpc_workers.queued() != 0 ||
-			child.retire_pending || child.retire_after_ack)
-			return true;
-		const childsync::Control&             control     = control_->get();
-		const quercus_runahead_certificate_t& certificate = control.certificate[child.id.raw()];
-		if (childsync::load_acquire(certificate.valid) == 0 || certificate.generation != child.wake_seq ||
-			certificate.next_event_us <= certificate.now_us)
-			return true;
-		if (child.deferred_grants.size() + batch_ticks > MAX_RUNAHEAD_TICKS) return true;
-		if (certificate.next_event_us == UINT64_MAX) return false;
-
-		uint64_t elapsed = 0;
-		for (const DeferredGrant& deferred : child.deferred_grants) {
-			if (deferred.granted) elapsed += deferred.delta_us;
-		}
-		for (uint32_t index = 0; index < batch_ticks; index++) {
-			if (grant.granted[index]) elapsed += grant.delta_us[index];
-		}
-		return elapsed >= certificate.next_event_us - certificate.now_us;
-	}
-
-	void Runtime::grant_selective(const std::vector<FutureGrant>& grants, uint32_t batch_ticks,
-								  const std::vector<bool>& selected) {
-		childsync::Control& control = control_->get();
-		generation_++;
-		uint32_t expected = 0;
-
-		for (std::size_t child_index = 0; child_index < children_.size(); child_index++) {
-			Child& child            = children_[child_index];
-			child.selected          = child.active && selected[child_index];
-			child.grant_mask        = 0;
-			child.skipped_mask      = 0;
-			const FutureGrant& plan = grants[child_index];
-
-			// Commit exactly the same clock RNG and remainder transitions as the reference batch path.
-			for (uint32_t index = 0; index < batch_ticks; index++) {
-				const uint16_t slot    = static_cast<uint16_t>(1U << index);
-				const bool     started = global_tick_ + index >= child.start_tick;
-				const bool eligible = child.active && started && !platform_->is_paused(child.id, global_tick_ + index);
-				bool       skipped  = false;
-				if (eligible && child.tick_skip_ppm != 0)
-					skipped = (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
-				if (skipped != plan.skipped[index] || (eligible && !skipped) != plan.granted[index])
-					throw std::logic_error("Selective grant diverged from planned clock state");
-				if (skipped) child.skipped_mask |= slot;
-				if (!plan.granted[index]) continue;
-				child.grant_mask |= slot;
-				child.clock_remainder += TICK_DURATION.count() * child.clock_rate_ppm;
-				const int64_t delta = child.clock_remainder / 1'000'000;
-				child.clock_remainder %= 1'000'000;
-				if (static_cast<uint32_t>(std::max<int64_t>(1, delta)) != plan.delta_us[index])
-					throw std::logic_error("Selective grant delta diverged from planned clock state");
-				control.delta_us[child.id.raw()][index] = plan.delta_us[index];
-			}
-			control.active_mask[child.id.raw()] = child.selected ? child.grant_mask : 0;
-
-			if (!child.selected) {
-				for (uint32_t index = 0; index < batch_ticks; index++)
-					child.deferred_grants.push_back({plan.granted[index], plan.delta_us[index]});
-				continue;
-			}
-
-			expected++;
-			quercus_selective_grant_t& selective = control.selective[child.id.raw()];
-			selective.generation                 = generation_;
-			selective.prefix_ticks               = static_cast<uint32_t>(child.deferred_grants.size());
-			selective.batch_ticks                = batch_ticks;
-			std::fill(std::begin(selective.prefix_active), std::end(selective.prefix_active), UINT64_C(0));
-			for (uint32_t index = 0; index < selective.prefix_ticks; index++) {
-				const DeferredGrant deferred = child.deferred_grants[index];
-				if (deferred.granted) selective.prefix_active[index / 64U] |= UINT64_C(1) << (index % 64U);
-				selective.prefix_delta_us[index] = deferred.delta_us;
-			}
-			child.deferred_grants.clear();
-			for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
-				childsync::mailbox_clear(child.segment->get().to_parent[index]);
-				childsync::mailbox_clear(child.segment->get().to_child[index]);
-			}
-			if (child.grant_mask != 0) {
-				const uint32_t      first_active = std::countr_zero(child.grant_mask);
-				childsync::Mailbox& mailbox      = child.segment->get().to_child[first_active];
-				while (!child.staged_outbound.empty()) {
-					const rpc::Frame&          frame = child.staged_outbound.front();
-					const std::vector<uint8_t> bytes = rpc::encode(frame);
-					if (childsync::mailbox_append(mailbox, bytes.data(), bytes.size()) != childsync::MailboxStatus::OK)
-						break;
-					const uint64_t work_id        = frame.handler_work_id;
-					const bool     stop_after_ack = frame.stop_after_delivery;
-					child.staged_outbound.pop_front();
-					if (stop_after_ack) child.retire_after_ack = true;
-					if (work_id != 0)
-						for (const uint64_t ready : child.rpc_workers.complete(work_id))
-							start_rpc_work(child, ready, global_tick_, module_ticks_[child.id.raw()]);
-				}
-			}
-		}
-
-		platform_->prepare_tick(global_tick_);
-		childsync::store_relaxed(control.done_count, 0);
-		childsync::store_relaxed(control.expected, expected);
-		if (expected == 0) return;
-
-		std::array<uint32_t, QUERCUS_FUTEX_BANKS> masks{};
-		for (Child& child : children_) {
-			if (!child.selected) continue;
-			child.wake_seq++;
-			childsync::store_release(control.wake_seq[child.id.raw()], child.wake_seq);
-			const uint32_t index = child.scheduler_index;
-			masks[index / 32U] |= UINT32_C(1) << (index % 32U);
-		}
-		for (uint32_t bank = 0; bank < QUERCUS_FUTEX_BANKS; bank++) {
-			if (masks[bank] == 0) continue;
-			const uint32_t sequence = childsync::load_acquire(control.futex_bank[bank]) + 1U;
-			childsync::store_release(control.futex_bank[bank], sequence);
-			(void)childsync::futex_wake_bitset(control.futex_bank[bank], INT_MAX, masks[bank]);
-		}
-	}
-
-	uint32_t Runtime::step_selective(uint32_t batch_ticks) {
-		const std::vector<FutureGrant> grants = plan_future_grants(batch_ticks);
-		std::vector<bool>              selected(children_.size(), false);
-		uint32_t                       selected_count = 0;
-		for (std::size_t index = 0; index < children_.size(); index++) {
-			selected[index] = selective_child_due(children_[index], grants[index], batch_ticks);
-			if (selected[index]) selected_count++;
-		}
-		if (sync_stats_enabled_) {
-			sync_stats_.logical_ticks += batch_ticks;
-			selective_ticks_since_sync_ += batch_ticks;
-			if (selected_count != 0) {
-				sync_stats_.boundaries++;
-				sync_stats_.ticks_per_boundary[std::min(selective_ticks_since_sync_, MAX_RUNAHEAD_TICKS)]++;
-				sync_stats_.required_wake_set_sizes[selected_count]++;
-				sync_stats_.current_child_wakeups += selected_count;
-				sync_stats_.required_child_wakeups += selected_count;
-				sync_stats_.limits[static_cast<std::size_t>(BoundaryLimit::CHILD_WAKE)]++;
-				for (std::size_t index = 0; index < children_.size(); index++)
-					if (selected[index]) {
-						const uint8_t id = children_[index].id.raw();
-						sync_stats_.current_module_wakes[id]++;
-						sync_stats_.required_module_wakes[id]++;
-					}
-				selective_ticks_since_sync_ = 0;
-			}
-		}
-
-		grant_selective(grants, batch_ticks, selected);
-		collect_acknowledgements();
-		for (Child& child : children_)
-			if (child.selected && child.active && child.retire_after_ack) retire_module(child.id, global_tick_);
-
-		uint32_t completed = 0;
-		for (uint32_t batch_index = 0; batch_index < batch_ticks; batch_index++) {
-			for (Child& child : children_) {
-				const uint16_t slot = static_cast<uint16_t>(1U << batch_index);
-				child.tick_granted  = child.active && (child.grant_mask & slot) != 0;
-				if ((child.skipped_mask & slot) != 0 && trace_.enabled())
-					trace_.write(trace::Entry("module_tick_skipped")
-									 .field("tick", global_tick_)
-									 .field("module", static_cast<uint64_t>(child.id.raw()))
-									 .field("local_tick", module_ticks_[child.id.raw()]));
-				if (!child.tick_granted) continue;
-				const uint64_t local_tick = module_ticks_[child.id.raw()];
-				if (child.selected) drain(child, global_tick_, local_tick, batch_index);
-				release_local_rpc(child, global_tick_, local_tick);
-				module_ticks_[child.id.raw()]++;
-			}
-			if (batch_index != 0) platform_->prepare_tick(global_tick_);
-			schedule_tick_tasks(batch_index, batch_ticks);
-			queue_.run_tick(global_tick_);
-			global_tick_++;
-			completed++;
-			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) break;
-		}
-		// A sleeping child does not participate in the barrier. Poll all active processes once per
-		// epoch so a failure cannot stay hidden until that child is selected again.
-		for (Child& child : children_) {
-			if (child.active && child.process.exit_status().has_value())
-				throw std::runtime_error("Lost the connection to module " + std::to_string(child.id.raw()));
-		}
-		return completed;
-	}
-
-	uint32_t Runtime::step_exact(uint32_t max_ticks) {
-		std::optional<BoundaryProbe> probe;
-		if (sync_stats_enabled_) probe.emplace();
-		BoundaryProbe* measured = probe ? &*probe : nullptr;
-		if (measured != nullptr) {
-			measured->limit = BoundaryLimit::HARD_LOOKAHEAD_CAP;
-			capture_active_modules(*measured);
-		}
-		if (max_ticks < 2) {
-			runahead_fallbacks_++;
-			if (measured != nullptr) pending_strict_probe_ = std::move(*measured);
-			return step(1);
-		}
-
-		const std::vector<FutureGrant> grants = plan_future_grants(max_ticks);
-		uint32_t                       safe   = child_safe_horizon(grants, max_ticks, measured);
-		if (safe < 2) {
-			runahead_fallbacks_++;
-			if (measured != nullptr) {
-				mark_required_child_wakes(*measured, 1);
-				measured->limit       = std::ranges::any_of(measured->child_wake, [](bool wake) { return wake; })
-											? BoundaryLimit::CHILD_WAKE
-											: BoundaryLimit::CONSERVATIVE_FALLBACK;
-				pending_strict_probe_ = std::move(*measured);
-			}
-			return step(1);
-		}
-		const uint32_t child_safe  = safe;
-		const uint32_t parent_safe = parent_safe_horizon(safe, measured);
-		safe                       = std::min(safe, parent_safe);
-		if (safe < 2) {
-			runahead_fallbacks_++;
-			if (measured != nullptr) {
-				mark_required_child_wakes(*measured, 1);
-				pending_strict_probe_ = std::move(*measured);
-			}
-			return step(1);
-		}
-		if (measured != nullptr) {
-			mark_required_child_wakes(*measured, safe);
-			if (child_safe == safe && std::ranges::any_of(measured->child_wake, [](bool wake) { return wake; })) {
-				measured->limit = BoundaryLimit::CHILD_WAKE;
-			} else if (parent_safe == safe && measured->limit != BoundaryLimit::ENGINE_DELIVERY &&
-					   measured->limit != BoundaryLimit::CONSERVATIVE_FALLBACK) {
-				measured->limit = BoundaryLimit::HARD_LOOKAHEAD_CAP;
-			}
-		}
-
-		runahead_windows_++;
-		runahead_ticks_ += safe;
-		grant_runahead(grants, safe);
-		collect_acknowledgements();
-		for (const Child& child : children_) {
-			for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
-				if (childsync::mailbox_count(child.segment->get().to_parent[index]) != 0) {
-					throw std::logic_error("Module " + std::to_string(child.id.raw()) +
-										   " emitted RPC inside a certified runahead interval");
-				}
-			}
-		}
-
-		uint32_t completed = 0;
-		for (uint32_t index = 0; index < safe; index++) {
-			for (std::size_t child_index = 0; child_index < children_.size(); child_index++) {
-				Child&             child = children_[child_index];
-				const FutureGrant& plan  = grants[child_index];
-				child.tick_granted       = child.active && plan.granted[index];
-
-				// Commit only this logical tick's clock RNG and drift state. If an LTL verdict ends
-				// the interval early, no speculative parent RNG state leaks into the committed run.
-				const bool started  = global_tick_ >= child.start_tick;
-				const bool eligible = child.active && started && !platform_->is_paused(child.id, global_tick_);
-				bool       skipped  = false;
-				if (eligible && child.tick_skip_ppm != 0) {
-					skipped = (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
-				}
-				if (skipped != plan.skipped[index] || (eligible && !skipped) != plan.granted[index]) {
-					throw std::logic_error("Exact runahead grant diverged from committed clock state");
-				}
-				if (skipped && trace_.enabled()) {
-					trace_.write(trace::Entry("module_tick_skipped")
-									 .field("tick", global_tick_)
-									 .field("module", static_cast<uint64_t>(child.id.raw()))
-									 .field("local_tick", module_ticks_[child.id.raw()]));
-				}
-				if (child.tick_granted) {
-					child.clock_remainder += TICK_DURATION.count() * child.clock_rate_ppm;
-					const int64_t delta = child.clock_remainder / 1'000'000;
-					child.clock_remainder %= 1'000'000;
-					if (static_cast<uint32_t>(std::max<int64_t>(1, delta)) != plan.delta_us[index]) {
-						throw std::logic_error("Exact runahead delta diverged from committed clock state");
-					}
-					const uint64_t local_tick = module_ticks_[child.id.raw()];
-					release_local_rpc(child, global_tick_, local_tick);
-					module_ticks_[child.id.raw()]++;
-				}
-			}
-			if (index != 0) platform_->prepare_tick(global_tick_);
-			schedule_tick_tasks(index, safe);
-			queue_.run_tick(global_tick_);
-			global_tick_++;
-			completed++;
-
-			if (index + 1U < safe) {
-				for (const Child& child : children_) {
-					if (child.active && platform_->backlog(child.id) != 0) {
-						throw std::logic_error("Parent produced an unpredicted handoff inside exact runahead");
-					}
-				}
-			}
-			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) break;
-		}
-		if (measured != nullptr) record_synchronization(completed, std::move(*measured));
-		return completed;
-	}
-
-	uint32_t Runtime::step(uint32_t batch_ticks) {
-		std::optional<BoundaryProbe> probe;
-		if (sync_stats_enabled_) {
-			probe.emplace();
-			if (pending_strict_probe_) {
-				*probe = std::move(*pending_strict_probe_);
-				pending_strict_probe_.reset();
-			} else {
-				probe->limit =
-					runahead_cap_ == 0 ? BoundaryLimit::HARD_LOOKAHEAD_CAP : BoundaryLimit::CONSERVATIVE_FALLBACK;
-				capture_active_modules(*probe);
-				if (runahead_cap_ != 0) {
-					const std::vector<FutureGrant> grants = plan_future_grants(batch_ticks);
-					(void)child_safe_horizon(grants, batch_ticks, &*probe);
-					mark_required_child_wakes(*probe, batch_ticks);
-				}
-			}
-		}
-		// A batch advances application-local time first, then replays the parent one tick at a time.
-		// Parent-produced frames therefore become visible only on a later batch; this is the explicit
-		// relaxed-timing mode selected by --tick-batch.
-		grant_tick(batch_ticks);
-		collect_acknowledgements();
-		for (Child& child : children_) {
-			if (child.active && child.retire_after_ack) retire_module(child.id, global_tick_);
-		}
-
-		uint32_t completed = 0;
-		for (uint32_t batch_index = 0; batch_index < batch_ticks; batch_index++) {
-			for (Child& child : children_) {
-				const uint16_t slot = static_cast<uint16_t>(1U << batch_index);
-				child.tick_granted  = child.active && (child.grant_mask & slot) != 0;
-				if ((child.skipped_mask & slot) != 0 && trace_.enabled()) {
-					trace_.write(trace::Entry("module_tick_skipped")
-									 .field("tick", global_tick_)
-									 .field("module", static_cast<uint64_t>(child.id.raw()))
-									 .field("local_tick", module_ticks_[child.id.raw()]));
-				}
-				if (child.tick_granted) {
-					const uint64_t local_tick = module_ticks_[child.id.raw()];
-					drain(child, global_tick_, local_tick, batch_index);
-					release_local_rpc(child, global_tick_, local_tick);
-					module_ticks_[child.id.raw()]++;
-				}
-			}
-			if (batch_index != 0) {
-				platform_->prepare_tick(global_tick_);
-			}
-			schedule_tick_tasks(batch_index, batch_ticks);
-			queue_.run_tick(global_tick_);
-			global_tick_++;
-			completed++;
-			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) {
-				break;
-			}
-		}
-		if (probe) record_synchronization(completed, std::move(*probe));
-		return completed;
-	}
-
-	void Runtime::grant_tick(uint32_t batch_ticks) {
-		childsync::Control& control = control_->get();
-
-		control.grant_mode  = QUERCUS_GRANT_BATCH;
-		control.batch_ticks = batch_ticks;
-
-		for (Child& child : children_) {
-			child.grant_mask   = 0;
-			child.skipped_mask = 0;
-			if (!child.active) {
-				control.active_mask[child.id.raw()] = 0;
-				continue;
-			}
-			for (uint32_t index = 0; index < batch_ticks; index++) {
-				const uint16_t slot      = static_cast<uint16_t>(1U << index);
-				const uint64_t slot_tick = global_tick_ + index;
-				const bool     started   = slot_tick >= child.start_tick;
-				const bool     eligible  = started && !platform_->is_paused(child.id, slot_tick);
-				const bool     skipped   = eligible && child.tick_skip_ppm != 0 &&
-										   (splitmix_next(child.tick_skip_rng) % 1'000'000u) < child.tick_skip_ppm;
-				if (skipped) child.skipped_mask |= slot;
-				if (!eligible || skipped) continue;
-
-				child.grant_mask |= slot;
-				child.clock_remainder += TICK_DURATION.count() * child.clock_rate_ppm;
-				const int64_t delta = child.clock_remainder / 1'000'000;
-				child.clock_remainder %= 1'000'000;
-				control.delta_us[child.id.raw()][index] = static_cast<uint32_t>(std::max<int64_t>(1, delta));
-			}
-			control.active_mask[child.id.raw()] = child.grant_mask;
-
-			for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
-				childsync::mailbox_clear(child.segment->get().to_parent[index]);
-				childsync::mailbox_clear(child.segment->get().to_child[index]);
-			}
-
-			if (child.grant_mask != 0) {
-				const uint32_t      first_active = std::countr_zero(child.grant_mask);
-				childsync::Mailbox& mailbox      = child.segment->get().to_child[first_active];
-				while (!child.staged_outbound.empty()) {
-					const rpc::Frame&          frame = child.staged_outbound.front();
-					const std::vector<uint8_t> bytes = rpc::encode(frame);
-					if (childsync::mailbox_append(mailbox, bytes.data(), bytes.size()) != childsync::MailboxStatus::OK)
-						break;
-
-					const uint64_t completed_work_id = frame.handler_work_id;
-					const bool     stop_after_ack    = frame.stop_after_delivery;
-					child.staged_outbound.pop_front();
-					if (stop_after_ack) child.retire_after_ack = true;
-					if (completed_work_id != 0) {
-						for (const uint64_t work_id : child.rpc_workers.complete(completed_work_id)) {
-							start_rpc_work(child, work_id, global_tick_, module_ticks_[child.id.raw()]);
-						}
-					}
-				}
-			}
-		}
-
-		// Frames that become due at this tick are intentionally prepared after the next window's
-		// inbound pages have been packed. As in strict mode, they become visible on the following
-		// child handoff rather than racing the application at the same logical tick.
-		platform_->prepare_tick(global_tick_);
-
-		childsync::store_relaxed(control.done_count, 0);
-		const uint32_t expected =
-			static_cast<uint32_t>(std::ranges::count_if(children_, [](const Child& child) { return child.active; }));
-		childsync::store_relaxed(control.expected, expected);
-
-		// One wake for every child. The release pairs with each child's acquire on generation, so
-		// the tick fields and inbound mailboxes above are visible before any of them runs.
-		generation_++;
-		childsync::store_release(control.generation, generation_);
-		childsync::futex_wake(control.generation, INT_MAX);
-	}
-
-	void Runtime::collect_acknowledgements() {
-		childsync::Control& control = control_->get();
-		if (childsync::load_acquire(control.expected) == 0) {
-			return;
-		}
-
-		// Waiting on the release word rather than on done_count costs one futex wait per tick: the
-		// count changes once per child, and a futex wait returns on every change to its word.
-		while (true) {
-			const uint32_t released = childsync::load_acquire(control.release);
-			if (released == generation_) {
-				break;
-			}
-
-			if (!childsync::futex_wait(control.release, released, BARRIER_POLL)) {
-				// Shared memory has no end of file, so a child that died is only visible by
-				// reaping it. Checked on timeout alone, which a healthy tick never reaches.
-				for (Child& child : children_) {
-					if (child.process.exit_status().has_value()) {
-						throw std::runtime_error("Lost the connection to module " + std::to_string(child.id.raw()));
-					}
-				}
-			}
-		}
+		schedule_tick_tasks();
+		queue_.run_tick(global_tick_);
+		// Flush after all task generations of each 100-tick interval. stop() flushes the remainder.
+		if (global_tick_ % TRACE_FLUSH_TICKS == TRACE_FLUSH_TICKS - 1) trace_.flush();
+		global_tick_++;
 	}
 
 	void Runtime::retire_module(module::ModuleId id, uint64_t tick) {
-		auto found = std::ranges::find_if(children_, [id](const Child& child) { return child.id == id; });
-		if (found == children_.end() || !found->active) {
+		auto found = std::ranges::find_if(modules_, [id](const ModuleRuntime& instance) { return instance.id == id; });
+		if (found == modules_.end() || !found->active) {
 			return;
 		}
 
-		Child& child           = *found;
-		child.active           = false;
-		child.accepting_rpc    = false;
-		child.tick_granted     = false;
-		child.grant_mask       = 0;
-		child.skipped_mask     = 0;
-		child.retire_pending   = false;
-		child.retire_after_ack = false;
-		child.staged_outbound.clear();
-		child.pending_requests.clear();
-		child.pending_responses.clear();
-		child.rpc_workers = platform::RpcWorkerPool{};
-		child.rpc_work.clear();
-		for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
-			childsync::mailbox_clear(child.segment->get().to_parent[index]);
-			childsync::mailbox_clear(child.segment->get().to_child[index]);
-		}
-		control_->get().active_mask[id.raw()] = 0;
-		child.process.terminate();
+		ModuleRuntime& instance   = *found;
+		instance.active           = false;
+		instance.accepting_rpc    = false;
+		instance.tick_granted     = false;
+		instance.tick_skipped     = false;
+		instance.retire_pending   = false;
+		instance.retire_after_ack = false;
+		instance.staged_outbound.clear();
+		instance.pending_requests.clear();
+		instance.pending_responses.clear();
+		instance.rpc_workers = platform::RpcWorkerPool{};
+		instance.rpc_work.clear();
+		backend_->retire(id);
 
 		if (trace_.enabled()) {
 			trace_.write(trace::Entry("module_stopped")
@@ -1344,36 +661,29 @@ namespace sim {
 		}
 	}
 
-	void Runtime::drain(Child& child, uint64_t source_global_tick, uint64_t source_local_tick, uint32_t batch_index) {
-		childsync::Mailbox& mailbox = child.segment->get().to_parent[batch_index];
-		if (!child.accepting_rpc) {
-			childsync::mailbox_clear(mailbox);
-			return;
+	void Runtime::intake(ModuleRuntime& instance, uint64_t source_global_tick, uint64_t source_local_tick,
+						 const firmware::FrameBatchView& batch) {
+		if (!batch.valid()) {
+			throw std::runtime_error("Module " + std::to_string(instance.id.raw()) +
+									 " supplied an invalid frame batch");
 		}
 
-		// The child shares the page, so its offsets are checked before they are used to index it.
-		if (!childsync::mailbox_valid(mailbox)) {
-			throw std::runtime_error("Module " + std::to_string(child.id.raw()) + " corrupted its mailbox");
-		}
-
-		const std::size_t count = childsync::mailbox_count(mailbox);
-		for (std::size_t index = 0; index < count; index++) {
-			std::size_t                      length = 0;
-			const uint8_t*                   bytes  = childsync::mailbox_read(mailbox, index, length);
-			const platform::IngressAdmission ingress =
-				platform_->account_ingress(child.id, platform::ModuleTime{source_global_tick, source_local_tick});
+		for (std::size_t index = 0; index < batch.size(); index++) {
+			const firmware::FrameBatchView::Frame bytes = batch[index];
+			const platform::IngressAdmission      ingress =
+				platform_->account_ingress(instance.id, platform::ModuleTime{source_global_tick, source_local_tick});
 			rpc::Frame frame;
 			reader_.clear();
-			reader_.append(bytes, length);
+			reader_.append(bytes.data(), bytes.size());
 			if (reader_.next(frame) != rpc::DecodeStatus::OK) {
 				if (trace_.enabled()) {
 					trace_.write(trace::Entry("rpc_ingress_drop")
 									 .field("tick", source_global_tick)
-									 .field("module", static_cast<uint64_t>(child.id.raw()))
+									 .field("module", static_cast<uint64_t>(instance.id.raw()))
 									 .field("reason", "malformed_frame")
-									 .field("length", static_cast<uint64_t>(length)));
+									 .field("length", static_cast<uint64_t>(bytes.size())));
 				}
-				if (ingress.stop_triggered) quiesce_module_for_stop(child, source_local_tick, std::nullopt);
+				if (ingress.stop_triggered) quiesce_module_for_stop(instance, source_local_tick, std::nullopt);
 				continue;
 			}
 
@@ -1381,7 +691,7 @@ namespace sim {
 				if (trace_.enabled()) {
 					trace_.write(trace::Entry("rpc_ingress_drop")
 									 .field("tick", source_global_tick)
-									 .field("module", static_cast<uint64_t>(child.id.raw()))
+									 .field("module", static_cast<uint64_t>(instance.id.raw()))
 									 .field("reason", "unexpected_frame_type")
 									 .field("frame_type", static_cast<uint64_t>(frame.type)));
 				}
@@ -1392,7 +702,7 @@ namespace sim {
 			if (trace_.enabled() || !property_monitors_.empty()) {
 				observation_id = next_rpc_observation_id_++;
 				pending_rpc_requests_[source_global_tick].push_back(
-					ltl::RpcRequest{observation_id, source_global_tick, child.id.raw(), frame.cmd, frame.call_id,
+					ltl::RpcRequest{observation_id, source_global_tick, instance.id.raw(), frame.cmd, frame.call_id,
 									frame.flags, (frame.flags & RPC_FLAG_NON_CON) == 0, frame.payload});
 			}
 			if (ingress.stop_triggered) {
@@ -1407,61 +717,59 @@ namespace sim {
 					response.stop_after_delivery    = true;
 					terminal                        = std::move(response);
 				}
-				quiesce_module_for_stop(child, source_local_tick, std::move(terminal));
+				quiesce_module_for_stop(instance, source_local_tick, std::move(terminal));
 				return;
 			}
 
 			// Requests become tasks so their order is decided by the seed, not by mailbox order.
-			// The module and slot are fixed-width, so the prefix sorts numerically and is unique
-			// within a tick: that is exactly the order this loop reads them in.
-			const module::ModuleId id = child.id;
-			char                   prefix[16];
+			// The module, batch index, call ID, and command identify each request within a tick.
+			// Task ordering uses the seeded queue; these decimal labels are not numeric sort keys.
+			const module::ModuleId id = instance.id;
+			char                   prefix[32];
 			std::snprintf(prefix, sizeof(prefix), "rpc/%02u/%u/", id.raw(), static_cast<unsigned>(index));
 			const std::string label = prefix + std::to_string(frame.call_id) + "/" + std::to_string(frame.cmd);
 
-			child.pending_requests.push_back(PendingRpcRequest{source_local_tick + RPC_RX_DELAY_LOCAL_TICKS,
-															   next_rpc_work_id_++, std::move(frame), std::move(label),
-															   observation_id, ingress});
+			instance.pending_requests.push_back(PendingRpcRequest{source_local_tick + RPC_RX_DELAY_LOCAL_TICKS,
+																  next_rpc_work_id_++, std::move(frame),
+																  std::move(label), observation_id, ingress});
 		}
 	}
 
-	void Runtime::release_local_rpc(Child& child, uint64_t global_tick, uint64_t local_tick) {
-		while (!child.pending_responses.empty() && child.pending_responses.front().due_local_tick <= local_tick) {
-			platform_->enqueue(child.id, std::move(child.pending_responses.front().frame));
-			child.pending_responses.pop_front();
+	void Runtime::release_local_rpc(ModuleRuntime& instance, uint64_t global_tick, uint64_t local_tick) {
+		while (!instance.pending_responses.empty() && instance.pending_responses.front().due_local_tick <= local_tick) {
+			platform_->enqueue(instance.id, std::move(instance.pending_responses.front().frame));
+			instance.pending_responses.pop_front();
 		}
 
-		while (!child.pending_requests.empty() && child.pending_requests.front().due_local_tick <= local_tick) {
-			PendingRpcRequest pending = std::move(child.pending_requests.front());
-			child.pending_requests.pop_front();
-			Child* const child_ptr = &child;
-			std::string  label     = std::move(pending.label);
+		while (!instance.pending_requests.empty() && instance.pending_requests.front().due_local_tick <= local_tick) {
+			PendingRpcRequest pending = std::move(instance.pending_requests.front());
+			instance.pending_requests.pop_front();
+			ModuleRuntime* const module_ptr = &instance;
+			std::string          label      = std::move(pending.label);
 			queue_.schedule(
 				global_tick, engine::Priority::CHILD_INTAKE, std::move(label),
-				[this, child_ptr, local_tick, pending = std::move(pending)](engine::TaskContext& context) mutable {
-					if (!child_ptr->accepting_rpc) return;
+				[this, module_ptr, local_tick, pending = std::move(pending)](engine::TaskContext& context) mutable {
+					if (!module_ptr->accepting_rpc) return;
 					const uint64_t         work_id = pending.work_id;
 					const platform::Bucket bucket  = platform::request_bucket(pending.frame.cmd);
-					child_ptr->rpc_work.emplace(work_id, std::move(pending));
-					if (child_ptr->rpc_workers.enqueue(work_id, bucket).has_value()) {
-						start_rpc_work(*child_ptr, work_id, context.tick(), local_tick);
+					module_ptr->rpc_work.emplace(work_id, std::move(pending));
+					if (module_ptr->rpc_workers.enqueue(work_id, bucket).has_value()) {
+						start_rpc_work(*module_ptr, work_id, context.tick(), local_tick);
 					}
 				});
 		}
 	}
 
-	void Runtime::quiesce_module_for_stop(Child& child, uint64_t local_tick, std::optional<rpc::Frame> final_response) {
-		child.accepting_rpc = false;
-		child.pending_requests.clear();
-		child.pending_responses.clear();
-		child.staged_outbound.clear();
-		child.rpc_workers = platform::RpcWorkerPool{};
-		child.rpc_work.clear();
-		for (uint32_t index = 0; index < MAX_TICK_BATCH; index++) {
-			childsync::mailbox_clear(child.segment->get().to_child[index]);
-		}
+	void Runtime::quiesce_module_for_stop(ModuleRuntime& instance, uint64_t local_tick,
+										  std::optional<rpc::Frame> final_response) {
+		instance.accepting_rpc = false;
+		instance.pending_requests.clear();
+		instance.pending_responses.clear();
+		instance.staged_outbound.clear();
+		instance.rpc_workers = platform::RpcWorkerPool{};
+		instance.rpc_work.clear();
 
-		const uint16_t module_id = child.id.raw();
+		const uint16_t module_id = instance.id.raw();
 		for (auto& entry : pending_rpc_responses_) {
 			auto& responses = entry.second;
 			std::erase_if(responses,
@@ -1474,33 +782,33 @@ namespace sim {
 
 		if (final_response.has_value()) {
 			final_response->handler_work_id = 0;
-			child.pending_responses.push_back(
+			instance.pending_responses.push_back(
 				PendingRpcResponse{local_tick + RPC_TX_DELAY_LOCAL_TICKS, std::move(*final_response)});
 		} else {
-			child.retire_pending = true;
+			instance.retire_pending = true;
 		}
 	}
 
-	void Runtime::start_rpc_work(Child& child, uint64_t work_id, uint64_t global_tick, uint64_t local_tick) {
+	void Runtime::start_rpc_work(ModuleRuntime& instance, uint64_t work_id, uint64_t global_tick, uint64_t local_tick) {
 		std::deque<uint64_t> work_to_start{work_id};
 		while (!work_to_start.empty()) {
 			const uint64_t current_work_id = work_to_start.front();
 			work_to_start.pop_front();
-			auto found = child.rpc_work.find(current_work_id);
-			if (found == child.rpc_work.end()) {
+			auto found = instance.rpc_work.find(current_work_id);
+			if (found == instance.rpc_work.end()) {
 				throw std::logic_error("RPC worker started an unknown request");
 			}
 
 			PendingRpcRequest pending = std::move(found->second);
-			child.rpc_work.erase(found);
+			instance.rpc_work.erase(found);
 			std::optional<rpc::Frame> response = platform_->handle_request(
-				child.id, pending.frame, platform::ModuleTime{global_tick, local_tick}, pending.ingress);
+				instance.id, pending.frame, platform::ModuleTime{global_tick, local_tick}, pending.ingress);
 			if (!response) {
-				if (platform_->lifecycle(child.id) == platform::Lifecycle::STOPPED) {
-					quiesce_module_for_stop(child, local_tick, std::nullopt);
+				if (platform_->lifecycle(instance.id) == platform::Lifecycle::STOPPED) {
+					quiesce_module_for_stop(instance, local_tick, std::nullopt);
 					return;
 				}
-				for (const uint64_t started : child.rpc_workers.complete(current_work_id)) {
+				for (const uint64_t started : instance.rpc_workers.complete(current_work_id)) {
 					work_to_start.push_back(started);
 				}
 				continue;
@@ -1509,16 +817,16 @@ namespace sim {
 			rpc::Frame answer             = std::move(response.value());
 			answer.observation_request_id = pending.observation_id;
 			if (answer.stop_after_delivery) {
-				quiesce_module_for_stop(child, local_tick, std::move(answer));
+				quiesce_module_for_stop(instance, local_tick, std::move(answer));
 				return;
 			}
 			answer.handler_work_id = current_work_id;
-			child.pending_responses.push_back(
+			instance.pending_responses.push_back(
 				PendingRpcResponse{local_tick + RPC_TX_DELAY_LOCAL_TICKS, std::move(answer)});
 		}
 	}
 
-	void Runtime::schedule_tick_tasks(uint32_t batch_index, uint32_t batch_ticks) {
+	void Runtime::schedule_tick_tasks() {
 		const uint64_t tick = global_tick_;
 
 		queue_.schedule(tick, engine::Priority::WORLD_ADVANCE, "world",
@@ -1529,8 +837,8 @@ namespace sim {
 		});
 
 		queue_.schedule(tick, engine::Priority::MONITORING, "supervision", [this, tick](engine::TaskContext&) {
-			for (Child& child : children_) {
-				if (child.active && child.retire_pending) retire_module(child.id, tick);
+			for (ModuleRuntime& instance : modules_) {
+				if (instance.active && instance.retire_pending) retire_module(instance.id, tick);
 			}
 			for (const module::ModuleId id : platform_->check_supervision(tick)) {
 				retire_module(id, tick);
@@ -1573,8 +881,8 @@ namespace sim {
 				// skipped the tick is still physically observable, but `next` must not discharge an
 				// obligation against a step it never took.
 				std::map<uint16_t, bool> module_stepped;
-				for (const Child& child : children_) {
-					module_stepped.emplace(child.id.raw(), child.tick_granted);
+				for (const ModuleRuntime& instance : modules_) {
+					module_stepped.emplace(instance.id.raw(), instance.tick_granted);
 				}
 				current_observation_ =
 					property_observer_->observe(tick, world_, std::move(requests), std::move(responses),
@@ -1694,135 +1002,39 @@ namespace sim {
 			}
 		});
 
-		queue_.schedule(
-			tick, engine::Priority::PLATFORM_OUTBOUND, "outbound",
-			[this, tick, batch_index, batch_ticks](engine::TaskContext&) {
-				platform_->advance(tick);
-				for (Child& child : children_) {
-					if (!child.active) continue;
-					// A child has already executed the entire granted window. At its final global
-					// boundary, stage what became ready during the replay; the next grant puts it in
-					// the first slot that child will actually execute. If a whole window is skipped,
-					// keep the already-observed delivery staged so `next` waits for its next real step.
-					if (batch_index + 1U != batch_ticks || !child.staged_outbound.empty()) continue;
-					for (rpc::Frame& frame : platform_->take_outbound(child.id, childsync::MAILBOX_CAPACITY)) {
-						if (trace_.enabled() || !property_monitors_.empty()) {
-							if (frame.type == MT_RESP && frame.observation_request_id != 0) {
-								pending_rpc_responses_[tick].push_back(ltl::RpcResponse{
-									frame.observation_request_id, frame.observation_request_id, tick, child.id.raw(),
-									frame.cmd, frame.call_id, frame.status, frame.payload});
-							} else if (frame.type == MT_EVENT) {
-								pending_rpc_events_[tick].push_back(ltl::RpcEvent{
-									next_rpc_observation_id_++, tick, child.id.raw(), frame.cmd, frame.payload});
-							}
+		queue_.schedule(tick, engine::Priority::PLATFORM_OUTBOUND, "outbound", [this, tick](engine::TaskContext&) {
+			platform_->advance(tick);
+			for (ModuleRuntime& instance : modules_) {
+				if (!instance.active) continue;
+				// Keep deliveries staged until this module receives another grant.
+				if (!instance.staged_outbound.empty()) continue;
+				for (rpc::Frame& frame : platform_->take_outbound(instance.id, QSIM_MAX_BATCH_BYTES)) {
+					if (trace_.enabled() || !property_monitors_.empty()) {
+						if (frame.type == MT_RESP && frame.observation_request_id != 0) {
+							pending_rpc_responses_[tick].push_back(ltl::RpcResponse{
+								frame.observation_request_id, frame.observation_request_id, tick, instance.id.raw(),
+								frame.cmd, frame.call_id, frame.status, frame.payload});
+						} else if (frame.type == MT_EVENT) {
+							pending_rpc_events_[tick].push_back(ltl::RpcEvent{
+								next_rpc_observation_id_++, tick, instance.id.raw(), frame.cmd, frame.payload});
 						}
-						child.staged_outbound.push_back(std::move(frame));
 					}
+					instance.staged_outbound.push_back(std::move(frame));
 				}
-			});
-	}
-
-	void Runtime::report_synchronization_stats() {
-		if (!sync_stats_enabled_ || sync_stats_reported_) return;
-		sync_stats_reported_ = true;
-
-		const auto percentile = [](const auto& histogram, uint64_t samples, uint32_t percentage) {
-			if (samples == 0) return std::size_t{0};
-			const uint64_t target = (samples * percentage + 99U) / 100U;
-			uint64_t       seen   = 0;
-			for (std::size_t value = 0; value < histogram.size(); value++) {
-				seen += histogram[value];
-				if (seen >= target) return value;
 			}
-			return histogram.size() - 1;
-		};
-		const auto histogram_text = [](const auto& histogram) {
-			std::ostringstream text;
-			bool               first = true;
-			for (std::size_t value = 0; value < histogram.size(); value++) {
-				if (histogram[value] == 0) continue;
-				if (!first) text << ',';
-				first = false;
-				text << value << ':' << histogram[value];
-			}
-			return text.str();
-		};
-
-		const double compression =
-			sync_stats_.boundaries == 0 ? 0.0 : static_cast<double>(sync_stats_.logical_ticks) / sync_stats_.boundaries;
-		const double amplification =
-			sync_stats_.required_child_wakeups == 0
-				? 0.0
-				: static_cast<double>(sync_stats_.current_child_wakeups) / sync_stats_.required_child_wakeups;
-		std::ostringstream report;
-		report << std::fixed << std::setprecision(3);
-		report << "synchronization performance:\n"
-			   << "  logical_ticks=" << sync_stats_.logical_ticks << '\n'
-			   << "  sync_boundaries=" << sync_stats_.boundaries << '\n'
-			   << "  barrier_compression_ratio=" << compression << '\n'
-			   << "  ticks_between_sync_p50=" << percentile(sync_stats_.ticks_per_boundary, sync_stats_.boundaries, 50)
-			   << '\n'
-			   << "  ticks_between_sync_p95=" << percentile(sync_stats_.ticks_per_boundary, sync_stats_.boundaries, 95)
-			   << '\n'
-			   << "  ticks_between_sync_p99=" << percentile(sync_stats_.ticks_per_boundary, sync_stats_.boundaries, 99)
-			   << '\n'
-			   << "  ticks_between_sync_max=" << percentile(sync_stats_.ticks_per_boundary, sync_stats_.boundaries, 100)
-			   << '\n'
-			   << "  ticks_between_sync_histogram=" << histogram_text(sync_stats_.ticks_per_boundary) << '\n'
-			   << "  required_wake_set_p50="
-			   << percentile(sync_stats_.required_wake_set_sizes, sync_stats_.boundaries, 50) << '\n'
-			   << "  required_wake_set_p95="
-			   << percentile(sync_stats_.required_wake_set_sizes, sync_stats_.boundaries, 95) << '\n'
-			   << "  required_wake_set_p99="
-			   << percentile(sync_stats_.required_wake_set_sizes, sync_stats_.boundaries, 99) << '\n'
-			   << "  required_wake_set_max="
-			   << percentile(sync_stats_.required_wake_set_sizes, sync_stats_.boundaries, 100) << '\n'
-			   << "  required_wake_set_histogram=" << histogram_text(sync_stats_.required_wake_set_sizes) << '\n'
-			   << "  current_child_wakeups=" << sync_stats_.current_child_wakeups << '\n'
-			   << "  causally_required_child_wakeups=" << sync_stats_.required_child_wakeups << '\n'
-			   << "  wake_amplification_ratio=" << amplification << '\n'
-			   << "  boundary_limit_child_wake="
-			   << sync_stats_.limits[static_cast<std::size_t>(BoundaryLimit::CHILD_WAKE)] << '\n'
-			   << "  boundary_limit_engine_delivery="
-			   << sync_stats_.limits[static_cast<std::size_t>(BoundaryLimit::ENGINE_DELIVERY)] << '\n'
-			   << "  boundary_limit_hard_lookahead_cap="
-			   << sync_stats_.limits[static_cast<std::size_t>(BoundaryLimit::HARD_LOOKAHEAD_CAP)] << '\n'
-			   << "  boundary_limit_conservative_fallback="
-			   << sync_stats_.limits[static_cast<std::size_t>(BoundaryLimit::CONSERVATIVE_FALLBACK)] << '\n';
-		if (sync_stats_modules_) {
-			report << "  per_module_wakes=";
-			bool first = true;
-			for (std::size_t id = 0; id < MODULE_TABLE_SIZE; id++) {
-				if (sync_stats_.current_module_wakes[id] == 0 && sync_stats_.required_module_wakes[id] == 0) continue;
-				if (!first) report << ',';
-				first = false;
-				report << id << ':' << sync_stats_.current_module_wakes[id] << '/'
-					   << sync_stats_.required_module_wakes[id];
-			}
-			report << '\n';
-		}
-		std::cerr << report.str();
+		});
 	}
 
 	void Runtime::stop() {
-		if (!running_ && children_.empty()) {
-			return;
-		}
-
+		if (!running_ && modules_.empty()) return;
 		running_ = false;
-		report_synchronization_stats();
 		if (trace_.enabled()) {
 			trace_.write(trace::Entry("run_complete").field("tick", global_tick_));
 			trace_.flush();
 		}
-		for (Child& child : children_) {
-			child.process.terminate();
-		}
-		children_.clear();
-
-		// The mappings are anonymous, so unmapping them here and in the children is the whole
-		// cleanup: there is no path left behind for a later run to trip over.
-		control_.reset();
+		if (backend_) backend_->stop();
+		backend_.reset();
+		modules_.clear();
+		grants_.clear();
 	}
-
 } // namespace sim

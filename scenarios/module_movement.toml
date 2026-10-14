@@ -24,7 +24,7 @@
 
 [scenario]
 layout = "../layouts/one_module.toml"
-binary = "../external/q_applets/out/module_movement.exe"
+firmware = "../external/q_applets/out/module_movement.dll"
 duration = "45s"
 properties = "module_movement.spec"
 
