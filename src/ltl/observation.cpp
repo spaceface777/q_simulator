@@ -146,7 +146,7 @@ namespace ltl {
 			case Value::Symbol::LEFT_LASER_BLOCKED:   return ModuleField::LEFT_LASER_BLOCKED;
 			case Value::Symbol::RIGHT_LASER_BLOCKED:  return ModuleField::RIGHT_LASER_BLOCKED;
 			case Value::Symbol::RFID_ACTIVE:          return ModuleField::RFID_ACTIVE;
-			default: throw std::logic_error("typed changed atom contains an unknown field");
+			default:                                  throw std::logic_error("typed changed atom contains an unknown field");
 			}
 		}
 
@@ -588,11 +588,11 @@ namespace ltl {
 				if (a.integral && b.integral) return a.integer == b.integer;
 				return std::fabs(as_double(a) - as_double(b)) <= NUMERIC_TOLERANCE;
 			}
-			case ValueType::COLOR:       return std::get<uint32_t>(left) == std::get<uint32_t>(right);
-			case ValueType::MODULE:      return std::get<ModuleRef>(left) == std::get<ModuleRef>(right);
-			case ValueType::TUB:         return std::get<TubRef>(left) == std::get<TubRef>(right);
-			case ValueType::POSITION:    return std::get<PositionRef>(left) == std::get<PositionRef>(right);
-			case ValueType::BYTES:       return std::ranges::equal(std::get<BytesRef>(left), std::get<BytesRef>(right));
+			case ValueType::COLOR:          return std::get<uint32_t>(left) == std::get<uint32_t>(right);
+			case ValueType::MODULE:         return std::get<ModuleRef>(left) == std::get<ModuleRef>(right);
+			case ValueType::TUB:            return std::get<TubRef>(left) == std::get<TubRef>(right);
+			case ValueType::POSITION:       return std::get<PositionRef>(left) == std::get<PositionRef>(right);
+			case ValueType::BYTES:          return std::ranges::equal(std::get<BytesRef>(left), std::get<BytesRef>(right));
 			case ValueType::RPC_COMMAND:
 			case ValueType::RPC_STATUS:
 			case ValueType::RPC_EVENT_KIND: return std::get<EnumRef>(left) == std::get<EnumRef>(right);

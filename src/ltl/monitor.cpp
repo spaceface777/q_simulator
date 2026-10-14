@@ -701,7 +701,7 @@ namespace ltl {
 			switch (formula.kind) {
 			case Formula::Kind::ATOM:
 			case Formula::Kind::COMPARISON: return inputs.evaluate_bound(formula, bindings);
-			case Formula::Kind::NOT: return !evaluate_state(*formula.left, bindings, quantifier, inputs, activations);
+			case Formula::Kind::NOT:        return !evaluate_state(*formula.left, bindings, quantifier, inputs, activations);
 			case Formula::Kind::AND:
 				return evaluate_state(*formula.left, bindings, quantifier, inputs, activations) &&
 					   evaluate_state(*formula.right, bindings, quantifier, inputs, activations);

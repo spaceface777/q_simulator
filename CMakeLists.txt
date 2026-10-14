@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12.0)
-project(simulation VERSION 1.0.0 LANGUAGES CXX)
+project(simulation VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 23)
@@ -71,6 +71,7 @@ endif()
 # === Builds ===
 
 add_library(core STATIC
+    src/firmware/image.cpp
     src/childproc/launcher.cpp
     src/sim/runtime.cpp
     src/sim/pacing.cpp
@@ -98,6 +99,7 @@ add_library(core STATIC
 target_link_libraries(core PUBLIC
     pthread
     tomlplusplus::tomlplusplus
+    ${CMAKE_DL_LIBS}
 )
 
 target_include_directories(core PUBLIC "${QUERCUS_SDK_ROOT}/include")
@@ -117,6 +119,7 @@ target_compile_options(simulation-scenario PRIVATE ${COMPILATION_FLAGS})
 target_compile_definitions(simulation-scenario PRIVATE APP_VERSION="${PROJECT_VERSION}")
 
 # === Formatting ===
+find_program(CLANG_FORMAT NAMES clang-format-22 clang-format REQUIRED)
 file(GLOB_RECURSE FORMAT_FILES
     "${CMAKE_SOURCE_DIR}/src/*.c"
     "${CMAKE_SOURCE_DIR}/src/*.cpp"

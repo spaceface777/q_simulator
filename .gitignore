@@ -10,6 +10,9 @@ Temporary/
 Makefile
 *.cmake
 */*.cmake
+!cmake/*.cmake
+build-*/
+__pycache__/
 *.tcl
 bin/
 build/
@@ -20,3 +23,7 @@ channel0_0
 *.exe
 .DS_Store
 trace.ndjson
+
+# qbuild products for this repository
+build_sim/
+build_pico/

@@ -5,6 +5,7 @@ enable_testing()
 
 add_executable(tests
     main.cpp
+    firmware/test_image.cpp
     test_settings.cpp
     synchronization/test_vclock.cpp 
     event/test_events.cpp
@@ -54,3 +55,18 @@ target_compile_definitions(tests PRIVATE REPO_ROOT="${CMAKE_SOURCE_DIR}")
 target_compile_options(tests PRIVATE ${COMPILATION_FLAGS})
 
 add_test(NAME tests COMMAND tests)
+
+foreach(image counter wrong_abi missing_entry null_api)
+    add_library(${image}_image MODULE firmware/counter.c)
+    set_target_properties(${image}_image PROPERTIES PREFIX "" SUFFIX ".dll"
+        C_VISIBILITY_PRESET hidden LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/firmware")
+    target_compile_features(${image}_image PRIVATE c_std_11)
+endforeach()
+target_compile_definitions(wrong_abi_image PRIVATE COUNTER_ABI_VERSION=9)
+target_compile_definitions(missing_entry_image PRIVATE COUNTER_MISSING_ENTRY)
+target_compile_definitions(null_api_image PRIVATE COUNTER_NULL_API)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/firmware/not-image.dll" CONTENT "This is not a shared library.\n")
+target_compile_definitions(tests PRIVATE COUNTER_IMAGE="$<TARGET_FILE:counter_image>"
+    WRONG_ABI_IMAGE="$<TARGET_FILE:wrong_abi_image>" MISSING_ENTRY_IMAGE="$<TARGET_FILE:missing_entry_image>"
+    NULL_API_IMAGE="$<TARGET_FILE:null_api_image>" NON_IMAGE="${CMAKE_CURRENT_BINARY_DIR}/firmware/not-image.dll")
+add_dependencies(tests counter_image wrong_abi_image missing_entry_image null_api_image)

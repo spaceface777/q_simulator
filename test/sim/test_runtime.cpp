@@ -1119,12 +1119,12 @@ prop relative during [3ms, 8ms] = eventually[1ms, 2ms] module(1).led_color == 0x
 }
 
 TEST_F(RuntimeTest, WakesAllSubscriberBitsetWordsOnATubPulse) {
-	events::Schedule schedule;
+	events::Schedule   schedule;
 	events::TubArrival tub;
-	tub.tick = 25;
+	tub.tick         = 25;
 	tub.removed_tick = 30;
-	tub.id = 4;
-	tub.module = module::ModuleId{FIRST};
+	tub.id           = 4;
+	tub.module       = module::ModuleId{FIRST};
 	schedule.tubs.push_back(tub);
 
 	std::ostringstream source;
@@ -1157,9 +1157,10 @@ TEST_F(RuntimeTest, WakesAllSubscriberBitsetWordsOnATubPulse) {
 TEST_F(RuntimeTest, UpdatesSubscriptionsWhenAShortCircuitChangesItsReadSet) {
 	sim::Runtime runtime(7);
 	runtime.load_properties(ltl::parse("prop guarded = G (module(1).big_belt_speed == 0 || module(2).led_value == 0);",
-									 "subscriptions.spec"), 100, "subscriptions.spec");
+									   "subscriptions.spec"),
+							100, "subscriptions.spec");
 	ASSERT_NO_THROW(runtime.start(0));
-	auto* first = runtime.world().module(module::ModuleId{FIRST});
+	auto* first  = runtime.world().module(module::ModuleId{FIRST});
 	auto* second = runtime.world().module(module::ModuleId{SECOND});
 	ASSERT_NE(first, nullptr);
 	ASSERT_NE(second, nullptr);
@@ -1185,7 +1186,9 @@ TEST_F(RuntimeTest, ReportsSleepingTriggerCountsExactlyAfterAnEarlyFailure) {
 	runtime.load_properties(ltl::parse(R"(
 prop counted = G (true -> module(1).led_value == 0);
 prop halt at 20ms = false;
-)", "subscriptions.spec"), 100, "subscriptions.spec");
+)",
+									   "subscriptions.spec"),
+							100, "subscriptions.spec");
 	ASSERT_NO_THROW(runtime.start(20));
 	while (!runtime.failed()) runtime.advance(std::chrono::milliseconds(16), 1.0, std::chrono::seconds(5));
 	EXPECT_EQ(runtime.tick(), 21u);
@@ -1200,8 +1203,9 @@ prop halt at 20ms = false;
 
 TEST_F(RuntimeTest, SleepingTriggerCountsDoNotExtendPastTheSemanticScenarioEnd) {
 	sim::Runtime runtime(7);
-	runtime.load_properties(ltl::parse("prop counted during [1ms, 100ms] = G (true -> module(1).led_value == 0);",
-									 "subscriptions.spec"), 10, "subscriptions.spec");
+	runtime.load_properties(
+		ltl::parse("prop counted during [1ms, 100ms] = G (true -> module(1).led_value == 0);", "subscriptions.spec"),
+		10, "subscriptions.spec");
 	ASSERT_NO_THROW(runtime.start(20));
 	while (runtime.tick() <= 20) runtime.advance(std::chrono::milliseconds(1), 1.0, std::chrono::seconds(5));
 	const auto results = runtime.property_results();
