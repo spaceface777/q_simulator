@@ -1,0 +1,18 @@
+# Router smoke test with the physical fleet and its departure-board tower.
+# Run: ./build/simulation-scenario --settings settings_example.toml scenarios/router_smoke.toml
+[scenario]
+layout = "../layouts/physical_layout.toml"
+firmware = "../../q_router_app/out/q_router_app.dll"
+duration = "60s"
+properties = "router_smoke.spec"
+
+[scenario.environment]
+QSIM_STUB_REFUSE = "10:30000"
+
+# A direct storage destination does not depend on a particular departure board.
+[tub.storage_from_checkin]
+time = 5.0
+id = 1
+module = 1
+uid = 0x01000000000000
+payload = [0x01040000, 0x00000000]

@@ -1,0 +1,1 @@
+prop safe = always true;
