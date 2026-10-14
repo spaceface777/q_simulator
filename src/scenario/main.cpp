@@ -173,6 +173,7 @@ int main(int argc, char const* argv[]) {
 
 		settings::parse_settings(options.settings, layout_file, firmware_file);
 		if (files.firmware) settings::set_setting<std::string>("firmware", files.firmware->string());
+		environment = files.environment;
 		if (options.seed) {
 			settings::set_setting<int>("seed", static_cast<int>(*options.seed));
 		}

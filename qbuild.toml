@@ -1,0 +1,2 @@
+schema = 1
+application_roots = ["test/fixtures/*"]

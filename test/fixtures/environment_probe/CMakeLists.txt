@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+include("${QUERCUS_SDK_ROOT}/cmake/quercus_app.cmake")
+quercus_configure_application()
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(environment_probe)
+quercus_add_application_runtime(app)
+target_sources(app PRIVATE main.c)

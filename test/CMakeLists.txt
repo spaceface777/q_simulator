@@ -4,7 +4,7 @@ add_executable(tests
     event/test_events.cpp
     ltl/test_parser.cpp ltl/test_monitor.cpp ltl/test_observation.cpp
     module/test_types.cpp rpc/test_frame.cpp seed/test_seed.cpp
-    sim/test_runtime.cpp sim/test_determinism.cpp sim/test_scenarios.cpp sim/test_applet_e2e.cpp sim/test_speed_invariance.cpp
+    sim/test_embedded_environment.cpp sim/test_runtime.cpp sim/test_determinism.cpp sim/test_scenarios.cpp sim/test_applet_e2e.cpp sim/test_speed_invariance.cpp
     engine/test_task_queue.cpp net/test_network.cpp
     platform/test_overload.cpp platform/test_platform.cpp platform/test_rpc_worker_pool.cpp
     world/test_world.cpp world/test_instruments.cpp world/test_calibration_statistics.cpp world/test_servo_travel.cpp)
@@ -35,6 +35,11 @@ target_compile_options(scripted_image PRIVATE ${COMPILATION_FLAGS})
 target_compile_definitions(tests PRIVATE SCRIPTED_IMAGE="$<TARGET_FILE:scripted_image>"
     QSIM_TEST_FIRMWARE_DIR="${QSIM_TEST_FIRMWARE_DIR}" QSIM_TEST_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/out")
 add_dependencies(tests scripted_image)
+
+option(QSIM_TEST_EMBEDDED_TRACE "Compare two tub_copier images with the legacy futex/pthread trace" OFF)
+if(QSIM_TEST_EMBEDDED_TRACE)
+    target_sources(tests PRIVATE sim/test_embedded_trace.cpp)
+endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME sdk-consistency COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_sdk_consistency.py")

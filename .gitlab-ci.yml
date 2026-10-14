@@ -24,8 +24,9 @@ build:
       test "$(git -C "$ZEPHYR_BASE" rev-parse HEAD)" = "$zephyr_revision"
     - export ZEPHYR_TOOLCHAIN_VARIANT=host
     - (cd external/q_applets && ./q_sdk/qbuild sim)
+    - external/q_sdk/qbuild sim
     - python3 tools/check_sdk.py
-    - cmake -S . -B build -G Ninja -DTESTING_CONSOLE_BUILD=ON
+    - cmake -S . -B build -G Ninja -DTESTING_CONSOLE_BUILD=ON -DQSIM_TEST_EMBEDDED_TRACE=ON
     - cmake --build build -j --target format-check
     - cmake --build build -j
     - timeout 20m env QSIM_REQUIRE_FIRMWARE=1 RUN_SLOW_TESTS=1 ctest --test-dir build --output-on-failure

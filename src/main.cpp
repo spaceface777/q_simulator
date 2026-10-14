@@ -150,6 +150,7 @@ int main(int argc, char const* argv[]) {
 
 		settings::parse_settings("settings.toml", layout_file, firmware_file);
 		if (files.firmware) settings::set_setting<std::string>("firmware", files.firmware->string());
+		environment = files.environment;
 		master_seed = static_cast<uint64_t>(settings::get_setting<int>("seed"));
 		schedule    = events::parse_events(scenario_file, master_seed);
 	} catch (const std::exception& error) {

@@ -31,6 +31,7 @@ namespace trace {
 		Entry& field(const std::string& key, int64_t value);
 		Entry& field(const std::string& key, double value);
 		Entry& field(const std::string& key, bool value);
+		Entry& field(const std::string& key, const std::map<std::string, std::string>& value);
 
 		// No trailing newline.
 		[[nodiscard]] std::string str() const;

@@ -40,8 +40,9 @@ namespace events {
 	// Files a scenario can select for a self-contained run. Relative paths are resolved from the
 	// scenario file, just like the sibling LTLf property file.
 	struct ScenarioFiles {
-		std::optional<fs::path> layout;
-		std::optional<fs::path> firmware;
+		std::optional<fs::path>            layout;
+		std::optional<fs::path>            firmware;
+		std::map<std::string, std::string> environment;
 	};
 
 	struct Schedule {

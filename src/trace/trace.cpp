@@ -81,6 +81,19 @@ namespace trace {
 		return *this;
 	}
 
+	Entry& Entry::field(const std::string& key, const std::map<std::string, std::string>& value) {
+		separate();
+		body_ += "\"" + escape(key) + "\":{";
+		bool first = true;
+		for (const auto& [name, text] : value) {
+			if (!first) body_ += ',';
+			first = false;
+			body_ += "\"" + escape(name) + "\":\"" + escape(text) + "\"";
+		}
+		body_ += '}';
+		return *this;
+	}
+
 	std::string Entry::str() const {
 		return "{" + body_ + "}";
 	}

@@ -196,6 +196,7 @@ namespace sim {
 		for (const std::string& input : inputs) {
 			entry.field(input, trace::digest_file(input));
 		}
+		entry.field("environment", environment_);
 		entry.field("modules", static_cast<uint64_t>(active_modules_.size()));
 		entry.field("tick_batch_requested", uint64_t{1}).field("tick_batch_effective", uint64_t{1});
 		trace_.write(entry);

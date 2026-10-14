@@ -124,6 +124,19 @@ namespace events {
 		util::require(!scenario->contains("application_path"),
 					  "Replace '[scenario].application_path' with '[scenario].firmware'");
 		files.firmware = read_path("firmware");
+		if (const auto* node = scenario->get("environment")) {
+			const auto* environment = node->as_table();
+			util::require(environment != nullptr, "[scenario].environment must be a TOML table");
+			for (const auto& [key, value] : *environment) {
+				util::require(!key.str().empty() && key.str().find('=') == std::string_view::npos &&
+								  key.str().find('\0') == std::string_view::npos,
+							  "Invalid firmware environment key");
+				const auto text = value.value<std::string>();
+				util::require(text && text->find('\0') == std::string::npos,
+							  "Firmware environment values must be strings without NUL bytes");
+				files.environment.emplace(std::string(key.str()), *text);
+			}
+		}
 		return files;
 	}
 

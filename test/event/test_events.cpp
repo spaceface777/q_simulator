@@ -236,3 +236,18 @@ TEST_F(EventsTest, RejectsRemovedScenarioKeysWithReplacement) {
 		}
 	}
 }
+
+TEST_F(EventsTest, ReadsFirmwareEnvironmentAsAStringMap) {
+	write("[scenario.environment]\nFIRST=\"one\"\nSECOND=\"two=2\"\nEMPTY=\"\"\n");
+	const auto                               files = events::parse_scenario_files(path);
+	const std::map<std::string, std::string> expected{{"FIRST", "one"}, {"SECOND", "two=2"}, {"EMPTY", ""}};
+	EXPECT_EQ(files.environment, expected);
+}
+
+TEST_F(EventsTest, RejectsMalformedFirmwareEnvironment) {
+	for (const char* source : {"[scenario]\nenvironment=3\n", "[scenario.environment]\nBAD=3\n",
+							   "[scenario.environment]\n\"BAD=KEY\"=\"value\"\n"}) {
+		write(source);
+		EXPECT_THROW((void)events::parse_scenario_files(path), std::invalid_argument);
+	}
+}
