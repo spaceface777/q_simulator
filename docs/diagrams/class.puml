@@ -1,70 +1,35 @@
 @startuml Class diagram
-package Simulation {
-
 hide empty members
-class mainS as "main" {}
-
-class "sim::Runtime" {
- void start()
- void advance(microseconds, double, microseconds)
- void load(events::Schedule)
- void load_properties(ltl::File, uint64_t)
- void stop()
- uint64_t tick()
+package Simulation {
+  class main
+  class "sim::Runtime"
+  class "world::State"
+  class "platform::Manager"
+  class "net::Model"
+  class "ltl::Monitor"
+  class "firmware::InProcessBackend"
+  class "firmware::LoadedImage"
+  class Visualization
 }
-
-class "world::State" {
- void add_module(ModuleId)
- void place(uint8_t, ModuleId, Position, RfidUid, RfidPayload)
- void remove(uint8_t)
- void advance_tick()
- const Module* module(ModuleId)
+package "Private firmware image (one per module)" {
+  class "qsim_image_api_t" {
+    bind(config)
+    run(grant, result)
+    destroy()
+  }
+  class "Zephyr kernel and coroutine runner"
+  class Application
 }
-
-class "platform::Manager" {
- optional<Frame> handle_request(ModuleId, Frame, uint64_t)
- void advance(uint64_t)
- vector<Frame> take_outbound(ModuleId, size_t)
-}
-
-class "childsync::SharedControl" {
- Control& get()
-}
-
-class "childsync::ChildSegment" {
- Segment& get()
-}
-
-class "ltl::Monitor" {
- void step(AtomEvaluator, AtomValueEvaluator, DomainEnumerator)
- void finish()
- Verdict verdict()
-}
-
-class Visualization {
- void update(const world::State&, const VirtualClock&)
-}
-
-}
-
-package "native_sim application" {
- hide empty members
- class app as "application main" {}
- class adapter as "lockstep adapter" {
-  void wait_for_tick()
-  void exchange_mailboxes()
- }
-}
-
-mainS "1" *-- "sim::Runtime"
-mainS "1" *-- Visualization
+main "1" *-- "sim::Runtime"
+main "1" *-- Visualization
 "sim::Runtime" "1" *-- "world::State"
 "sim::Runtime" "1" *-- "platform::Manager"
-"sim::Runtime" "1" *-- "childsync::SharedControl"
-"sim::Runtime" "1..n" *-- "childsync::ChildSegment"
+"platform::Manager" "1" *-- "net::Model"
 "sim::Runtime" "0..n" *-- "ltl::Monitor"
-"sim::Runtime" --> app : starts as process
-"childsync::SharedControl" <--> adapter : shared barrier
-"childsync::ChildSegment" <--> adapter : shared mailboxes
-app "1" *-- adapter
+"sim::Runtime" "1" *-- "firmware::InProcessBackend"
+"firmware::InProcessBackend" "1..n" *-- "firmware::LoadedImage"
+"firmware::LoadedImage" --> "qsim_image_api_t" : loads a private copy
+"qsim_image_api_t" --> "Zephyr kernel and coroutine runner" : grants native time
+"Zephyr kernel and coroutine runner" --> Application : schedules
+Visualization --> "sim::Runtime" : reads world and pacing state
 @enduml

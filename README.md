@@ -1,185 +1,134 @@
-# Quercus Simulation
+# Quercus simulator
 
-This repository contains the Quercus Airport Simulation. Read this file before you build or run the simulator.
+The simulator runs a private Zephyr native_sim firmware image for each active module.
+The host runs the world, network, platform, and LTLf property monitor.
+Build applications with `qbuild sim`, then select their `.dll` files in the runtime configuration.
+Changing firmware or the layout does not require rebuilding the simulator.
 
-![A screenshot of the simulator GUI](docs/images/gui.png)
+## Build
 
-## Repository Structure
-
-```
-simulation/
-├── docs/                    # Architecture, protocol, and diagrams
-├── editors/                 # LTLf editor support
-├── external/                # Pinned application and SDK submodules
-├── layouts/                 # Example module layouts
-├── scenarios/               # Finite scenarios and LTLf properties
-├── src/                     # Simulator source code
-├── test/                    # Unit, integration, and scenario tests
-├── .clang-format            # C++ format rules
-├── .gitlab-ci.yml           # GitLab CI job
-├── .gitmodules              # Submodule locations
-├── CMakeLists.txt           # Main build file
-├── events_example.toml      # Example event schedule
-├── layout_example.toml      # Example module layout
-└── settings_example.toml    # Example run settings
-```
-
-## Requirements
-
-**Installation**
-
-- Ubuntu 24 or later, or Debian 13 or later
-- CMake 3.12 or later
-- Ninja
-- A C++23 compiler
-- SDL3 development files for the GUI
-- West, Zephyr, and the native simulator toolchain for the applications
-- Internet access for the first CMake configuration
-
-**Usage**
-
-- Ubuntu 24 or later, or Debian 13 or later
-- The `native_sim` application files used by the selected layout
-
-## Installation
-
-This setup is already present on the course VM.
-
-1. Clone this repository with its submodules.
-
-```sh
-git clone --recurse-submodules <repository-url>
-cd simulation
-```
-
-2. If the repository already exists, initialize the pinned submodules.
+The simulator requires CMake, Ninja, Python, a C++23 compiler, and the recursive submodules.
+The GUI also requires SDL3 and SDL3_image. CMake downloads GoogleTest for the test build.
 
 ```sh
 git submodule update --init --recursive
-```
-
-3. Install the build packages.
-
-```sh
-sudo apt-get install lcov build-essential git make pkg-config cmake ninja-build gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev libusb-1.0-0-dev
-```
-
-4. Build the pinned applications for Zephyr `native_sim`.
-
-```sh
-cd external/q_applets
-./q_sdk/qbuild sim
-cd ../..
-```
-
-5. Copy the example input files.
-
-```sh
-cp events_example.toml events.toml
-cp settings_example.toml settings.toml
-cp layout_example.toml layout.toml
-```
-
-6. Set `application_path` in `settings.toml`. You can also set `binary` for one module in `layout.toml`.
-
-7. Configure the build.
-
-```sh
-cmake -B build -S . -G Ninja
-```
-
-## Usage
-
-#### Running
-
-Build and start the interactive simulator with a self-contained scenario.
-
-```sh
+cmake -S . -B build -G Ninja -DTESTING_CONSOLE_BUILD=ON
 cmake --build build -j
-./build/simulation scenarios/laser_alignment.toml
 ```
 
-The scenario's `[scenario]` table may set `layout` and `binary`; relative paths start from the scenario file's folder. It starts one application process for each active module. The GUI shows the world state and lets you pause the run, set its speed, and change the scale. Close the GUI to stop the run and all child processes.
+Set `TESTING_CONSOLE_BUILD=OFF` to include the GUI. Set `BUILD_TESTING=OFF` to omit tests.
+The simulator build uses SDK headers. It does not build firmware or require a Zephyr checkout.
 
-Without a scenario argument, the simulator retains the original behavior and reads `settings.toml`, `layout.toml`, and `events.toml`. In `simulation-scenario`, `--layout` and `--binary` still work and override values from the scenario.
-
-The simulator pins itself and all application processes to one CPU to avoid cross-core wakeup and cache-coherence overhead in the short lockstep tick. Use `taskset -c N` when starting it to choose that CPU explicitly; otherwise it uses the CPU on which it starts.
-
-Use `--no-gui` for a run without a window. Use `--timeout <sec>` to stop after a simulated-time limit. Use `--tick-batch <n>` to grant up to `n` child ticks per barrier. The default batch is 1.
-
-A larger tick batch trades timing accuracy for speed. With a batch of N, the simulator cannot observe or answer an application action until the batch boundary, so N ms becomes the smallest effective response step. A batch of 10 runs about seven times faster than a batch of 1. The result varies with the CPU, layout, scenario, and application.
-
-Run a finite scenario and its LTLf properties with the headless runner.
+Firmware builds require an external Zephyr workspace. The SDK records its tested revision in
+[`ZEPHYR_REVISION`](external/q_sdk/ZEPHYR_REVISION) and warns if the checkout differs.
+The tested branch is `native-sim-context-backends-pr118530` at `eefcaecadec`.
+Use the Python environment that contains the Zephyr dependencies.
 
 ```sh
-./build/simulation-scenario scenarios/hardware_test.toml
+export ZEPHYR_BASE=/path/to/workspace/zephyr
+export ZEPHYR_TOOLCHAIN_VARIANT=host
+(cd external/q_applets && ./q_sdk/qbuild sim)
 ```
 
-A complete scenario header looks like this:
+`qbuild sim` builds 64-bit native_sim images on macOS and Linux.
+It writes `out/<application>.dll` in the application repository.
+The extension is `.dll` on both systems. An image must match the simulator's host architecture.
+
+## Select firmware and run
+
+A settings file supplies the default firmware:
 
 ```toml
-[scenario]
-layout = "../layouts/one_module.toml"
-binary = "../external/q_applets/out/laser_alignment.exe"
-duration = "60s"
-properties = "laser_alignment.spec"
+firmware = "external/q_applets/out/module_movement.dll"
 ```
 
-The `layout`, `binary`, and `properties` paths are relative to the scenario file. `layout` and `binary` are optional for compatibility with existing scenarios; when absent, the commands use `layout.toml` and `application_path` from `settings.toml`.
+A module can override that default in the layout:
 
-Use `./build/simulation --help` and `./build/simulation-scenario --help` for all options. The scenario runner returns 0 when all properties hold, 1 when a property fails or the run cannot finish, and 2 when its input is invalid.
+```toml
+[module.255]
+active = true
+type = "tower"
+firmware = "../external/q_applets/out/atc_fixed.dll"
+```
 
-The installable VS Code extension in `editors/vscode-ltlf` provides syntax highlighting and live parser and type-check diagnostics for `.spec` files. See its README for installation and rebuild instructions.
+A scenario can override the settings default with `[scenario].firmware` and select `[scenario].layout`.
+Each firmware or layout path is relative to the file that declares it.
+The parser checks configuration syntax. Startup validates firmware bindings and reports missing images with their module IDs and paths.
+The removed `binary` and `application_path` keys produce configuration errors.
 
-#### Testing
-
-Build and run the normal test suite.
+Run a bundled headless scenario:
 
 ```sh
-cmake --build build -j && ./build/tests
+./build/simulation-scenario --settings settings_example.toml scenarios/module_movement.toml
 ```
 
-Build the pinned applets first, and set `RUN_SLOW_TESTS=1`, to run the full real-application scenario and speed-invariance tests.
+The headless runner returns 0 when every property holds.
+It returns 1 for a failed or incomplete run, and 2 for a configuration error. Use `--trace run.ndjson` to record the run.
+Use `--help` for seed, duration, layout, and property-evaluation options.
+For the GUI, copy `settings_example.toml` to `settings.toml` and `layout_example.toml` to `layout.toml`,
+then run `./build/simulation`. An explicit scenario can select its own layout and default firmware.
+
+The simulator copies each selected image to a private temporary file and loads that copy.
+Each module has private globals, kernel state, coroutine stacks, and deterministic entropy.
+A new simulation loads fresh copies. Firmware boots when its module receives its first grant.
+Platform supervision stops a module that has not activated by tick 10,000; startup then completes normally.
+
+## Firmware environment
+
+Firmware receives only the explicit scenario environment and its own `QUERCUS_MODULE_ID`.
+It does not inherit host variables such as `PATH`.
+
+```toml
+[scenario.environment]
+QSIM_STUB_REFUSE = "10:30000"
+```
+
+The runtime copies this map at construction. Each image copies its environment when bound.
+Repeated `getenv` calls return stable values without allocating. Traces record the environment map.
+The router smoke scenario uses this input with `layouts/physical_layout.toml`:
+all conveyor modules run the router, and module 255 runs `atc_fixed.dll`.
+
+## Tests
+
+Portable tests use a scripted shared image to exercise the real loader and runtime ABI.
+Real-firmware tests additionally exercise Zephyr, hardware behavior, scenarios, and deterministic replay.
+Build the applets and repository probes before running the strict suite:
 
 ```sh
-RUN_SLOW_TESTS=1 ./build/tests
+(cd external/q_applets && ./q_sdk/qbuild sim)
+external/q_sdk/qbuild sim
+python3 tools/check_sdk.py
+cmake -S . -B build -G Ninja -DTESTING_CONSOLE_BUILD=ON -DQSIM_TEST_EMBEDDED_TRACE=ON
+cmake --build build -j
+QSIM_REQUIRE_FIRMWARE=1 ctest --test-dir build --output-on-failure
 ```
 
-#### Test coverage
+Both SDK checkouts must use the same clean revision. CI checks this before building firmware.
+By default, firmware tests skip if images are absent. `QSIM_REQUIRE_FIRMWARE=1` makes absence an error.
+`QSIM_TEST_FIRMWARE_DIR` can select another applet output directory.
+The trace regression checks the complete NDJSON digest across repeated runs and both supported hosts.
 
-Generate an HTML coverage report with a Debug build.
+Set `RUN_SLOW_TESTS=1` to enable wall-clock pacing tests.
+These compare traces at 0.3×, 1×, 10×, and maximum speed, and check measured speed at 1× and 10×.
+CI runs the full suite, ten shuffled repetitions, and a separate slow run under wall-clock timeouts.
+`cmake --build build --target format-check` checks C++ formatting; the build prefers `clang-format-22`.
 
-```sh
-BROWSER=firefox
+## Accepted differences and limitations
 
-cmake -B build -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug -S . -G Ninja
-cmake --build build --target clean -j
-cmake --build build --target tests -j
-./build/tests
-cd build
-lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,gcov --ignore-errors inconsistent --rc geninfo_unexecuted_blocks=1
-lcov --remove coverage.info '/usr/*' '*/_deps/*' '*/test/*' --output-file coverage_filtered.info
-genhtml coverage_filtered.info --output-directory coverage_html
-cd ..
-cmake -B build -S . -G Ninja
-$(echo $BROWSER) build/coverage_html/index.html
-```
+Simulator images use the host C library. Pico builds use the toolchain Picolibc.
+The image defines simulated clock functions, private `getenv`, private `random`/`srandom`,
+and process-exit functions that return a fatal firmware outcome to the host.
 
-Change `firefox` on the first line to the browser that you use.
+- Host `rand`/`srand` state is shared. Execution order makes runs repeatable on one host,
+  but one module's calls change another module's sequence.
+- Host allocation has no Pico-sized heap limit. Allocations that firmware never frees can survive image unloading.
+- Host `errno` belongs to the executing host thread and is shared by images.
+  Firmware logs can contain different errno numbers on different hosts.
+  RPC statuses always use Zephyr/Picolibc numbering, including ENOSYS 88 and ETIMEDOUT 116.
+- Math and floating-point formatting can differ between operating systems.
+  Float-heavy traces can differ across hosts while remaining repeatable on one host.
+- Firmware `printf` output shares stdout and follows module execution order.
+- Firmware is trusted code. A busy loop that never yields hangs the simulator; grants cannot be preempted.
+- Module reboot, Windows hosts, 32-bit images, and Rosetta images are unsupported.
 
-## Support
-
-Create a GitLab issue if you find a problem. Use the provided issue format.
-
-## Contributing
-
-Contributions are welcome. A merge request must pass the format check and the applicable tests.
-
-All C++ code must follow `.clang-format`. Add unit or integration tests for changes outside the visualization and `main.cpp`. Read `docs/ARCHITECTURE.md` and `docs/PROTOCOL.md` before you change the engine or its application interface.
-
-## License
-
-(c) Eindhoven University of Technology, Rens Verstappen, and contributors (2025-2026).
-
-## Credits
-Repository icons courtesy of [Magnific](https://www.magnific.com/) and [fancykeith](https://www.flaticon.com/authors/fancykeith).
+[Architecture](docs/ARCHITECTURE.md) and [protocol](docs/PROTOCOL.md) describe the execution boundary.

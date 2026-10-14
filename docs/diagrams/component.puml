@@ -1,30 +1,31 @@
 @startuml High-level component diagram
-
-package "native_sim application process" {
-    [Application]
-    [Lockstep adapter]
-
-    [Application] <--> [Lockstep adapter] : SDK RPC
+package "Simulator host" {
+  [Runtime]
+  [Image backend]
+  [RPC platform]
+  [Network]
+  [World]
+  [LTLf monitor]
+  [Visualization]
+  [Trace writer]
 }
-
-package "Simulation process" {
-    [Runtime]
-    [Shared barrier]
-    [RPC platform]
-    [Network]
-    [World]
-    [LTLf monitor]
-    [Visualization]
-
-    [Runtime] <--> [Shared barrier] : grants and collects ticks
-    [Runtime] --> [RPC platform] : dispatches frames
-    [RPC platform] <--> [World] : reads and updates hardware
-    [RPC platform] <--> [Network] : sends and receives packets
-    [Runtime] --> [World] : advances one tick
-    [Runtime] --> [LTLf monitor] : submits observations
-    [Runtime] --> [Visualization] : exposes current state
-    [Shared barrier] <--> [Lockstep adapter] : shared control
-    [RPC platform] <--> [Lockstep adapter] : shared mailboxes
+package "Private image copy (one per module)" {
+  [Image API]
+  [Zephyr kernel and coroutine runner]
+  [Application]
+  [Private libc boundary]
+  [Image API] --> [Zephyr kernel and coroutine runner] : boot and absolute grants
+  [Zephyr kernel and coroutine runner] --> [Application] : schedules
+  [Application] --> [Private libc boundary]
+  [Zephyr kernel and coroutine runner] --> [Private libc boundary]
 }
-
+[Runtime] <--> [Image backend] : prepare grants and collect output
+[Image backend] <--> [Image API] : bind, run, destroy
+[Runtime] --> [RPC platform] : dispatch copied frames after the epoch
+[RPC platform] <--> [World] : reads and updates hardware
+[RPC platform] <--> [Network] : sends and receives packets
+[Runtime] --> [World] : advances global ticks
+[Runtime] --> [LTLf monitor] : supplies observations
+[Runtime] --> [Visualization] : supplies world and pacing state
+[Runtime] --> [Trace writer] : records deterministic execution
 @enduml
