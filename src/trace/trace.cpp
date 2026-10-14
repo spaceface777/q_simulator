@@ -120,8 +120,8 @@ namespace trace {
 		if (!enabled_) {
 			return;
 		}
+		// The runtime flushes every 100 ticks and at shutdown. A full stream buffer can write sooner.
 		file_ << entry.str() << "\n";
-		file_.flush();
 		written_++;
 	}
 
