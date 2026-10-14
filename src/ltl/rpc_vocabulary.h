@@ -73,7 +73,7 @@ namespace ltl {
 																		{"not_found", -2},
 																		{"try_again", -11},
 																		{"invalid", -22},
-																		{"not_supported", -38}};
+																		{"not_supported", -88}};
 		return values;
 	}
 

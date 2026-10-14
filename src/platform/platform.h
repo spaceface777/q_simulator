@@ -39,7 +39,7 @@ namespace platform {
 	inline constexpr int16_t STATUS_TRY_AGAIN = -11; // -EAGAIN
 	inline constexpr int16_t STATUS_INVALID   = -22; // -EINVAL
 	inline constexpr int16_t STATUS_RANGE     = -34; // -ERANGE
-	inline constexpr int16_t STATUS_NO_SYS    = -38; // -ENOSYS
+	inline constexpr int16_t STATUS_NO_SYS    = -88; // -ENOSYS
 
 	// A grant carries at most four frames within its bounded byte buffer.
 	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = QSIM_MAX_GRANT_FRAMES;
