@@ -88,9 +88,9 @@ namespace sim {
 	}
 
 	Runtime::Runtime(uint64_t seed, std::vector<firmware::ImageBinding> firmware,
-					 std::map<std::string, std::string> environment, std::chrono::milliseconds activation_timeout)
-		: activation_timeout_(activation_timeout), seed_(seed), environment_(std::move(environment)),
-		  firmware_bindings_(std::move(firmware)), active_modules_(settings::get_active_modules()), queue_(seed) {
+					 std::map<std::string, std::string> environment)
+		: seed_(seed), environment_(std::move(environment)), firmware_bindings_(std::move(firmware)),
+		  active_modules_(settings::get_active_modules()), queue_(seed) {
 		if (active_modules_.empty()) throw std::runtime_error("No active modules in layout.toml");
 		for (const module::ModuleId id : active_modules_) world_.add_module(id);
 		property_observer_.emplace(active_modules_, world_);
@@ -161,7 +161,6 @@ namespace sim {
 		std::cout << "Waiting for applications to activate" << std::endl;
 
 		// An application activates by sending its first heartbeat, which requires being ticked first.
-		const Clock::time_point activation_deadline = Clock::now() + activation_timeout_;
 		while (true) {
 			const bool all_active =
 				std::all_of(modules_.begin(), modules_.end(), [this](const ModuleRuntime& instance) {
@@ -170,10 +169,6 @@ namespace sim {
 				});
 			if (all_active) {
 				break;
-			}
-			if (Clock::now() > activation_deadline) {
-				stop();
-				throw std::runtime_error("Timed out waiting for module applications to activate");
 			}
 			step();
 			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) break;

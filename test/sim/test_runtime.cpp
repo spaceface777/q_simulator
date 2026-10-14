@@ -142,6 +142,37 @@ TEST_F(RuntimeTest, DeliversSynchronousRpcResponsesDuringActivation) {
 	runtime.stop();
 }
 
+TEST_F(RuntimeTest, CompletesStartupAfterSupervisionStopsApplicationsThatNeverActivate) {
+	::setenv("TEST_APP_NEVER_ACTIVATE", "1", 1);
+	const auto  path = fs::temp_directory_path() / "quercus-activation-deadline.ndjson";
+	std::string reference;
+	for (unsigned repeat = 0; repeat < 3; ++repeat) {
+		test_app::Runtime runtime(7);
+		runtime.trace_to(path.string(), {});
+		ASSERT_NO_THROW(runtime.start());
+		EXPECT_EQ(runtime.tick(), 10001u);
+		EXPECT_FALSE(runtime.failed());
+		for (const uint8_t id : {FIRST, SECOND}) {
+			EXPECT_FALSE(runtime.platform().is_activated(module::ModuleId{id}));
+			EXPECT_EQ(runtime.platform().lifecycle(module::ModuleId{id}), platform::Lifecycle::STOPPED);
+			EXPECT_EQ(runtime.platform().stop_reason(module::ModuleId{id}),
+					  "did not send a first heartbeat before its activation deadline");
+		}
+		runtime.stop();
+		std::ifstream      input(path);
+		std::ostringstream bytes;
+		bytes << input.rdbuf();
+		for (const uint8_t id : {FIRST, SECOND}) {
+			EXPECT_NE(bytes.str().find("\"type\":\"module_stopped\",\"tick\":10000,\"module\":" + std::to_string(id) +
+									   ",\"reason\":\"did not send a first heartbeat before its activation deadline\""),
+					  std::string::npos);
+		}
+		if (repeat == 0) reference = bytes.str();
+		else EXPECT_EQ(bytes.str(), reference);
+	}
+	fs::remove(path);
+}
+
 TEST_F(RuntimeTest, RejectsAShortMalformedOutputBatch) {
 	::setenv("TEST_APP_INGRESS_PROBE_1", "1", 1);
 

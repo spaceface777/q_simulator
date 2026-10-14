@@ -31,8 +31,6 @@ namespace sim {
 	inline constexpr uint64_t RPC_RX_DELAY_LOCAL_TICKS = 1;
 	inline constexpr uint64_t RPC_TX_DELAY_LOCAL_TICKS = 1;
 
-	inline constexpr std::chrono::milliseconds ACTIVATION_TIMEOUT{20000};
-
 	struct PropertyResult {
 		std::string                            name;
 		std::string                            source;
@@ -79,7 +77,6 @@ namespace sim {
 			std::map<uint64_t, PendingRpcRequest> rpc_work;
 		};
 
-		std::chrono::milliseconds                   activation_timeout_;
 		uint64_t                                    seed_;
 		std::map<std::string, std::string>          environment_;
 		std::vector<firmware::ImageBinding>         firmware_bindings_;
@@ -158,8 +155,7 @@ namespace sim {
 
 	public:
 		explicit Runtime(uint64_t seed, std::vector<firmware::ImageBinding> firmware = {},
-						 std::map<std::string, std::string> environment        = {},
-						 std::chrono::milliseconds          activation_timeout = ACTIVATION_TIMEOUT);
+						 std::map<std::string, std::string> environment = {});
 		~Runtime();
 		Runtime(const Runtime&)            = delete;
 		Runtime& operator=(const Runtime&) = delete;
