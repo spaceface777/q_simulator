@@ -1,3 +1,4 @@
+#include "../file_cleanup.h"
 #include "../os.h"
 #include <gtest/gtest.h>
 
@@ -145,8 +146,9 @@ TEST_F(RuntimeTest, DeliversSynchronousRpcResponsesDuringActivation) {
 
 TEST_F(RuntimeTest, CompletesStartupAfterSupervisionStopsApplicationsThatNeverActivate) {
 	test_os::set_environment("TEST_APP_NEVER_ACTIVATE", "1");
-	const auto  path = fs::temp_directory_path() / "quercus-activation-deadline.ndjson";
-	std::string reference;
+	const auto                   path = fs::temp_directory_path() / "quercus-activation-deadline.ndjson";
+	const test_util::FileCleanup cleanup_path{path};
+	std::string                  reference;
 	for (unsigned repeat = 0; repeat < 3; ++repeat) {
 		test_app::Runtime runtime(7);
 		runtime.trace_to(path.string(), {});
@@ -171,7 +173,6 @@ TEST_F(RuntimeTest, CompletesStartupAfterSupervisionStopsApplicationsThatNeverAc
 		if (repeat == 0) reference = bytes.str();
 		else EXPECT_EQ(bytes.str(), reference);
 	}
-	fs::remove(path);
 }
 
 TEST_F(RuntimeTest, RejectsAShortMalformedOutputBatch) {
@@ -221,7 +222,7 @@ TEST_F(RuntimeTest, HeartbeatDeathStopsOnlyTheFailedModule) {
 
 TEST_F(RuntimeTest, RateStopDeliversTryAgainBeforeRetiringOnlyTheOffendingModule) {
 	const fs::path statuses = fs::temp_directory_path() / ("quercus_rate_stop_" + std::to_string(::getpid()));
-	fs::remove(statuses);
+	const test_util::FileCleanup cleanup_statuses{statuses};
 	test_os::set_environment("TEST_APP_STATUS_RECORD", statuses.string().c_str());
 
 	test_app::Runtime runtime(7);
@@ -261,7 +262,6 @@ TEST_F(RuntimeTest, RateStopDeliversTryAgainBeforeRetiringOnlyTheOffendingModule
 	EXPECT_EQ(runtime.module_tick(module::ModuleId{SECOND}) - live_before, 100u);
 
 	runtime.stop();
-	fs::remove(statuses);
 }
 
 TEST_F(RuntimeTest, AppliesEarlyScenarioEventsWhileStartupSkewAdvancesTime) {
@@ -286,7 +286,7 @@ TEST_F(RuntimeTest, AppliesEarlyScenarioEventsWhileStartupSkewAdvancesTime) {
 TEST_F(RuntimeTest, TracesScheduledAndYeetedTubRemovalsOnceWithTheirReason) {
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("quercus_tub_removal_trace_" + std::to_string(::getpid()) + ".ndjson");
-	fs::remove(trace_path);
+	const test_util::FileCleanup cleanup_trace_path{trace_path};
 
 	events::Schedule   schedule;
 	events::TubArrival scheduled;
@@ -326,7 +326,6 @@ TEST_F(RuntimeTest, TracesScheduledAndYeetedTubRemovalsOnceWithTheirReason) {
 	std::ifstream      input(trace_path);
 	std::ostringstream trace;
 	trace << input.rdbuf();
-	fs::remove(trace_path);
 	const std::string contents        = trace.str();
 	const std::string scheduled_event = "\"type\":\"tub_removed\",\"tick\":2,\"id\":4,\"reason\":\"scheduled\"";
 	const std::string yeeted_event =
@@ -364,8 +363,8 @@ prop global_time_still_reaches_the_end at 3ms = true;
 
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("quercus_tick_skip_" + std::to_string(::getpid()) + ".ndjson");
-	fs::remove(trace_path);
-	test_app::Runtime runtime(7);
+	const test_util::FileCleanup cleanup_trace_path{trace_path};
+	test_app::Runtime            runtime(7);
 	runtime.load_properties(std::move(properties), 3, "clock-skips.spec");
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start(3));
@@ -382,7 +381,6 @@ prop global_time_still_reaches_the_end at 3ms = true;
 	std::ifstream      input(trace_path);
 	std::ostringstream trace;
 	trace << input.rdbuf();
-	fs::remove(trace_path);
 	EXPECT_NE(trace.str().find("\"type\":\"module_tick_skipped\",\"tick\":0,\"module\":1"), std::string::npos);
 	EXPECT_NE(trace.str().find("\"type\":\"property_verdict\""), std::string::npos);
 }
@@ -396,8 +394,8 @@ TEST_F(RuntimeTest, RecordsSampledModuleClockStateAndStartupActivity) {
 
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("quercus_startup_trace_" + std::to_string(::getpid()) + ".ndjson");
-	fs::remove(trace_path);
-	test_app::Runtime runtime(7);
+	const test_util::FileCleanup cleanup_trace_path{trace_path};
+	test_app::Runtime            runtime(7);
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start(4));
 	runtime.stop();
@@ -405,7 +403,6 @@ TEST_F(RuntimeTest, RecordsSampledModuleClockStateAndStartupActivity) {
 	std::ifstream      input(trace_path);
 	std::ostringstream trace;
 	trace << input.rdbuf();
-	fs::remove(trace_path);
 	EXPECT_NE(trace.str().find(
 				  "\"type\":\"module_clock\",\"module\":1,\"start_tick\":4,\"rate_ppm\":1000000,\"skip_ppm\":1000000"),
 			  std::string::npos);
@@ -466,8 +463,8 @@ TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossAdvanceSizes) {
 	const auto execute = [](uint32_t batch) {
 		const fs::path path = fs::temp_directory_path() / ("quercus_skip_trace_" + std::to_string(::getpid()) + "_" +
 														   std::to_string(batch) + ".ndjson");
-		fs::remove(path);
-		test_app::Runtime runtime(7);
+		const test_util::FileCleanup cleanup_path{path};
+		test_app::Runtime            runtime(7);
 		runtime.trace_to(path.string(), {});
 		runtime.start();
 		const uint64_t before = runtime.tick();
@@ -480,7 +477,6 @@ TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossAdvanceSizes) {
 		std::ifstream      input(path);
 		std::ostringstream trace;
 		trace << input.rdbuf();
-		fs::remove(path);
 		return trace.str();
 	};
 
@@ -499,8 +495,8 @@ TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("quercus_local_rpc_delay_" + std::to_string(::getpid()) + ".ndjson");
-	fs::remove(trace_path);
-	test_app::Runtime runtime(7);
+	const test_util::FileCleanup cleanup_trace_path{trace_path};
+	test_app::Runtime            runtime(7);
 	runtime.trace_to(trace_path.string(), {});
 	ASSERT_NO_THROW(runtime.start());
 	runtime.advance(std::chrono::milliseconds(1000), 1.0, std::chrono::seconds(10));
@@ -525,7 +521,6 @@ TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 			response_tick = read_tick(line);
 		}
 	}
-	fs::remove(trace_path);
 	ASSERT_TRUE(request_tick.has_value());
 	ASSERT_TRUE(response_tick.has_value());
 	EXPECT_GT(*response_tick, *request_tick + sim::RPC_RX_DELAY_LOCAL_TICKS + sim::RPC_TX_DELAY_LOCAL_TICKS)
@@ -534,7 +529,7 @@ TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 
 TEST_F(RuntimeTest, RetainsPendingResponsesAcrossAdvanceCalls) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_child_record_" + std::to_string(::getpid()));
-	fs::remove(record);
+	const test_util::FileCleanup cleanup_record{record};
 	test_os::set_environment("TEST_APP_QUERY_TICK", "2");
 	test_os::set_environment("TEST_APP_RECORD", record.string().c_str());
 
@@ -556,7 +551,6 @@ TEST_F(RuntimeTest, RetainsPendingResponsesAcrossAdvanceCalls) {
 		}
 	}
 	EXPECT_TRUE(saw_response);
-	fs::remove(record);
 }
 
 TEST_F(RuntimeTest, WarnsOnlyAfterTenFramesOfSustainedPacingShortfall) {
@@ -597,7 +591,7 @@ TEST_F(RuntimeTest, GrantsNoTicksWhilePaused) {
 
 TEST_F(RuntimeTest, DeliversEventsToASubscribedApplication) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_child_record_" + std::to_string(::getpid()));
-	fs::remove(record);
+	const test_util::FileCleanup cleanup_record{record};
 	test_os::set_environment("TEST_APP_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str());
 	test_os::set_environment("TEST_APP_RECORD", record.string().c_str());
 
@@ -646,13 +640,11 @@ prop never_delivers_duplicate_rfid_events_on_one_tick =
 		}
 	}
 	EXPECT_TRUE(saw_event);
-
-	fs::remove(record);
 }
 
 TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_hardware_event_ticks_" + std::to_string(::getpid()));
-	fs::remove(record);
+	const test_util::FileCleanup cleanup_record{record};
 	test_os::set_environment("TEST_APP_SUBSCRIBE", std::to_string(EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT).c_str());
 	test_os::set_environment("TEST_APP_RECORD", record.string().c_str());
 	test_os::set_environment("TEST_APP_RECORD_TICKS", "1");
@@ -696,13 +688,12 @@ TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 	}
 	EXPECT_TRUE(saw_laser_at_14) << "3 ms laser latency plus the 1 ms handoff must total 4 ms";
 	EXPECT_TRUE(saw_rfid_at_56) << "35 ms RFID latency plus the 1 ms handoff must total 36 ms";
-
-	fs::remove(record);
 }
 
 TEST_F(RuntimeTest, FailsTheRunWhenAnApplicationExits) {
 	test_os::set_environment("TEST_APP_EXIT_AFTER", "5");
-	const auto path = fs::temp_directory_path() / "quercus-failed-grant.ndjson";
+	const auto                   path = fs::temp_directory_path() / "quercus-failed-grant.ndjson";
+	const test_util::FileCleanup cleanup_path{path};
 
 	test_app::Runtime runtime(7);
 	runtime.trace_to(path.string(), {});
@@ -717,7 +708,6 @@ TEST_F(RuntimeTest, FailsTheRunWhenAnApplicationExits) {
 	EXPECT_EQ(bytes.str().find("\"type\":\"run_complete\""), std::string::npos);
 
 	runtime.stop();
-	fs::remove(path);
 }
 
 TEST_F(RuntimeTest, WaitsForEveryApplicationBeforeCompletingATick) {
@@ -1067,7 +1057,7 @@ TEST_F(RuntimeTest, ObservesStartupTubEdgesAtLogicalTimeZero) {
 TEST_F(RuntimeTest, RecordsFailureFormulaObligationFactsAndCanonicalObservation) {
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("ltlf_failure_trace_" + std::to_string(::getpid()) + ".ndjson");
-	fs::remove(trace_path);
+	const test_util::FileCleanup cleanup_trace_path{trace_path};
 
 	events::Schedule   schedule;
 	events::TubArrival tub;
@@ -1095,7 +1085,6 @@ TEST_F(RuntimeTest, RecordsFailureFormulaObligationFactsAndCanonicalObservation)
 	std::ifstream      input(trace_path);
 	std::ostringstream trace;
 	trace << input.rdbuf();
-	fs::remove(trace_path);
 	EXPECT_NE(trace.str().find("\"type\":\"property_activation\""), std::string::npos);
 	EXPECT_NE(trace.str().find("\"type\":\"property_verdict\""), std::string::npos);
 	EXPECT_NE(trace.str().find("\"verdict\":\"false\""), std::string::npos);
@@ -1106,7 +1095,7 @@ TEST_F(RuntimeTest, RecordsFailureFormulaObligationFactsAndCanonicalObservation)
 TEST_F(RuntimeTest, RecordsMetricObligationCreationAndDeadline) {
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("ltlf_deadline_trace_" + std::to_string(::getpid()) + ".ndjson");
-	fs::remove(trace_path);
+	const test_util::FileCleanup cleanup_trace_path{trace_path};
 
 	ltl::File properties =
 		ltl::parse("prop deadline = eventually[1ms, 2ms] module(1).led_color == 0xffffff;", "deadline.spec");
@@ -1130,7 +1119,6 @@ TEST_F(RuntimeTest, RecordsMetricObligationCreationAndDeadline) {
 	std::ifstream      input(trace_path);
 	std::ostringstream trace;
 	trace << input.rdbuf();
-	fs::remove(trace_path);
 	EXPECT_NE(trace.str().find("\"ltlf_version\":\"0.3\""), std::string::npos);
 	EXPECT_NE(trace.str().find("\"obligation_created_tick\":0"), std::string::npos);
 	EXPECT_NE(trace.str().find("\"deadline_tick\":2"), std::string::npos);
@@ -1140,7 +1128,7 @@ TEST_F(RuntimeTest, RecordsMetricObligationCreationAndDeadline) {
 TEST_F(RuntimeTest, ObservesRpcTrafficAtExactLogicalBoundaries) {
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("ltlf_rpc_trace_" + std::to_string(::getpid()) + ".ndjson");
-	fs::remove(trace_path);
+	const test_util::FileCleanup cleanup_trace_path{trace_path};
 	test_os::set_environment("TEST_APP_QUERY_TICK", "2");
 
 	ltl::File properties = ltl::parse(R"(
@@ -1175,7 +1163,6 @@ prop every_delivered_response_is_correlated_and_successful =
 	std::ifstream      input(trace_path);
 	std::ostringstream trace;
 	trace << input.rdbuf();
-	fs::remove(trace_path);
 	const std::string records = trace.str();
 
 	// The receive and transmit delays each consume one executed module tick.
@@ -1272,7 +1259,7 @@ TEST_F(RuntimeTest, AdvanceSizesProduceIdenticalLtlResultsAndObservationRecords)
 	const auto execute = [](uint32_t batch) {
 		const fs::path trace_path = fs::temp_directory_path() / ("ltlf_batch_trace_" + std::to_string(::getpid()) +
 																 "_" + std::to_string(batch) + ".ndjson");
-		fs::remove(trace_path);
+		const test_util::FileCleanup cleanup_trace_path{trace_path};
 
 		events::Schedule   schedule;
 		events::TubArrival tub;
@@ -1308,7 +1295,6 @@ prop arrival_persists_on_the_next_logical_tick =
 				run.relevant_trace += line + "\n";
 			}
 		}
-		fs::remove(trace_path);
 		return run;
 	};
 
@@ -1329,7 +1315,7 @@ TEST_F(RuntimeTest, LtlFailureInsideAnAdvanceStopsAtTheExactTickAndKeepsTheTrace
 	const auto execute = [](uint32_t advance_ticks, const std::string& suffix) {
 		const fs::path path =
 			fs::temp_directory_path() / ("quercus_exact_ltl_" + std::to_string(::getpid()) + suffix + ".ndjson");
-		fs::remove(path);
+		const test_util::FileCleanup cleanup_path{path};
 		ltl::File         properties = ltl::parse("prop fails during [10ms, 20ms] = always false;", "exact.spec");
 		test_app::Runtime runtime(7);
 		runtime.load_properties(std::move(properties), 20, "exact.spec");
@@ -1349,7 +1335,6 @@ TEST_F(RuntimeTest, LtlFailureInsideAnAdvanceStopsAtTheExactTickAndKeepsTheTrace
 		std::ifstream      input(path, std::ios::binary);
 		std::ostringstream contents;
 		contents << input.rdbuf();
-		fs::remove(path);
 		return contents.str();
 	};
 

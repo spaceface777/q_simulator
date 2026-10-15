@@ -1,3 +1,4 @@
+#include "../file_cleanup.h"
 #include "../os.h"
 #include <gtest/gtest.h>
 
@@ -77,7 +78,7 @@ namespace {
 			const fs::path trace_path = fs::temp_directory_path() /
 										("quercus_trace_" + std::to_string(::getpid()) + "_" + std::to_string(seed) +
 										 "_" + std::to_string(speed) + "_" + std::to_string(tick_batch) + ".ndjson");
-			fs::remove(trace_path);
+			const test_util::FileCleanup cleanup_trace_path{trace_path};
 
 			{
 				events::Schedule   schedule;
@@ -127,7 +128,6 @@ namespace {
 			std::ifstream     file(trace_path);
 			std::stringstream contents;
 			contents << file.rdbuf();
-			fs::remove(trace_path);
 			return contents.str();
 		}
 	};

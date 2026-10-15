@@ -1,3 +1,4 @@
+#include "../file_cleanup.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -204,7 +205,7 @@ TEST(ScenarioAdvanceTrace, CompleteTraceMatchesAcrossSeedsEventsAndManyModules) 
 			const fs::path trace_path =
 				fs::temp_directory_path() /
 				("quercus_exact_scenario_" + std::to_string(::getpid()) + "_" + test_case.scenario + "_" + mode);
-			fs::remove(trace_path);
+			const test_util::FileCleanup cleanup_trace_path{trace_path};
 
 			sim::Runtime runtime(test_case.seed, *test_applets::bindings(test_case.applet));
 			runtime.load(schedule);
@@ -229,7 +230,6 @@ TEST(ScenarioAdvanceTrace, CompleteTraceMatchesAcrossSeedsEventsAndManyModules) 
 			std::ifstream      input(trace_path, std::ios::binary);
 			std::ostringstream contents;
 			contents << input.rdbuf();
-			fs::remove(trace_path);
 			return contents.str();
 		};
 
@@ -367,7 +367,7 @@ TEST(ScenarioAdvanceTrace, RealScenarioHasIdenticalCompleteTraceAtEveryAdvanceSi
 		const fs::path trace_path =
 			fs::temp_directory_path() /
 			("quercus_real_skip_trace_" + std::to_string(::getpid()) + "_" + std::to_string(batch) + ".ndjson");
-		fs::remove(trace_path);
+		const test_util::FileCleanup cleanup_trace_path{trace_path};
 
 		ltl::File properties = parse_properties(schedule.properties->property_file);
 		world::configure_calibration_from_settings();
@@ -412,7 +412,6 @@ TEST(ScenarioAdvanceTrace, RealScenarioHasIdenticalCompleteTraceAtEveryAdvanceSi
 		std::ifstream      input(trace_path, std::ios::binary);
 		std::ostringstream bytes;
 		bytes << input.rdbuf();
-		fs::remove(trace_path);
 		return bytes.str();
 	};
 

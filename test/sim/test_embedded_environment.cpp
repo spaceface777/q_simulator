@@ -1,5 +1,6 @@
 #include "../../src/settings.h"
 #include "../../src/sim/runtime.h"
+#include "../file_cleanup.h"
 #include "../os.h"
 #include "firmware_images.h"
 #include <algorithm>
@@ -35,10 +36,11 @@ TEST(Runtime, GuestEnvironmentSnapshotSurvivesHostChangesAndFreshLoads) {
 		}
 		test_os::set_environment("QSIM_STUB_REFUSE", "host-only");
 		std::map<std::string, std::string> environment{{"QSIM_STUB_REFUSE", "6:30000"}, {"EXTRA", "quoted \"value\""}};
-		sim::Runtime                       runtime(42, *test_applets::bindings("environment_probe", true), environment);
-		environment["QSIM_STUB_REFUSE"] = "caller-changed";
-		const auto trace =
+		const auto                         trace =
 			std::filesystem::temp_directory_path() / ("qsim-environment-" + std::to_string(getpid()) + ".ndjson");
+		const test_util::FileCleanup cleanup_trace{trace};
+		sim::Runtime                 runtime(42, *test_applets::bindings("environment_probe", true), environment);
+		environment["QSIM_STUB_REFUSE"] = "caller-changed";
 		runtime.trace_to(trace.string(), {});
 		ASSERT_NO_THROW(runtime.start());
 		test_os::set_environment("QSIM_STUB_REFUSE", "changed-after-start");
@@ -58,6 +60,5 @@ TEST(Runtime, GuestEnvironmentSnapshotSurvivesHostChangesAndFreshLoads) {
 			<< first;
 		EXPECT_EQ(first.find("host-only"), std::string::npos);
 		EXPECT_EQ(first.find("caller-changed"), std::string::npos);
-		std::filesystem::remove(trace);
 	}
 }

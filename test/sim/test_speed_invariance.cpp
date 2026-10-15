@@ -1,5 +1,6 @@
 #include "../../src/event/events.h"
 #include "../../src/sim/runtime.h"
+#include "../file_cleanup.h"
 #include "firmware_images.h"
 #include <algorithm>
 #include <chrono>
@@ -55,7 +56,8 @@ TEST_P(SpeedInvarianceTest, ProducesTheSameTraceRegardlessOfSpeed) {
 			std::max(schedule.last_tick(), schedule.properties ? schedule.properties->duration_tick : uint64_t{0});
 		const auto file =
 			std::filesystem::temp_directory_path() / ("quercus_speed_" + std::to_string(getpid()) + ".ndjson");
-		sim::Runtime runtime(seed, *slots);
+		const test_util::FileCleanup cleanup_file{file};
+		sim::Runtime                 runtime(seed, *slots);
 		runtime.load(schedule);
 		runtime.trace_to(file.string(), {});
 		runtime.start(target);
@@ -88,7 +90,6 @@ TEST_P(SpeedInvarianceTest, ProducesTheSameTraceRegardlessOfSpeed) {
 		ASSERT_FALSE(bytes.str().empty());
 		if (reference.empty()) reference = bytes.str();
 		else EXPECT_EQ(bytes.str(), reference) << "speed " << speed;
-		std::filesystem::remove(file);
 		world::clear_calibration_seed();
 	}
 }
