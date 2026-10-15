@@ -14,16 +14,7 @@ build:
     - command -v clang-format-22 || (sudo apt-get update && sudo apt-get install -y clang-format-22)
     - python3 tools/check_sdk.py
     - python3 test/test_sdk_consistency.py
-    - test -n "$ZEPHYR_BASE" && test -f "$ZEPHYR_BASE/CMakeLists.txt"
-    - |
-      zephyr_revision=$(cat external/q_sdk/ZEPHYR_REVISION)
-      if ! git -C "$ZEPHYR_BASE" cat-file -e "$zephyr_revision^{commit}"; then
-        git -C "$ZEPHYR_BASE" fetch https://github.com/spaceface777/zephyr.git "$zephyr_revision"
-      fi
-      # The disposable builder image contains an untracked source snapshot.
-      git -C "$ZEPHYR_BASE" checkout --force --detach "$zephyr_revision"
-      git -C "$ZEPHYR_BASE" clean -fd
-      test "$(git -C "$ZEPHYR_BASE" rev-parse HEAD)" = "$zephyr_revision"
+    - source external/q_sdk/tools/ci_zephyr.sh
     - export ZEPHYR_TOOLCHAIN_VARIANT=host
     - (cd external/q_applets && ./q_sdk/qbuild sim)
     - external/q_sdk/qbuild sim

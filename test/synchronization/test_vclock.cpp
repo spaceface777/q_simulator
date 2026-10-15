@@ -34,34 +34,38 @@ TEST(VirtualClockTest, SetInvalidSimulationSpeedThrows) {
 }
 
 TEST(VirtualClockTest, RealTimeTickAdvancement) {
+	const auto                  before_start = std::chrono::steady_clock::now();
 	virtual_clock::VirtualClock clock;
+	const auto                  after_start = std::chrono::steady_clock::now();
 
-	// Sleep for 50ms real time
 	std::this_thread::sleep_for(50ms);
+	const auto before_tick = std::chrono::steady_clock::now();
 	clock.tick();
+	const auto after_tick = std::chrono::steady_clock::now();
 
-	// Virtual time should have advanced by roughly 50ms (giving a small tolerance margin)
-	EXPECT_GE(clock.get_virtual_time(), 40ms);
-	EXPECT_LE(clock.get_virtual_time(), 100ms);
+	// Bracket the clock's internal samples; the host can oversleep on a busy runner.
+	EXPECT_GE(clock.get_virtual_time(),
+			  std::chrono::duration_cast<std::chrono::milliseconds>(before_tick - after_start));
+	EXPECT_LE(clock.get_virtual_time(),
+			  std::chrono::duration_cast<std::chrono::milliseconds>(after_tick - before_start));
 }
 
 TEST(VirtualClockTest, SpeedMultiplier2X) {
+	const auto                  before_start = std::chrono::steady_clock::now();
 	virtual_clock::VirtualClock clock;
 	clock.set_simulation_speed(2.0);
+	const auto after_start = std::chrono::steady_clock::now();
 
-	// Initial tick to establish baseline
-	clock.tick();
-	auto start_time = clock.get_virtual_time();
-
-	// Sleep 50ms in real time
 	std::this_thread::sleep_for(50ms);
+	const auto before_tick = std::chrono::steady_clock::now();
 	clock.tick();
+	const auto after_tick = std::chrono::steady_clock::now();
 
-	auto virtual_elapsed = clock.get_virtual_time() - start_time;
-
-	// At 2x speed, 50ms real time should advance ~100ms virtual time
-	EXPECT_GE(virtual_elapsed, 80ms);
-	EXPECT_LE(virtual_elapsed, 150ms);
+	// Check the multiplier against actual elapsed time, including scheduler delays.
+	EXPECT_GE(clock.get_virtual_time(),
+			  std::chrono::duration_cast<std::chrono::milliseconds>(before_tick - after_start) * 2);
+	EXPECT_LE(clock.get_virtual_time(),
+			  std::chrono::duration_cast<std::chrono::milliseconds>(after_tick - before_start) * 2);
 }
 
 TEST(VirtualClockTest, PausedClockZeroSpeed) {
