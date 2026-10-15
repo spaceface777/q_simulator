@@ -30,11 +30,15 @@ namespace visualization::buttons {
 
 		void project_(SDL_Renderer* renderer) noexcept {
 
-			int w = 0;
-			int h = 0;
-			if (!SDL_GetCurrentRenderOutputSize(renderer, &w, &h)) {
+			int   pixel_width  = 0;
+			int   pixel_height = 0;
+			float scale_x, scale_y;
+			if (!SDL_GetCurrentRenderOutputSize(renderer, &pixel_width, &pixel_height) ||
+				!SDL_GetRenderScale(renderer, &scale_x, &scale_y)) {
 				return;
 			}
+			const float w = pixel_width / scale_x;
+			const float h = pixel_height / scale_y;
 
 			float render_x, render_y;
 			switch (anchor_) {

@@ -13,8 +13,8 @@ namespace visualization::buttons {
 	void Button::handle(const SDL_Event& event, virtual_clock::ISimulationClock& vclock) noexcept {
 		if (event.type == SDL_EVENT_MOUSE_MOTION || event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
 			event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-			float mx, my;
-			SDL_GetMouseState(&mx, &my);
+			const float mx = event.type == SDL_EVENT_MOUSE_MOTION ? event.motion.x : event.button.x;
+			const float my = event.type == SDL_EVENT_MOUSE_MOTION ? event.motion.y : event.button.y;
 
 			bool inside = true;
 			if (mx < projected_.x) inside = false;                     // Left of button

@@ -744,7 +744,15 @@ namespace visualization {
 			return;
 		}
 
-		window_ = SDL_CreateWindow("Quercus Airport Visualization", 800, 800, SDL_WINDOW_RESIZABLE);
+		const float content_scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+		if (!content_scale) {
+			std::cerr << "Display scale could not be read! SDL_Error: " << SDL_GetError() << std::endl;
+			stop();
+			return;
+		}
+		const int window_size = static_cast<int>(std::lround(800 * content_scale));
+		window_               = SDL_CreateWindow("Quercus Airport Visualization", window_size, window_size,
+												 SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 		if (!window_) {
 			std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
 			SDL_Quit();
@@ -792,7 +800,13 @@ namespace visualization {
 			return;
 		}
 
-		scale = settings::get_setting<double>("scale");
+		scale                     = settings::get_setting<double>("scale");
+		const float display_scale = SDL_GetWindowDisplayScale(window_);
+		if (!display_scale || !SDL_SetRenderScale(renderer_, display_scale, display_scale)) {
+			std::cerr << "Render scale could not be set! SDL_Error: " << SDL_GetError() << std::endl;
+			stop();
+			return;
+		}
 
 		SDL_Event event;
 		while (SDL_PollEvent(&event) != 0) {
@@ -827,6 +841,7 @@ namespace visualization {
 				}
 			}
 
+			SDL_ConvertEventToRenderCoordinates(renderer_, &event);
 			for (auto& button : buttons_) {
 				button->handle(event, vclock);
 			}
