@@ -1,5 +1,6 @@
 #include "../../src/settings.h"
 #include "../../src/sim/runtime.h"
+#include "../os.h"
 #include "firmware_images.h"
 #include <algorithm>
 #include <cstdlib>
@@ -16,8 +17,8 @@ TEST(Runtime, GuestEnvironmentSnapshotSurvivesHostChangesAndFreshLoads) {
 		std::optional<std::string> value;
 
 		~Restore() {
-			if (value) ::setenv("QSIM_STUB_REFUSE", value->c_str(), 1);
-			else ::unsetenv("QSIM_STUB_REFUSE");
+			if (value) test_os::set_environment("QSIM_STUB_REFUSE", value->c_str());
+			else test_os::unset_environment("QSIM_STUB_REFUSE");
 			for (uint8_t id : {1, 2}) settings::set_module_settings(module::ModuleId{id}, {});
 		}
 	} restore;
@@ -32,7 +33,7 @@ TEST(Runtime, GuestEnvironmentSnapshotSurvivesHostChangesAndFreshLoads) {
 			module.active = true;
 			settings::set_module_settings(module::ModuleId{id}, module);
 		}
-		::setenv("QSIM_STUB_REFUSE", "host-only", 1);
+		test_os::set_environment("QSIM_STUB_REFUSE", "host-only");
 		std::map<std::string, std::string> environment{{"QSIM_STUB_REFUSE", "6:30000"}, {"EXTRA", "quoted \"value\""}};
 		sim::Runtime                       runtime(42, *test_applets::bindings("environment_probe", true), environment);
 		environment["QSIM_STUB_REFUSE"] = "caller-changed";
@@ -40,7 +41,7 @@ TEST(Runtime, GuestEnvironmentSnapshotSurvivesHostChangesAndFreshLoads) {
 			std::filesystem::temp_directory_path() / ("qsim-environment-" + std::to_string(getpid()) + ".ndjson");
 		runtime.trace_to(trace.string(), {});
 		ASSERT_NO_THROW(runtime.start());
-		::setenv("QSIM_STUB_REFUSE", "changed-after-start", 1);
+		test_os::set_environment("QSIM_STUB_REFUSE", "changed-after-start");
 		while (runtime.tick() < 3000) {
 			const auto before = runtime.tick();
 			runtime.advance(std::chrono::microseconds(1000), 1.0, std::chrono::milliseconds(50));

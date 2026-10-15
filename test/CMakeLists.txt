@@ -8,6 +8,11 @@ add_executable(tests
     engine/test_task_queue.cpp net/test_network.cpp
     platform/test_overload.cpp platform/test_platform.cpp platform/test_rpc_worker_pool.cpp
     world/test_world.cpp world/test_instruments.cpp world/test_calibration_statistics.cpp world/test_servo_travel.cpp)
+if(WIN32)
+    target_sources(tests PRIVATE os_windows.cpp)
+else()
+    target_sources(tests PRIVATE os_posix.cpp)
+endif()
 target_link_libraries(tests PRIVATE gtest core)
 target_compile_definitions(core PRIVATE TESTING)
 target_compile_definitions(tests PRIVATE TESTING REPO_ROOT="${CMAKE_SOURCE_DIR}")

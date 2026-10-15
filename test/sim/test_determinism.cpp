@@ -1,3 +1,4 @@
+#include "../os.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -56,9 +57,9 @@ namespace {
 			second.right  = module::ModuleId{FIRST};
 			settings::set_module_settings(module::ModuleId{SECOND}, second);
 
-			::setenv("TEST_APP_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str(), 1);
-			::unsetenv("TEST_APP_EXIT_AFTER");
-			::unsetenv("TEST_APP_RECORD");
+			test_os::set_environment("TEST_APP_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str());
+			test_os::unset_environment("TEST_APP_EXIT_AFTER");
+			test_os::unset_environment("TEST_APP_RECORD");
 		}
 
 		void TearDown() override {
@@ -66,7 +67,7 @@ namespace {
 			for (uint8_t id = 1; id < MAX_MODULES; id++) {
 				settings::set_module_settings(module::ModuleId{id}, settings::ModuleSettings{});
 			}
-			::unsetenv("TEST_APP_SUBSCRIBE");
+			test_os::unset_environment("TEST_APP_SUBSCRIBE");
 		}
 
 		// Runs one scenario end to end and returns the trace it produced.

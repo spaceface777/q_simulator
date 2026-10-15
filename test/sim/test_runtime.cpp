@@ -1,3 +1,4 @@
+#include "../os.h"
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -45,28 +46,28 @@ namespace {
 		static constexpr uint8_t SECOND = 2;
 
 		static void clear_test_app_environment() {
-			::unsetenv("TEST_APP_HEARTBEAT_EVERY");
-			::unsetenv("TEST_APP_HEARTBEAT_EVERY_1");
-			::unsetenv("TEST_APP_HEARTBEAT_EVERY_2");
-			::unsetenv("TEST_APP_HEARTBEAT_UNTIL");
-			::unsetenv("TEST_APP_HEARTBEAT_UNTIL_1");
-			::unsetenv("TEST_APP_HEARTBEAT_UNTIL_2");
-			::unsetenv("TEST_APP_SUBSCRIBE");
-			::unsetenv("TEST_APP_EXIT_AFTER");
-			::unsetenv("TEST_APP_QUERY_TICK");
-			::unsetenv("TEST_APP_INGRESS_PROBE");
-			::unsetenv("TEST_APP_INGRESS_PROBE_1");
-			::unsetenv("TEST_APP_INGRESS_PROBE_2");
-			::unsetenv("TEST_APP_RATE_BURST");
-			::unsetenv("TEST_APP_RATE_BURST_1");
-			::unsetenv("TEST_APP_RATE_BURST_2");
-			::unsetenv("TEST_APP_STARTUP_RPC");
-			::unsetenv("TEST_APP_NEVER_ACTIVATE");
-			::unsetenv("TEST_APP_RECORD");
-			::unsetenv("TEST_APP_RECORD_TICKS");
-			::unsetenv("TEST_APP_STATUS_RECORD");
-			::unsetenv("TEST_APP_MUTANT");
-			::unsetenv("TEST_APP_REPLY_TO_MESSAGE");
+			test_os::unset_environment("TEST_APP_HEARTBEAT_EVERY");
+			test_os::unset_environment("TEST_APP_HEARTBEAT_EVERY_1");
+			test_os::unset_environment("TEST_APP_HEARTBEAT_EVERY_2");
+			test_os::unset_environment("TEST_APP_HEARTBEAT_UNTIL");
+			test_os::unset_environment("TEST_APP_HEARTBEAT_UNTIL_1");
+			test_os::unset_environment("TEST_APP_HEARTBEAT_UNTIL_2");
+			test_os::unset_environment("TEST_APP_SUBSCRIBE");
+			test_os::unset_environment("TEST_APP_EXIT_AFTER");
+			test_os::unset_environment("TEST_APP_QUERY_TICK");
+			test_os::unset_environment("TEST_APP_INGRESS_PROBE");
+			test_os::unset_environment("TEST_APP_INGRESS_PROBE_1");
+			test_os::unset_environment("TEST_APP_INGRESS_PROBE_2");
+			test_os::unset_environment("TEST_APP_RATE_BURST");
+			test_os::unset_environment("TEST_APP_RATE_BURST_1");
+			test_os::unset_environment("TEST_APP_RATE_BURST_2");
+			test_os::unset_environment("TEST_APP_STARTUP_RPC");
+			test_os::unset_environment("TEST_APP_NEVER_ACTIVATE");
+			test_os::unset_environment("TEST_APP_RECORD");
+			test_os::unset_environment("TEST_APP_RECORD_TICKS");
+			test_os::unset_environment("TEST_APP_STATUS_RECORD");
+			test_os::unset_environment("TEST_APP_MUTANT");
+			test_os::unset_environment("TEST_APP_REPLY_TO_MESSAGE");
 		}
 
 		void SetUp() override {
@@ -133,7 +134,7 @@ TEST_F(RuntimeTest, StartsApplicationsAndWaitsForThemToActivate) {
 }
 
 TEST_F(RuntimeTest, DeliversSynchronousRpcResponsesDuringActivation) {
-	::setenv("TEST_APP_STARTUP_RPC", "1", 1);
+	test_os::set_environment("TEST_APP_STARTUP_RPC", "1");
 
 	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
@@ -143,7 +144,7 @@ TEST_F(RuntimeTest, DeliversSynchronousRpcResponsesDuringActivation) {
 }
 
 TEST_F(RuntimeTest, CompletesStartupAfterSupervisionStopsApplicationsThatNeverActivate) {
-	::setenv("TEST_APP_NEVER_ACTIVATE", "1", 1);
+	test_os::set_environment("TEST_APP_NEVER_ACTIVATE", "1");
 	const auto  path = fs::temp_directory_path() / "quercus-activation-deadline.ndjson";
 	std::string reference;
 	for (unsigned repeat = 0; repeat < 3; ++repeat) {
@@ -174,7 +175,7 @@ TEST_F(RuntimeTest, CompletesStartupAfterSupervisionStopsApplicationsThatNeverAc
 }
 
 TEST_F(RuntimeTest, RejectsAShortMalformedOutputBatch) {
-	::setenv("TEST_APP_INGRESS_PROBE_1", "1", 1);
+	test_os::set_environment("TEST_APP_INGRESS_PROBE_1", "1");
 
 	test_app::Runtime runtime(7);
 	// Byte batches require complete RPC headers to recover frame boundaries.
@@ -183,7 +184,7 @@ TEST_F(RuntimeTest, RejectsAShortMalformedOutputBatch) {
 }
 
 TEST_F(RuntimeTest, DropsAndAccountsForAnUnexpectedResponseFrame) {
-	::setenv("TEST_APP_INGRESS_PROBE_1", "2", 1);
+	test_os::set_environment("TEST_APP_INGRESS_PROBE_1", "2");
 
 	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
@@ -193,7 +194,7 @@ TEST_F(RuntimeTest, DropsAndAccountsForAnUnexpectedResponseFrame) {
 }
 
 TEST_F(RuntimeTest, HeartbeatDeathStopsOnlyTheFailedModule) {
-	::setenv("TEST_APP_HEARTBEAT_UNTIL_1", "100", 1);
+	test_os::set_environment("TEST_APP_HEARTBEAT_UNTIL_1", "100");
 
 	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
@@ -221,7 +222,7 @@ TEST_F(RuntimeTest, HeartbeatDeathStopsOnlyTheFailedModule) {
 TEST_F(RuntimeTest, RateStopDeliversTryAgainBeforeRetiringOnlyTheOffendingModule) {
 	const fs::path statuses = fs::temp_directory_path() / ("quercus_rate_stop_" + std::to_string(::getpid()));
 	fs::remove(statuses);
-	::setenv("TEST_APP_STATUS_RECORD", statuses.c_str(), 1);
+	test_os::set_environment("TEST_APP_STATUS_RECORD", statuses.string().c_str());
 
 	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
@@ -460,7 +461,7 @@ TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossAdvanceSizes) {
 	settings::set_setting("module_tick_skip_mean_ppm", 300'000.0);
 	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
 	settings::set_setting("module_clock_drift_sd_ppm", 137.0);
-	::setenv("TEST_APP_HEARTBEAT_EVERY", "4294967295", 1);
+	test_os::set_environment("TEST_APP_HEARTBEAT_EVERY", "4294967295");
 
 	const auto execute = [](uint32_t batch) {
 		const fs::path path = fs::temp_directory_path() / ("quercus_skip_trace_" + std::to_string(::getpid()) + "_" +
@@ -494,7 +495,7 @@ TEST_F(RuntimeTest, TickSkippingProducesTheSameTraceAcrossAdvanceSizes) {
 TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 	settings::set_setting("module_tick_skip_mean_ppm", 900'000.0);
 	settings::set_setting("module_tick_skip_sd_ppm", 0.0);
-	::setenv("TEST_APP_QUERY_TICK", "2", 1);
+	test_os::set_environment("TEST_APP_QUERY_TICK", "2");
 
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("quercus_local_rpc_delay_" + std::to_string(::getpid()) + ".ndjson");
@@ -534,8 +535,8 @@ TEST_F(RuntimeTest, RpcServiceDelaysCountExecutedModuleTicks) {
 TEST_F(RuntimeTest, RetainsPendingResponsesAcrossAdvanceCalls) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_child_record_" + std::to_string(::getpid()));
 	fs::remove(record);
-	::setenv("TEST_APP_QUERY_TICK", "2", 1);
-	::setenv("TEST_APP_RECORD", record.c_str(), 1);
+	test_os::set_environment("TEST_APP_QUERY_TICK", "2");
+	test_os::set_environment("TEST_APP_RECORD", record.string().c_str());
 
 	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
@@ -597,8 +598,8 @@ TEST_F(RuntimeTest, GrantsNoTicksWhilePaused) {
 TEST_F(RuntimeTest, DeliversEventsToASubscribedApplication) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_child_record_" + std::to_string(::getpid()));
 	fs::remove(record);
-	::setenv("TEST_APP_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str(), 1);
-	::setenv("TEST_APP_RECORD", record.c_str(), 1);
+	test_os::set_environment("TEST_APP_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str());
+	test_os::set_environment("TEST_APP_RECORD", record.string().c_str());
 
 	events::Schedule schedule;
 
@@ -652,9 +653,9 @@ prop never_delivers_duplicate_rfid_events_on_one_tick =
 TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 	const fs::path record = fs::temp_directory_path() / ("quercus_hardware_event_ticks_" + std::to_string(::getpid()));
 	fs::remove(record);
-	::setenv("TEST_APP_SUBSCRIBE", std::to_string(EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT).c_str(), 1);
-	::setenv("TEST_APP_RECORD", record.c_str(), 1);
-	::setenv("TEST_APP_RECORD_TICKS", "1", 1);
+	test_os::set_environment("TEST_APP_SUBSCRIBE", std::to_string(EVENT_LASER_LEFT_DETECT | EVENT_RFID_DETECT).c_str());
+	test_os::set_environment("TEST_APP_RECORD", record.string().c_str());
+	test_os::set_environment("TEST_APP_RECORD_TICKS", "1");
 	settings::set_setting("laser_event_extra_delay_ms", 3);
 	settings::set_setting("rfid_event_extra_delay_mean_ms", 35.0);
 	settings::set_setting("rfid_event_extra_delay_sd_ms", 0.0);
@@ -700,7 +701,7 @@ TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 }
 
 TEST_F(RuntimeTest, FailsTheRunWhenAnApplicationExits) {
-	::setenv("TEST_APP_EXIT_AFTER", "5", 1);
+	test_os::set_environment("TEST_APP_EXIT_AFTER", "5");
 	const auto path = fs::temp_directory_path() / "quercus-failed-grant.ndjson";
 
 	test_app::Runtime runtime(7);
@@ -1140,7 +1141,7 @@ TEST_F(RuntimeTest, ObservesRpcTrafficAtExactLogicalBoundaries) {
 	const fs::path trace_path =
 		fs::temp_directory_path() / ("ltlf_rpc_trace_" + std::to_string(::getpid()) + ".ndjson");
 	fs::remove(trace_path);
-	::setenv("TEST_APP_QUERY_TICK", "2", 1);
+	test_os::set_environment("TEST_APP_QUERY_TICK", "2");
 
 	ltl::File properties = ltl::parse(R"(
 prop every_query_receives_a_successful_response =
@@ -1188,7 +1189,7 @@ prop every_delivered_response_is_correlated_and_successful =
 }
 
 TEST_F(RuntimeTest, MessageDeliveryProducesThePayloadCheckedReplyOnExactlyTheNextTick) {
-	::setenv("TEST_APP_REPLY_TO_MESSAGE", "1", 1);
+	test_os::set_environment("TEST_APP_REPLY_TO_MESSAGE", "1");
 	ltl::File properties = ltl::parse(R"(
 prop replies_on_the_next_tick =
     always (
@@ -1242,7 +1243,7 @@ TEST_F(RuntimeTest, ControlledApplicationMutantsFailTheirIntendedProperties) {
 	};
 
 	for (const MutantCase& mutant : mutants) {
-		::setenv("TEST_APP_MUTANT", mutant.mode, 1);
+		test_os::set_environment("TEST_APP_MUTANT", mutant.mode);
 		ltl::File properties = ltl::parse("prop rejects_mutant = " + std::string(mutant.formula) + ";", "mutant.spec");
 		test_app::Runtime runtime(7);
 		runtime.load_properties(std::move(properties), 8, "mutant.spec");
@@ -1259,7 +1260,7 @@ TEST_F(RuntimeTest, ControlledApplicationMutantsFailTheirIntendedProperties) {
 		else EXPECT_EQ(*results[0].decisive_tick, 8u) << mutant.mode;
 		runtime.stop();
 	}
-	::unsetenv("TEST_APP_MUTANT");
+	test_os::unset_environment("TEST_APP_MUTANT");
 }
 
 TEST_F(RuntimeTest, AdvanceSizesProduceIdenticalLtlResultsAndObservationRecords) {
@@ -1323,7 +1324,7 @@ prop arrival_persists_on_the_next_logical_tick =
 }
 
 TEST_F(RuntimeTest, LtlFailureInsideAnAdvanceStopsAtTheExactTickAndKeepsTheTraceIdentical) {
-	::setenv("TEST_APP_HEARTBEAT_UNTIL", "0", 1);
+	test_os::set_environment("TEST_APP_HEARTBEAT_UNTIL", "0");
 
 	const auto execute = [](uint32_t advance_ticks, const std::string& suffix) {
 		const fs::path path =

@@ -1,5 +1,6 @@
 #include "../../src/firmware/inprocess_backend.h"
 #include "../../src/rpc/frame.h"
+#include "../os.h"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -14,13 +15,13 @@ namespace {
 
 		Inputs() {
 			std::filesystem::remove(record);
-			setenv("TEST_APP_GRANT_RECORD", record.c_str(), 1);
+			test_os::set_environment("TEST_APP_GRANT_RECORD", record.string().c_str());
 		}
 
 		~Inputs() {
-			unsetenv("TEST_APP_GRANT_RECORD");
-			unsetenv("TEST_APP_IDLE_UNTIL");
-			unsetenv("TEST_APP_EXIT_AFTER");
+			test_os::unset_environment("TEST_APP_GRANT_RECORD");
+			test_os::unset_environment("TEST_APP_IDLE_UNTIL");
+			test_os::unset_environment("TEST_APP_EXIT_AFTER");
 			std::filesystem::remove(record);
 		}
 	};
@@ -36,7 +37,7 @@ namespace {
 
 TEST(FirmwareBackend, SkipsIdleWindowsAndCatchesUpBeforeInput) {
 	Inputs inputs;
-	setenv("TEST_APP_IDLE_UNTIL", "10000", 1);
+	test_os::set_environment("TEST_APP_IDLE_UNTIL", "10000");
 	firmware::InProcessBackend backend(std::span(&binding, 1), 41);
 	firmware::ExecutionGrant   grant;
 	prepare(grant);
@@ -78,7 +79,7 @@ TEST(FirmwareBackend, RejectsZeroLengthWithoutPublishingOldOutput) {
 
 TEST(FirmwareBackend, FailureNamesModuleOperationOutcomeAndDiagnostic) {
 	Inputs inputs;
-	setenv("TEST_APP_EXIT_AFTER", "1", 1);
+	test_os::set_environment("TEST_APP_EXIT_AFTER", "1");
 	firmware::InProcessBackend backend(std::span(&binding, 1), 41);
 	firmware::ExecutionGrant   grant;
 	prepare(grant);
