@@ -1,5 +1,6 @@
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -25,7 +26,7 @@ class SdkConsistencyTest(unittest.TestCase):
                         "commit", "--allow-empty", "--no-gpg-sign", "-qm", message], check=True)
 
     def check(self):
-        return subprocess.run(["python3", str(CHECK), str(self.root)], capture_output=True, text=True, timeout=30)
+        return subprocess.run([sys.executable, str(CHECK), str(self.root)], capture_output=True, text=True, timeout=30)
 
     def test_clean_matching_revisions_pass(self):
         self.assertEqual(self.check().returncode, 0)
