@@ -27,7 +27,7 @@ protected:
 		std::ofstream outfile(temp_application_path);
 		outfile << "dummy content";
 
-		write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+		write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 					   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -65,7 +65,7 @@ TEST_F(SettingsTest, GetNonExistentSettingThrows) {
 }
 
 TEST_F(SettingsTest, ParseValidSettings) {
-	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.5
 scale = 2.0
@@ -126,7 +126,7 @@ TEST_F(SettingsTest, FirmwareOverrideIsAppliedBeforeSettingsValidation) {
 }
 
 TEST_F(SettingsTest, ParseSettingsAcceptsFiniteHardwarePositionSettings) {
-	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -145,7 +145,7 @@ rfid_position_sd = 0.25
 }
 
 TEST_F(SettingsTest, ParseSettingsUsesCanonicalHardwarePositionDefaults) {
-	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -169,7 +169,7 @@ TEST_F(SettingsTest, ParseSettingsUsesHardwareEventDelayDefaults) {
 }
 
 TEST_F(SettingsTest, ParseSettingsAcceptsHardwareEventDelayOverrides) {
-	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -185,7 +185,7 @@ rfid_event_extra_delay_sd_ms = 1.25
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNegativeHardwareEventDelay) {
-	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -196,7 +196,7 @@ rfid_event_extra_delay_sd_ms = -1.0
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNegativeHardwarePositionStandardDeviation) {
-	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -212,7 +212,7 @@ rfid_position_sd = 0.1
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNonfiniteHardwarePositionSetting) {
-	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -228,7 +228,7 @@ rfid_position_sd = 0.1
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsHardwarePositionsThatOverflowWorldArithmetic) {
-	write_settings("firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -268,7 +268,7 @@ TEST_F(SettingsTest, ParseSettingsMissingFile) {
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidScale) {
-	std::string invalid_toml = "firmware = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	std::string invalid_toml = "firmware = \"" + temp_application_path.generic_string() + "\"\nseed = 1\n" +
 							   R"(simulation_speed = 1.0
 scale = 10.0
 )";

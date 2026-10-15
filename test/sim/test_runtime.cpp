@@ -736,7 +736,7 @@ TEST_F(RuntimeTest, StartupReportsMissingFirmwareKeyOrImagePath) {
 	for (const bool has_path : {false, true}) {
 		std::ofstream settings_file_output(settings_file);
 		settings_file_output << "simulation_speed=1.0\nscale=1.0\nseed=7\n";
-		if (has_path) settings_file_output << "firmware=\"" << missing_image.string() << "\"\n";
+		if (has_path) settings_file_output << "firmware=\"" << missing_image.generic_string() << "\"\n";
 		settings_file_output.close();
 		ASSERT_NO_THROW(settings::parse_settings(settings_file, layout_file));
 		sim::Runtime runtime(7);
