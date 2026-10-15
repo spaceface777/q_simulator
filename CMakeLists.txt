@@ -106,6 +106,8 @@ add_library(core STATIC
     src/ltl/observation.cpp
 )
 
+target_sources(core PRIVATE src/firmware/image_posix.cpp)
+
 target_link_libraries(core PUBLIC
     tomlplusplus::tomlplusplus
     ${CMAKE_DL_LIBS}

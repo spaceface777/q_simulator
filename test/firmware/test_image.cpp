@@ -63,16 +63,16 @@ TEST(FirmwareImage, MissingFileNamesPathAndReason) {
 	expect_failure(std::string(COUNTER_IMAGE) + ".missing", "copy_file");
 }
 
-TEST(FirmwareImage, NonImageReportsDlopenError) {
-	expect_failure(NON_IMAGE, "dlopen:");
+TEST(FirmwareImage, NonImageReportsLoaderError) {
+	expect_failure(NON_IMAGE, "load library:");
 }
 
 TEST(FirmwareImage, WrongVersionNamesActualAndExpectedVersions) {
 	expect_failure(WRONG_ABI_IMAGE, "ABI version 9; expected 10");
 }
 
-TEST(FirmwareImage, MissingEntryReportsDlsymError) {
-	expect_failure(MISSING_ENTRY_IMAGE, "dlsym:");
+TEST(FirmwareImage, MissingEntryReportsSymbolError) {
+	expect_failure(MISSING_ENTRY_IMAGE, "find qsim_image_api:");
 }
 
 TEST(FirmwareImage, NullApiReportsReason) {
