@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: simulator-ci-${{ github.workflow }}-${{ github.ref }}
+  group: simulator-ci-${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -78,7 +78,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-14 g++-14 make device-tree-compiler gperf pkg-config \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
-            libxss-dev libasound2-dev libpulse-dev libwayland-dev libxkbcommon-dev \
+            libxss-dev libxtst-dev libasound2-dev libpulse-dev libwayland-dev libxkbcommon-dev \
             libegl-dev libgl-dev libudev-dev
           echo "CC=gcc-14" >> "$GITHUB_ENV"
           echo "CXX=g++-14" >> "$GITHUB_ENV"
@@ -87,6 +87,10 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          # Xcode 15.4 reports a nonexistent compiler runtime archive to Zephyr.
+          if [[ "${{ matrix.os }}" == macos-14 ]]; then
+            sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer
+          fi
           brew install dtc gperf pkgconf
           echo "CC=clang" >> "$GITHUB_ENV"
           echo "CXX=clang++" >> "$GITHUB_ENV"
