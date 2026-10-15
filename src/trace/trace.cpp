@@ -103,7 +103,7 @@ namespace trace {
 			return;
 		}
 
-		file_.open(path, std::ios::out | std::ios::trunc);
+		file_.open(path, std::ios::out | std::ios::trunc | std::ios::binary);
 		if (!file_.is_open()) {
 			throw std::runtime_error("Failed to open the trace file at " + path.string());
 		}
