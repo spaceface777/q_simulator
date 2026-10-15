@@ -19,6 +19,11 @@ add_executable(simulation
     visualization/buttons.cpp
 )
 
+if(WIN32)
+    set_target_properties(simulation PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_sources(simulation PRIVATE console_windows.cpp)
+endif()
+
 target_compile_options(simulation PRIVATE ${COMPILATION_FLAGS})
 
 target_link_libraries(simulation PRIVATE 
