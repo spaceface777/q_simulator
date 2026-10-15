@@ -1,0 +1,188 @@
+name: Simulator CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simulator-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - ubuntu-26.04
+          - ubuntu-22.04-arm
+          - ubuntu-24.04-arm
+          - ubuntu-26.04-arm
+          - windows-2022
+          - windows-2025
+          - windows-11-arm
+          - windows-11-vs2026-arm
+          - macos-15-intel
+          - macos-26-intel
+          - macos-14
+          - macos-15
+          - macos-26
+          - xcode-27
+    defaults:
+      run:
+        shell: ${{ startsWith(matrix.os, 'windows-') && 'pwsh' || 'bash' }}
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: '3'
+      CMAKE_POLICY_VERSION_MINIMUM: '3.20'
+      ZEPHYR_TOOLCHAIN_VARIANT: host
+      QSIM_REQUIRE_FIRMWARE: '1'
+      PYTHONUNBUFFERED: '1'
+
+    steps:
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          # Windows Arm uses x64 Python so the build-tool wheels run under emulation.
+          architecture: ${{ runner.os == 'Windows' && 'x64' || runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+
+      - name: Install Python build tools
+        run: python -m pip install "cmake>=3.28,<4" ninja "clang-format>=22,<23" west
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # Jammy's default repositories do not provide a recent C++23 compiler.
+          if [[ "${{ matrix.os }}" == ubuntu-22.04* ]]; then
+            sudo apt-get update
+            sudo apt-get install -y software-properties-common
+            sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          fi
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14 make device-tree-compiler gperf pkg-config \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
+            libxss-dev libasound2-dev libpulse-dev libwayland-dev libxkbcommon-dev \
+            libegl-dev libgl-dev libudev-dev
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install dtc gperf pkgconf
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
+
+      # Firmware and simulator must both be i686. Windows Arm runs these under emulation.
+      # Use the same UCRT/POSIX/DWARF toolchain documented in the SDK.
+      - name: Install Windows MinGW toolchain
+        if: runner.os == 'Windows'
+        run: |
+          $release = '16.2.0posix-14.0.0-ucrt-r2'
+          $archive = 'winlibs-i686-posix-dwarf-gcc-16.2.0-mingw-w64ucrt-14.0.0-r2.zip'
+          $url = "https://github.com/brechtsanders/winlibs_mingw/releases/download/$release/$archive"
+          $download = Join-Path $env:RUNNER_TEMP $archive
+          Invoke-WebRequest $url -OutFile $download
+          $expected = '8d498c1a07f391d05f71e067cd2fbfc3a7096f23bba999b9fbbb929bddce4bd5'
+          if ((Get-FileHash $download -Algorithm SHA256).Hash -ne $expected) {
+            throw 'MinGW download checksum mismatch'
+          }
+          $destination = Join-Path $env:RUNNER_TEMP 'winlibs'
+          Expand-Archive $download -DestinationPath $destination
+          $bin = Join-Path $destination 'mingw32/bin'
+          $bin >> $env:GITHUB_PATH
+          # Prefer the Python-installed CMake/Ninja over the copies in WinLibs.
+          python -c "import sysconfig; print(sysconfig.get_path('scripts'))" >> $env:GITHUB_PATH
+          "CC=$bin/gcc.exe" >> $env:GITHUB_ENV
+          "CXX=$bin/g++.exe" >> $env:GITHUB_ENV
+
+      - name: Restore pinned Zephyr workspace
+        uses: actions/cache@v4
+        with:
+          path: .ci-zephyr
+          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('external/q_sdk/ZEPHYR_REVISION') }}-v1
+
+      - name: Prepare Zephyr at the SDK revision
+        run: python tools/ci.py zephyr
+
+      - name: Check SDK and Python build tests
+        run: python tools/ci.py python-tests
+
+      - name: Build all applets and simulator probes
+        timeout-minutes: 30
+        run: python tools/ci.py firmware
+
+      - name: Configure GUI, scenario runner, and full test suite
+        run: python tools/ci.py configure
+
+      - name: Check formatting
+        run: cmake --build build --target format-check
+
+      - name: Build simulator and tests
+        run: cmake --build build
+
+      - name: Run simulator smoke checks and real scenario
+        timeout-minutes: 5
+        run: python tools/ci.py smoke
+
+      - name: Run full suite including slow tests
+        timeout-minutes: 22
+        env:
+          RUN_SLOW_TESTS: '1'
+        run: python tools/ci.py test
+
+      - name: Run ten shuffled repetitions
+        timeout-minutes: 12
+        run: python tools/ci.py repeat
+
+      - name: Upload reports and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.os }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            build/ci-results/
+            build/Testing/
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build_sim/**/CMakeFiles/CMakeConfigureLog.yaml
+            external/q_applets/build_sim/**/CMakeFiles/CMakeConfigureLog.yaml
+
+      - name: Upload simulator binaries and firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-${{ matrix.os }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            build/simulation*
+            build/tests*
+            build/*.dll
+            build/*.dylib
+            build/*.so*
+            build/_deps/sdl3-build/*.dylib
+            build/_deps/sdl3-build/*.so*
+            build/*_example.toml
+            external/q_applets/out/*.dll
+            out/*.dll
+            scenarios/
+            layouts/

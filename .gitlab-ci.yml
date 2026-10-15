@@ -18,7 +18,7 @@ build:
     - |
       zephyr_revision=$(cat external/q_sdk/ZEPHYR_REVISION)
       if ! git -C "$ZEPHYR_BASE" cat-file -e "$zephyr_revision^{commit}"; then
-        git -C "$ZEPHYR_BASE" fetch https://github.com/spaceface777/zephyr.git native-sim-context-backends-pr118530
+        git -C "$ZEPHYR_BASE" fetch https://github.com/spaceface777/zephyr.git "$zephyr_revision"
       fi
       git -C "$ZEPHYR_BASE" checkout --detach "$zephyr_revision"
       test "$(git -C "$ZEPHYR_BASE" rev-parse HEAD)" = "$zephyr_revision"

@@ -27,3 +27,4 @@ trace.ndjson
 # qbuild products for this repository
 build_sim/
 build_pico/
+.ci-zephyr/

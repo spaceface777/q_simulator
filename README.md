@@ -141,6 +141,36 @@ These compare traces at 0.3×, 1×, 10×, and maximum speed, and check measured 
 CI runs the full suite, ten shuffled repetitions, and a separate slow run under wall-clock timeouts.
 `cmake --build build --target format-check` checks C++ formatting; the build prefers `clang-format-22`.
 
+### GitHub Actions
+
+The [Simulator CI workflow](.github/workflows/ci.yml) runs on pushes, pull requests, and manual requests.
+Its matrix includes these 16 runner labels:
+
+- `ubuntu-22.04`, `ubuntu-24.04`, `ubuntu-26.04`
+- `ubuntu-22.04-arm`, `ubuntu-24.04-arm`, `ubuntu-26.04-arm`
+- `windows-2022`, `windows-2025`
+- `windows-11-arm`, `windows-11-vs2026-arm`
+- `macos-15-intel`, `macos-26-intel`
+- `macos-14`, `macos-15`, `macos-26`, `xcode-27`
+
+Linux and macOS use native host binaries. All Windows runners use the SDK-compatible 32-bit MinGW toolchain.
+The Windows Arm runners run these binaries under emulation.
+
+Each job builds all applets and simulator probes with the SDK-recorded Zephyr revision.
+It checks SDK consistency, Python build tests, and C++ formatting.
+It builds the GUI executable, scenario runner, and tests.
+It runs `module_movement` through the scenario runner and the GUI executable with `--no-gui`.
+It runs the full suite with slow tests and ten shuffled repetitions.
+Missing firmware fails the job. Each test run has a wall-clock timeout.
+
+Jobs upload diagnostics, JUnit reports, scenario traces, simulator binaries, and firmware images.
+Artifacts remain available for 14 days. Windows binaries also require the MinGW runtime DLLs on `PATH`.
+The workflow caches the Zephyr workspace separately for each host OS and architecture.
+Ubuntu 22.04 jobs install GCC 14 from the Ubuntu Toolchain PPA.
+The workflow checks out the public GitLab submodules recursively. It requires no repository secrets.
+It fetches the pinned Zephyr commit from `https://github.com/spaceface777/zephyr`.
+The current pin contains the native simulator patchset rebased onto Zephyr 4.5.0-rc2.
+
 ## Accepted differences and limitations
 
 Simulator images use the host C library. Pico builds use the toolchain Picolibc.
