@@ -13,6 +13,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX 1
+#include <windows.h>
+#endif
+
 #include "../defs.h"
 #include "../module/module.h"
 #include "../module/types.h"
@@ -752,6 +758,19 @@ namespace visualization {
 			stop();
 			return;
 		}
+
+#ifdef _WIN32
+		// SDL's default class icon is low resolution; let Windows downscale the largest embedded image.
+		if (const auto icon = static_cast<HICON>(
+				LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1), IMAGE_ICON, 256, 256, LR_SHARED))) {
+			const auto hwnd = static_cast<HWND>(
+				SDL_GetPointerProperty(SDL_GetWindowProperties(window_), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
+			SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(icon));
+			SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(icon));
+		} else {
+			SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "Could not load the application icon: %lu", GetLastError());
+		}
+#endif
 
 		buttons_.push_back(std::make_unique<buttons::PauseButton>(buttons::PauseButton()));
 		buttons_.push_back(std::make_unique<buttons::SlowerButton>(buttons::SlowerButton()));

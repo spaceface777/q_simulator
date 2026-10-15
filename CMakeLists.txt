@@ -128,6 +128,15 @@ target_compile_options(core PRIVATE ${COMPILATION_FLAGS})
 # reach of CI and of anyone on a machine without X11.
 add_executable(simulation-scenario src/scenario/main.cpp)
 
+if(WIN32)
+    enable_language(RC)
+    set_source_files_properties(src/scenario/icon.rc PROPERTIES
+        INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}"
+        OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/assets/scenario.ico"
+    )
+    target_sources(simulation-scenario PRIVATE src/scenario/icon.rc)
+endif()
+
 target_link_libraries(simulation-scenario PRIVATE core)
 
 target_compile_options(simulation-scenario PRIVATE ${COMPILATION_FLAGS})

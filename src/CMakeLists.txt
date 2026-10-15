@@ -20,8 +20,12 @@ add_executable(simulation
 )
 
 if(WIN32)
+    set_source_files_properties(icon.rc PROPERTIES
+        INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}"
+        OBJECT_DEPENDS "${PROJECT_SOURCE_DIR}/assets/icon.ico"
+    )
     set_target_properties(simulation PROPERTIES WIN32_EXECUTABLE TRUE)
-    target_sources(simulation PRIVATE console_windows.cpp)
+    target_sources(simulation PRIVATE console_windows.cpp icon.rc)
 endif()
 
 target_compile_options(simulation PRIVATE ${COMPILATION_FLAGS})
