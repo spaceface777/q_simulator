@@ -6,6 +6,28 @@
 
 using namespace std::chrono_literals;
 
+namespace {
+	struct ClockSample {
+		std::chrono::steady_clock::time_point before;
+		std::chrono::steady_clock::time_point after;
+		std::chrono::milliseconds             virtual_time;
+	};
+
+	ClockSample sample(virtual_clock::VirtualClock& clock) {
+		const auto before = std::chrono::steady_clock::now();
+		clock.tick();
+		const auto after = std::chrono::steady_clock::now();
+		return {before, after, clock.get_virtual_time()};
+	}
+
+	void expect_elapsed(const ClockSample& start, const ClockSample& end, int speed) {
+		// Bracket the internal clock samples, including host scheduling and timer resolution.
+		const auto elapsed = end.virtual_time - start.virtual_time;
+		EXPECT_GE(elapsed, std::chrono::duration_cast<std::chrono::milliseconds>(end.before - start.after) * speed);
+		EXPECT_LE(elapsed, std::chrono::duration_cast<std::chrono::milliseconds>(end.after - start.before) * speed);
+	}
+} // namespace
+
 TEST(VirtualClockTest, DefaultInitialization) {
 	virtual_clock::VirtualClock clock;
 
@@ -34,38 +56,18 @@ TEST(VirtualClockTest, SetInvalidSimulationSpeedThrows) {
 }
 
 TEST(VirtualClockTest, RealTimeTickAdvancement) {
-	const auto                  before_start = std::chrono::steady_clock::now();
 	virtual_clock::VirtualClock clock;
-	const auto                  after_start = std::chrono::steady_clock::now();
-
+	const auto                  start = sample(clock);
 	std::this_thread::sleep_for(50ms);
-	const auto before_tick = std::chrono::steady_clock::now();
-	clock.tick();
-	const auto after_tick = std::chrono::steady_clock::now();
-
-	// Bracket the clock's internal samples; the host can oversleep on a busy runner.
-	EXPECT_GE(clock.get_virtual_time(),
-			  std::chrono::duration_cast<std::chrono::milliseconds>(before_tick - after_start));
-	EXPECT_LE(clock.get_virtual_time(),
-			  std::chrono::duration_cast<std::chrono::milliseconds>(after_tick - before_start));
+	expect_elapsed(start, sample(clock), 1);
 }
 
 TEST(VirtualClockTest, SpeedMultiplier2X) {
-	const auto                  before_start = std::chrono::steady_clock::now();
 	virtual_clock::VirtualClock clock;
 	clock.set_simulation_speed(2.0);
-	const auto after_start = std::chrono::steady_clock::now();
-
+	const auto start = sample(clock);
 	std::this_thread::sleep_for(50ms);
-	const auto before_tick = std::chrono::steady_clock::now();
-	clock.tick();
-	const auto after_tick = std::chrono::steady_clock::now();
-
-	// Check the multiplier against actual elapsed time, including scheduler delays.
-	EXPECT_GE(clock.get_virtual_time(),
-			  std::chrono::duration_cast<std::chrono::milliseconds>(before_tick - after_start) * 2);
-	EXPECT_LE(clock.get_virtual_time(),
-			  std::chrono::duration_cast<std::chrono::milliseconds>(after_tick - before_start) * 2);
+	expect_elapsed(start, sample(clock), 2);
 }
 
 TEST(VirtualClockTest, PausedClockZeroSpeed) {
@@ -81,24 +83,14 @@ TEST(VirtualClockTest, PausedClockZeroSpeed) {
 
 TEST(VirtualClockTest, DynamicSpeedChanges) {
 	virtual_clock::VirtualClock clock;
-
-	// Run at 1x for 30ms
+	const auto                  start = sample(clock);
 	std::this_thread::sleep_for(30ms);
-	clock.tick();
-	auto time1 = clock.get_virtual_time();
-	EXPECT_GE(time1, 20ms);
+	const auto first = sample(clock);
+	expect_elapsed(start, first, 1);
 
-	// Increase speed to 5x
 	clock.set_simulation_speed(5.0);
-
-	// Sleep another 30ms
 	std::this_thread::sleep_for(30ms);
-	clock.tick();
-
-	auto delta2 = clock.get_virtual_time() - time1;
-
-	// 30ms @ 5x should be roughly ~150ms virtual elapsed
-	EXPECT_GE(delta2, 120ms);
+	expect_elapsed(first, sample(clock), 5);
 }
 
 TEST(VirtualClockTest, InterfacePolymorphicUsage) {
