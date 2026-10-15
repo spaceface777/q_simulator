@@ -17,9 +17,11 @@ Both simulator SDK submodules use the same clean revision, enforced by CI.
 
 Settings, layouts, and scenarios select `.dll` paths relative to their containing files.
 Each active module needs one image. The runtime copies that file to a private temporary path,
-then opens it with `dlopen(RTLD_NOW | RTLD_LOCAL)`.
+then opens it with the host OS library loader.
+The POSIX implementation uses `dlopen(RTLD_NOW | RTLD_LOCAL)` and Windows uses `LoadLibraryW`.
+The loader shares temporary-directory allocation, ABI checks, and diagnostic prefixes across hosts.
 Separate files prevent the loader from reusing one loaded image for multiple modules.
-The loader reports failures with the path and `dlerror()` text, then checks ABI version 10.
+The loader reports failures with the source path and OS diagnostic text. It checks ABI version 10 after loading.
 The OS loader rejects incompatible architectures before the API can be read.
 
 Each loaded copy owns its globals, Zephyr kernel, scheduler, entropy state, coroutine stacks,

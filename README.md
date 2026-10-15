@@ -7,7 +7,7 @@ Changing firmware or the layout does not require rebuilding the simulator.
 
 ## Build
 
-The simulator requires CMake, Ninja, Python, a C++23 compiler, and the recursive submodules.
+The simulator requires CMake, Ninja, Python, clang-format, a C++23 compiler, and the recursive submodules.
 The GUI also requires SDL3 and SDL3_image. CMake downloads GoogleTest for the test build.
 
 ```sh
@@ -21,7 +21,6 @@ The simulator build uses SDK headers. It does not build firmware or require a Ze
 
 Firmware builds require an external Zephyr workspace. The SDK records its tested revision in
 [`ZEPHYR_REVISION`](external/q_sdk/ZEPHYR_REVISION) and warns if the checkout differs.
-The tested branch is `native-sim-context-backends-pr118530` at `eefcaecadec`.
 Use the Python environment that contains the Zephyr dependencies.
 
 ```sh
@@ -32,7 +31,36 @@ export ZEPHYR_TOOLCHAIN_VARIANT=host
 
 `qbuild sim` builds 64-bit native_sim images on macOS and Linux.
 It writes `out/<application>.dll` in the application repository.
-The extension is `.dll` on both systems. An image must match the simulator's host architecture.
+On Windows, it builds 32-bit images with an i686 MinGW-w64 compiler.
+The extension is `.dll` on every host. The simulator and its images must use the same architecture.
+
+### Windows
+
+Use i686 MinGW-w64 with POSIX threads, CMake, Ninja, Python, and clang-format.
+The tested compiler is GCC 16.2.0 with UCRT and DWARF exceptions.
+The 32-bit executable and its images run under WOW64 on AMD64 Windows.
+
+Add the MinGW `bin` directory and the Zephyr Python environment to `PATH`.
+Keep that MinGW directory on `PATH` when you run the simulator.
+It supplies the C++, thread, and compiler runtime DLLs.
+Use the SDK's recorded Zephyr revision.
+
+From the repository root, build firmware and the headless simulator in Command Prompt:
+
+```bat
+set ZEPHYR_BASE=C:\path\to\workspace\zephyr
+set ZEPHYR_TOOLCHAIN_VARIANT=host
+pushd external\q_applets
+python q_sdk\qbuild sim
+popd
+python external\q_sdk\qbuild sim
+cmake -S . -B build -G Ninja -DTESTING_CONSOLE_BUILD=ON -DQSIM_TEST_EMBEDDED_TRACE=ON
+cmake --build build -j
+set QSIM_REQUIRE_FIRMWARE=1
+ctest --test-dir build --output-on-failure
+```
+
+Set `TESTING_CONSOLE_BUILD=OFF` to include the GUI.
 
 ## Select firmware and run
 
@@ -106,7 +134,7 @@ QSIM_REQUIRE_FIRMWARE=1 ctest --test-dir build --output-on-failure
 Both SDK checkouts must use the same clean revision. CI checks this before building firmware.
 By default, firmware tests skip if images are absent. `QSIM_REQUIRE_FIRMWARE=1` makes absence an error.
 `QSIM_TEST_FIRMWARE_DIR` can select another applet output directory.
-The trace regression checks the complete NDJSON digest across repeated runs and both supported hosts.
+The trace regression checks the complete NDJSON digest across repeated runs and macOS, Linux, and Windows.
 
 Set `RUN_SLOW_TESTS=1` to enable wall-clock pacing tests.
 These compare traces at 0.3×, 1×, 10×, and maximum speed, and check measured speed at 1× and 10×.
@@ -129,6 +157,6 @@ and process-exit functions that return a fatal firmware outcome to the host.
   Float-heavy traces can differ across hosts while remaining repeatable on one host.
 - Firmware `printf` output shares stdout and follows module execution order.
 - Firmware is trusted code. A busy loop that never yields hangs the simulator; grants cannot be preempted.
-- Module reboot, Windows hosts, 32-bit images, and Rosetta images are unsupported.
+- Module reboot and Rosetta images are unsupported. Windows uses 32-bit images. macOS and Linux use 64-bit images.
 
 [Architecture](docs/ARCHITECTURE.md) and [protocol](docs/PROTOCOL.md) describe the execution boundary.
