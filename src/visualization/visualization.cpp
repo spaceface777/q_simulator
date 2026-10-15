@@ -176,6 +176,7 @@ namespace visualization {
 			led_rel_x = scale_within_module(90) + offset;
 			led_rel_y = scale_within_module(90) - offset;
 			break;
+		default: return;
 		}
 
 		int x = module_x + led_rel_x;
@@ -226,6 +227,7 @@ namespace visualization {
 			rfid_rel_x = scale_within_module(105 + 75 * progress);
 			rfid_rel_y = scale_within_module(90);
 			break;
+		default: return;
 		}
 
 		SDL_FRect rfid_rect = {module_x + rfid_rel_x - half_size, module_y + rfid_rel_y - half_size, 2 * half_size,
@@ -260,6 +262,7 @@ namespace visualization {
 			belt_x = module_x + scale_within_module(75);
 			belt_y = module_y;
 			break;
+		default: return;
 		};
 
 		SDL_FRect belt = {belt_x, belt_y, width, height};
@@ -339,6 +342,7 @@ namespace visualization {
 			width  = scale_within_module(75);
 			height = scale_within_module(30);
 			break;
+		default: return;
 		}
 
 		SDL_FRect belt = {belt_x, belt_y, width, height};
@@ -417,6 +421,7 @@ namespace visualization {
 			x2 = module_x + scale_within_module(105);
 			y1 = y2 = module_y + position;
 			break;
+		default: return;
 		}
 
 		// The emitter and detector are physical hardware, so their dots remain visible while powered
