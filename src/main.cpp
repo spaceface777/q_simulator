@@ -38,7 +38,7 @@ constexpr std::string_view get_target_os() {
 #elif defined(__FreeBSD__)
 	return "FreeBSD";
 #else
-	return "Unknown OS";
+	return APP_OS;
 #endif
 }
 
