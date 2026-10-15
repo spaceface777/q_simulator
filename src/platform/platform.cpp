@@ -33,10 +33,9 @@ namespace platform {
 		constexpr uint8_t DIAGNOSTIC_KIND_PANIC = 1;
 
 		std::vector<uint8_t> tag_diagnostic(uint8_t kind, const std::vector<uint8_t>& payload) {
-			std::vector<uint8_t> tagged;
-			tagged.reserve(1 + payload.size());
-			tagged.push_back(kind);
-			tagged.insert(tagged.end(), payload.begin(), payload.end());
+			std::vector<uint8_t> tagged(1 + payload.size());
+			tagged.front() = kind;
+			std::copy(payload.begin(), payload.end(), tagged.begin() + 1);
 			return tagged;
 		}
 

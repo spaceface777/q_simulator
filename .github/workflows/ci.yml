@@ -87,10 +87,6 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          # Xcode 15.4 reports a nonexistent compiler runtime archive to Zephyr.
-          if [[ "${{ matrix.os }}" == macos-14 ]]; then
-            sudo xcode-select --switch /Applications/Xcode_16.2.app/Contents/Developer
-          fi
           brew install dtc gperf pkgconf
           echo "CC=clang" >> "$GITHUB_ENV"
           echo "CXX=clang++" >> "$GITHUB_ENV"
@@ -169,14 +165,17 @@ jobs:
             build/Testing/
             build/CMakeFiles/CMakeConfigureLog.yaml
             build_sim/**/CMakeFiles/CMakeConfigureLog.yaml
+            build_sim/**/zephyr/NSI/nsi_entries.order
             external/q_applets/build_sim/**/CMakeFiles/CMakeConfigureLog.yaml
+            external/q_applets/build_sim/**/zephyr/NSI/nsi_entries.order
 
       - name: Upload simulator binaries and firmware
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: simulator-${{ matrix.os }}
           retention-days: 14
-          if-no-files-found: error
+          if-no-files-found: ignore
           path: |
             build/simulation*
             build/tests*
