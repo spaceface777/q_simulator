@@ -106,7 +106,11 @@ add_library(core STATIC
     src/ltl/observation.cpp
 )
 
-target_sources(core PRIVATE src/firmware/image_posix.cpp)
+if(WIN32)
+    target_sources(core PRIVATE src/firmware/image_windows.cpp)
+else()
+    target_sources(core PRIVATE src/firmware/image_posix.cpp)
+endif()
 
 target_link_libraries(core PUBLIC
     tomlplusplus::tomlplusplus
