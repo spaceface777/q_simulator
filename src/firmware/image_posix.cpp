@@ -28,8 +28,10 @@ namespace firmware::os {
 		dlclose(handle);
 	}
 
-	void remove_directory(const std::filesystem::path& path) noexcept {
-		std::error_code ignored;
-		std::filesystem::remove_all(path, ignored);
+	bool is_loaded(const std::filesystem::path& path) noexcept {
+		void* handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL | RTLD_NOLOAD);
+		if (!handle) return false;
+		dlclose(handle);
+		return true;
 	}
 } // namespace firmware::os

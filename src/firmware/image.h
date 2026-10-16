@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <string>
 
 namespace firmware {
 
@@ -19,7 +20,9 @@ namespace firmware {
 
 	private:
 		void                  cleanup() noexcept;
-		std::filesystem::path directory_;
+		std::string           digest_;
+		unsigned              slot_ = 0;
+		std::filesystem::path copy_;
 		void*                 handle_ = nullptr;
 		const void*           api_    = nullptr;
 	};

@@ -16,17 +16,25 @@ Both simulator SDK submodules use the same clean revision, enforced by CI.
 ## Image ownership
 
 Settings, layouts, and scenarios select `.dll` paths relative to their containing files.
-Each active module needs one image. The runtime copies that file to a private temporary path,
-then opens it with the host OS library loader.
+Each active module needs one image. The runtime loads a private copy of that file with the host OS library loader.
 The POSIX implementation uses `dlopen(RTLD_NOW | RTLD_LOCAL)` and Windows uses `LoadLibraryW`.
-The loader shares temporary-directory allocation, ABI checks, and diagnostic prefixes across hosts.
+The loader shares the copy cache, ABI checks, and diagnostic prefixes across hosts.
 Separate files prevent the loader from reusing one loaded image for multiple modules.
+
+The copies stay in `qsim-cache/images/<SHA-256 of the image>/<slot>.dll` in the temporary directory.
+Set `QSIM_IMAGE_CACHE` to use a different directory.
+The host validates a new library file the first time it loads it. On macOS this costs about 25 ms for each copy.
+Reused copies avoid this cost in later runs.
+In one process, each loaded copy has its own slot. Separate processes can load the same slot.
+The loader compares a cached copy with its source before each load, and replaces a copy that differs.
+A copy which the host loader did not unload keeps its slot until the process ends.
+The cache keeps the eight most recently used images.
 The loader reports failures with the source path and OS diagnostic text. It checks ABI version 10 after loading.
 The OS loader rejects incompatible architectures before the API can be read.
 
 Each loaded copy owns its globals, Zephyr kernel, scheduler, entropy state, coroutine stacks,
 and transport buffers. Retiring a module destroys and unloads its copy.
-Runtime shutdown releases the remaining images and temporary files.
+Runtime shutdown releases the remaining images.
 A later simulation loads fresh copies, including when tests run several simulations in one host process.
 
 ## Execution and time

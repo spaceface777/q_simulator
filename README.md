@@ -96,7 +96,7 @@ Use `--help` for seed, duration, layout, and property-evaluation options.
 For the GUI, copy `settings_example.toml` to `settings.toml` and `layout_example.toml` to `layout.toml`,
 then run `./build/simulation`. An explicit scenario can select its own layout and default firmware.
 
-The simulator copies each selected image to a private temporary file and loads that copy.
+The simulator loads a private copy of each selected image. It keeps these copies in a cache for later runs.
 Each module has private globals, kernel state, coroutine stacks, and deterministic entropy.
 A new simulation loads fresh copies. Firmware boots when its module receives its first grant.
 Platform supervision stops a module that has not activated by tick 10,000; startup then completes normally.
