@@ -51,8 +51,7 @@ namespace firmware {
 			handle_ = nullptr;
 		}
 		if (!directory_.empty()) {
-			std::error_code ignored;
-			std::filesystem::remove_all(directory_, ignored);
+			os::remove_directory(directory_);
 		}
 	}
 } // namespace firmware

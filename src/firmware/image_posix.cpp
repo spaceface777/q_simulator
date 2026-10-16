@@ -27,4 +27,9 @@ namespace firmware::os {
 	void close(void* handle) noexcept {
 		dlclose(handle);
 	}
+
+	void remove_directory(const std::filesystem::path& path) noexcept {
+		std::error_code ignored;
+		std::filesystem::remove_all(path, ignored);
+	}
 } // namespace firmware::os

@@ -10,4 +10,5 @@ namespace firmware::os {
 	void*    open(const std::filesystem::path& path);
 	Entry    entry(void* handle);
 	void     close(void* handle) noexcept;
+	void     remove_directory(const std::filesystem::path& path) noexcept;
 } // namespace firmware::os
