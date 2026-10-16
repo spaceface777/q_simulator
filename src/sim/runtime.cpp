@@ -891,13 +891,12 @@ namespace sim {
 				// Which modules' code actually advanced on this tick. A module whose local clock
 				// skipped the tick is still physically observable, but `next` must not discharge an
 				// obligation against a step it never took.
-				std::map<uint16_t, bool> module_stepped;
+				ltl::ModuleSteps module_stepped;
 				for (const ModuleRuntime& instance : modules_) {
 					module_stepped.emplace(instance.id.raw(), instance.tick_granted);
 				}
-				current_observation_ =
-					property_observer_->observe(tick, world_, std::move(requests), std::move(responses),
-												std::move(events), std::move(module_stepped));
+				current_observation_ = property_observer_->observe(
+					tick, world_, std::move(requests), std::move(responses), std::move(events), module_stepped);
 				const ltl::Observation& observation = *current_observation_;
 				// The evaluators only capture the observation, so every monitor shares them this tick.
 				const ltl::AtomEvaluator evaluate = [&observation](const ltl::Formula& atom) {
