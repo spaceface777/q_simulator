@@ -1,13 +1,17 @@
 #ifndef LTL_OBSERVATION_H
 #define LTL_OBSERVATION_H
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "../module/types.h"
@@ -176,6 +180,33 @@ namespace ltl {
 		}
 	} // namespace channel
 
+	// Whether each module's own clock granted a tick. Modules without an entry count as stepped.
+	class ModuleSteps {
+	public:
+		ModuleSteps() = default;
+
+		ModuleSteps(std::initializer_list<std::pair<uint16_t, bool>> entries) {
+			for (const auto& [module, stepped] : entries) emplace(module, stepped);
+		}
+
+		// Like std::map::emplace(): the first entry for a module is kept.
+		void emplace(uint16_t module, bool stepped);
+
+		// The entry of a module, if any.
+		[[nodiscard]] std::optional<bool> find(uint16_t module) const noexcept {
+			if (module >= channel::ENTITIES || states_[module] == NONE) return std::nullopt;
+			return states_[module] == STEPPED;
+		}
+
+		bool operator==(const ModuleSteps&) const = default;
+
+	private:
+		// Plain bytes, so that comparing two tables is one memcmp().
+		static constexpr uint8_t NONE = 0, SKIPPED = 1, STEPPED = 2;
+
+		std::array<uint8_t, channel::ENTITIES> states_{};
+	};
+
 	class Observer;
 
 	class Observation {
@@ -192,7 +223,10 @@ namespace ltl {
 			return modules_ ? *modules_ : empty;
 		}
 
-		[[nodiscard]] const std::map<uint16_t, TubSnapshot>& tubs() const noexcept { return tubs_; }
+		[[nodiscard]] const std::map<uint16_t, TubSnapshot>& tubs() const noexcept {
+			static const std::map<uint16_t, TubSnapshot> empty;
+			return tubs_ ? *tubs_ : empty;
+		}
 
 		[[nodiscard]] const std::set<uint16_t>& appeared() const noexcept { return appeared_; }
 
@@ -209,8 +243,7 @@ namespace ltl {
 		// any fixture behind it move on every tick.
 		[[nodiscard]] bool stepped(uint16_t module) const noexcept {
 			note(channel::stepped(module));
-			const auto found = module_stepped_.find(module);
-			return found == module_stepped_.end() || found->second;
+			return module_stepped_.find(module).value_or(true);
 		}
 
 		[[nodiscard]] const std::vector<RpcRequest>& rpc_requests() const noexcept { return rpc_requests_; }
@@ -267,14 +300,14 @@ namespace ltl {
 		uint64_t                                                  revision_ = 0;
 		std::chrono::milliseconds                                 timestamp_{0};
 		std::shared_ptr<const std::map<uint16_t, ModuleSnapshot>> modules_;
-		std::map<uint16_t, TubSnapshot>                           tubs_;
+		std::shared_ptr<const std::map<uint16_t, TubSnapshot>>    tubs_;
 		std::set<uint16_t>                                        appeared_;
 		std::set<uint16_t>                                        disappeared_;
 		std::set<TubPosition>                                     entered_;
 		std::set<TubPosition>                                     left_;
 		std::set<ChangedField>                                    changed_;
-		std::map<uint16_t, bool>                                  module_stepped_;
-		std::set<uint16_t>                                        known_tubs_;
+		ModuleSteps                                               module_stepped_;
+		std::shared_ptr<const std::set<uint16_t>>                 known_tubs_;
 		std::vector<RpcRequest>                                   rpc_requests_;
 		std::vector<RpcResponse>                                  rpc_responses_;
 		std::vector<RpcEvent>                                     rpc_events_;
@@ -290,7 +323,7 @@ namespace ltl {
 		[[nodiscard]] Observation observe(uint64_t logical_tick, const world::State& world,
 										  std::vector<RpcRequest>  requests  = {},
 										  std::vector<RpcResponse> responses = {}, std::vector<RpcEvent> events = {},
-										  std::map<uint16_t, bool> module_stepped = {});
+										  const ModuleSteps& module_stepped = {});
 
 		[[nodiscard]] const RpcRequest*  rpc_request(uint64_t id) const;
 		[[nodiscard]] const RpcResponse* rpc_response_to(uint64_t request_id, uint64_t observation_tick) const;
@@ -332,16 +365,17 @@ namespace ltl {
 		uint64_t                      previous_tick_          = 0;
 		bool                          previous_pulses_        = false;
 		bool                          time_sensitive_records_ = false;
-		std::map<uint16_t, bool>      previous_stepped_;
+		ModuleSteps                   previous_stepped_;
 		std::vector<module::ModuleId> module_ids_;
 		std::shared_ptr<const std::map<uint16_t, ModuleSnapshot>> previous_modules_;
-		std::map<uint16_t, TubSnapshot>                           previous_tubs_;
-		std::set<uint16_t>                                        seen_tubs_;
-		std::unordered_map<uint64_t, RpcRequest>                  rpc_request_registry_;
-		std::unordered_map<uint64_t, RpcResponse>                 rpc_response_registry_;
-		std::unordered_map<uint64_t, RpcEvent>                    rpc_event_registry_;
-		std::unordered_map<uint16_t, TubExit>                     tub_exit_registry_;
-		std::unordered_map<uint16_t, TubSnapshot>                 initial_tub_registry_;
+		// Unchanged snapshots are shared between consecutive observations.
+		std::shared_ptr<const std::map<uint16_t, TubSnapshot>> previous_tubs_;
+		std::shared_ptr<const std::set<uint16_t>> seen_tubs_ = std::make_shared<const std::set<uint16_t>>();
+		std::unordered_map<uint64_t, RpcRequest>  rpc_request_registry_;
+		std::unordered_map<uint64_t, RpcResponse> rpc_response_registry_;
+		std::unordered_map<uint64_t, RpcEvent>    rpc_event_registry_;
+		std::unordered_map<uint16_t, TubExit>     tub_exit_registry_;
+		std::unordered_map<uint16_t, TubSnapshot> initial_tub_registry_;
 	};
 
 } // namespace ltl

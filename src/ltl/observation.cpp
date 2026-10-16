@@ -121,14 +121,47 @@ namespace ltl {
 			return result ? result : previous;
 		}
 
-		std::map<uint16_t, TubSnapshot> snapshot_tubs(const world::State& world) {
-			std::map<uint16_t, TubSnapshot> result;
+		using TubSnapshots = std::map<uint16_t, TubSnapshot>;
+
+		// Whether a world tub has exactly this snapshot, given the previous snapshot of the same tub.
+		bool same_tub(const world::State& world, const world::Tub& tub, const TubSnapshot& snapshot) {
+			if (snapshot.module != tub.module.raw() || snapshot.previous_module != 0 || snapshot.belt != tub.belt ||
+				snapshot.position_um != tub.position_um || snapshot.position != world.position_of(tub) ||
+				!std::equal(snapshot.uid.begin(), snapshot.uid.end(), tub.uid.begin(), tub.uid.end()))
+				return false;
+			auto data = snapshot.data.begin();
+			for (const RfidPage& page : tub.payload) {
+				if (static_cast<std::size_t>(snapshot.data.end() - data) < page.size() ||
+					!std::equal(page.begin(), page.end(), data))
+					return false;
+				data += static_cast<std::ptrdiff_t>(page.size());
+			}
+			return data == snapshot.data.end();
+		}
+
+		// Snapshots every tub. Returns the previous snapshots when no tub changed. A tub whose module
+		// changed since the previous snapshots records that module as its previous module.
+		std::shared_ptr<const TubSnapshots> snapshot_tubs(const world::State&                        world,
+														  const std::shared_ptr<const TubSnapshots>& previous) {
+			if (previous && previous->size() == world.tubs().size() &&
+				std::equal(world.tubs().begin(), world.tubs().end(), previous->begin(),
+						   [&](const auto& tub, const auto& old) {
+							   return tub.first == old.first && same_tub(world, tub.second, old.second);
+						   }))
+				return previous;
+
+			auto result = std::make_shared<TubSnapshots>();
 			for (const auto& [id, tub] : world.tubs()) {
 				TubSnapshot value{id, tub.module.raw(), tub.belt, tub.position_um, world.position_of(tub), {}, {}};
 				value.uid.assign(tub.uid.begin(), tub.uid.end());
 				value.data.reserve(RFID_PAYLOAD_PAGE_COUNT * RFID_PAGE_SIZE_BYTES);
 				for (const RfidPage& page : tub.payload) value.data.insert(value.data.end(), page.begin(), page.end());
-				result.emplace(id, std::move(value));
+				if (previous) {
+					const auto before = previous->find(id);
+					if (before != previous->end() && before->second.module != value.module)
+						value.previous_module = before->second.module;
+				}
+				result->emplace(id, std::move(value));
 			}
 			return result;
 		}
@@ -146,7 +179,7 @@ namespace ltl {
 			case Value::Symbol::LEFT_LASER_BLOCKED:   return ModuleField::LEFT_LASER_BLOCKED;
 			case Value::Symbol::RIGHT_LASER_BLOCKED:  return ModuleField::RIGHT_LASER_BLOCKED;
 			case Value::Symbol::RFID_ACTIVE:          return ModuleField::RFID_ACTIVE;
-			default:                                  throw std::logic_error("typed changed atom contains an unknown field");
+			default: throw std::logic_error("typed changed atom contains an unknown field");
 			}
 		}
 
@@ -588,11 +621,11 @@ namespace ltl {
 				if (a.integral && b.integral) return a.integer == b.integer;
 				return std::fabs(as_double(a) - as_double(b)) <= NUMERIC_TOLERANCE;
 			}
-			case ValueType::COLOR:          return std::get<uint32_t>(left) == std::get<uint32_t>(right);
-			case ValueType::MODULE:         return std::get<ModuleRef>(left) == std::get<ModuleRef>(right);
-			case ValueType::TUB:            return std::get<TubRef>(left) == std::get<TubRef>(right);
-			case ValueType::POSITION:       return std::get<PositionRef>(left) == std::get<PositionRef>(right);
-			case ValueType::BYTES:          return std::ranges::equal(std::get<BytesRef>(left), std::get<BytesRef>(right));
+			case ValueType::COLOR:       return std::get<uint32_t>(left) == std::get<uint32_t>(right);
+			case ValueType::MODULE:      return std::get<ModuleRef>(left) == std::get<ModuleRef>(right);
+			case ValueType::TUB:         return std::get<TubRef>(left) == std::get<TubRef>(right);
+			case ValueType::POSITION:    return std::get<PositionRef>(left) == std::get<PositionRef>(right);
+			case ValueType::BYTES:       return std::ranges::equal(std::get<BytesRef>(left), std::get<BytesRef>(right));
 			case ValueType::RPC_COMMAND:
 			case ValueType::RPC_STATUS:
 			case ValueType::RPC_EVENT_KIND: return std::get<EnumRef>(left) == std::get<EnumRef>(right);
@@ -716,31 +749,43 @@ namespace ltl {
 
 	} // namespace
 
+	void ModuleSteps::emplace(uint16_t module, bool stepped) {
+		if (module >= channel::ENTITIES)
+			throw std::logic_error("module " + std::to_string(module) + " has no step state");
+		if (states_[module] == NONE) states_[module] = stepped ? STEPPED : SKIPPED;
+	}
+
 	Observer::Observer(const std::vector<module::ModuleId>& modules, const world::State& baseline)
 		: module_ids_(modules), previous_modules_(snapshot_modules(modules, baseline)) {}
 
 	Observation Observer::observe(uint64_t logical_tick, const world::State& world, std::vector<RpcRequest> requests,
 								  std::vector<RpcResponse> responses, std::vector<RpcEvent> events,
-								  std::map<uint16_t, bool> module_stepped) {
+								  const ModuleSteps& module_stepped) {
 		Observation observation;
 		observation.tick_           = logical_tick;
 		observation.timestamp_      = std::chrono::milliseconds(logical_tick);
-		observation.module_stepped_ = std::move(module_stepped);
+		observation.module_stepped_ = module_stepped;
 		observation.modules_        = snapshot_modules(module_ids_, world, previous_modules_);
-		observation.tubs_           = snapshot_tubs(world);
-		for (auto& [id, tub] : observation.tubs_) {
-			const auto before = previous_tubs_.find(id);
-			if (before != previous_tubs_.end() && before->second.module != tub.module)
-				tub.previous_module = before->second.module;
-		}
-		for (const auto& [id, tub] : observation.tubs_) {
-			(void)tub;
-			if (!previous_tubs_.contains(id) && seen_tubs_.contains(id)) {
-				throw std::logic_error("tub " + std::to_string(id) + " was reintroduced after removal");
+		observation.tubs_           = snapshot_tubs(world, previous_tubs_);
+		static const TubSnapshots no_tubs;
+		const TubSnapshots&       tubs     = *observation.tubs_;
+		const TubSnapshots&       previous = previous_tubs_ ? *previous_tubs_ : no_tubs;
+		// Shared snapshots have the same tubs, so they need no tub bookkeeping.
+		const bool tubs_changed = observation.tubs_ != previous_tubs_;
+		if (tubs_changed) {
+			std::shared_ptr<std::set<uint16_t>> seen;
+			for (const auto& [id, tub] : tubs) {
+				(void)tub;
+				if (previous.contains(id)) continue;
+				if (seen_tubs_->contains(id)) {
+					throw std::logic_error("tub " + std::to_string(id) + " was reintroduced after removal");
+				}
+				if (!seen) seen = std::make_shared<std::set<uint16_t>>(*seen_tubs_);
+				seen->insert(id);
 			}
-			seen_tubs_.insert(id);
+			if (seen) seen_tubs_ = std::move(seen);
+			for (const auto& [id, tub] : tubs) initial_tub_registry_.try_emplace(id, tub);
 		}
-		for (const auto& [id, tub] : observation.tubs_) initial_tub_registry_.try_emplace(id, tub);
 		observation.known_tubs_    = seen_tubs_;
 		observation.rpc_requests_  = std::move(requests);
 		observation.rpc_responses_ = std::move(responses);
@@ -773,10 +818,11 @@ namespace ltl {
 				throw std::logic_error("duplicate RPC event identity " + std::to_string(event.id));
 			}
 		}
-		derive_tub_edges(observation.tubs_, previous_tubs_, observation.appeared_, observation.disappeared_,
-						 observation.entered_, observation.left_);
+		if (tubs_changed)
+			derive_tub_edges(tubs, previous, observation.appeared_, observation.disappeared_, observation.entered_,
+							 observation.left_);
 		for (const uint16_t id : observation.disappeared_) {
-			const TubSnapshot& before = previous_tubs_.at(id);
+			const TubSnapshot& before = previous.at(id);
 			TubExit            exit;
 			exit.tub           = id;
 			exit.source_module = before.module;
@@ -794,10 +840,13 @@ namespace ltl {
 		derive_channel_changes(observation);
 		// Every exposed tub field participates in the revision, including continuous position
 		// and the clearing of the one-observation physical-transfer source.
-		bool tub_change = observation.tubs_.size() != previous_tubs_.size();
-		for (const auto& [id, tub] : observation.tubs_) {
-			const auto before = previous_tubs_.find(id);
-			if (before == previous_tubs_.end() || tub != before->second) tub_change = true;
+		bool tub_change = false;
+		if (tubs_changed) {
+			tub_change = tubs.size() != previous.size();
+			for (const auto& [id, tub] : tubs) {
+				const auto before = previous.find(id);
+				if (before == previous.end() || tub != before->second) tub_change = true;
+			}
 		}
 		const bool pulses = !observation.changed_.empty() || !observation.appeared_.empty() ||
 							!observation.disappeared_.empty() || !observation.entered_.empty() ||
@@ -847,9 +896,14 @@ namespace ltl {
 		for (const ChangedField& edge : previous_changed_) mark(channel::module_edge(edge.module, edge.field), tick);
 		previous_changed_ = observation.changed_;
 
-		for (const auto& [id, tub] : observation.tubs_) {
-			const auto before = previous_tubs_.find(id);
-			if (before == previous_tubs_.end()) {
+		static const std::map<uint16_t, TubSnapshot> no_tubs;
+		const auto&                                  tubs     = observation.tubs();
+		const auto&                                  previous = previous_tubs_ ? *previous_tubs_ : no_tubs;
+		// Shared snapshots are equal, so none of their tub fields changed.
+		const bool tubs_changed = observation.tubs_ != previous_tubs_;
+		for (const auto& [id, tub] : tubs_changed ? tubs : no_tubs) {
+			const auto before = previous.find(id);
+			if (before == previous.end()) {
 				mark_tub(id, tick);
 				continue;
 			}
@@ -862,9 +916,9 @@ namespace ltl {
 			if (tub.uid != old.uid) mark(channel::tub(id, TubField::UID), tick);
 			if (tub.data != old.data) mark(channel::tub(id, TubField::DATA), tick);
 		}
-		for (const auto& [id, tub] : previous_tubs_) {
+		for (const auto& [id, tub] : tubs_changed ? previous : no_tubs) {
 			(void)tub;
-			if (!observation.tubs_.contains(id)) mark_tub(id, tick);
+			if (!tubs.contains(id)) mark_tub(id, tick);
 		}
 		// Appearance, disappearance, exits, and the first sighting change the whole tub record, and
 		// their pulses clear on the next observation.
@@ -880,8 +934,8 @@ namespace ltl {
 		for (const uint16_t id : edge_tubs) mark(channel::tub(id, TubField::EDGES), tick);
 		for (const uint16_t id : previous_edge_tubs_) mark(channel::tub(id, TubField::EDGES), tick);
 		previous_edge_tubs_ = std::move(edge_tubs);
-		if (observation.known_tubs_.size() != seen_count_) {
-			seen_count_ = observation.known_tubs_.size();
+		if (observation.known_tubs_->size() != seen_count_) {
+			seen_count_ = observation.known_tubs_->size();
 			mark(channel::TUB_DOMAIN, tick);
 		}
 
@@ -901,13 +955,16 @@ namespace ltl {
 		for (const uint32_t channel : previous_record_channels_) mark(channel, tick);
 		previous_record_channels_ = std::move(record_channels);
 
-		for (const auto& [id, stepped] : observation.module_stepped_) {
-			const auto before = previous_stepped_.find(id);
-			if (before == previous_stepped_.end() || before->second != stepped) mark(channel::stepped(id), tick);
-		}
-		for (const auto& [id, stepped] : previous_stepped_) {
-			(void)stepped;
-			if (!observation.module_stepped_.contains(id)) mark(channel::stepped(id), tick);
+		if (observation.module_stepped_ != previous_stepped_) {
+			// Changed entries first, then removed ones, each in module order.
+			for (uint16_t id = 0; id < channel::ENTITIES; id++) {
+				const auto stepped = observation.module_stepped_.find(id);
+				if (stepped && previous_stepped_.find(id) != stepped) mark(channel::stepped(id), tick);
+			}
+			for (uint16_t id = 0; id < channel::ENTITIES; id++) {
+				if (!observation.module_stepped_.find(id) && previous_stepped_.find(id))
+					mark(channel::stepped(id), tick);
+			}
 		}
 	}
 
@@ -1027,7 +1084,8 @@ namespace ltl {
 		}
 		if (type == ValueType::TUB) {
 			note(channel::TUB_DOMAIN);
-			for (const uint16_t id : known_tubs_) visit(id);
+			if (known_tubs_)
+				for (const uint16_t id : *known_tubs_) visit(id);
 			return;
 		}
 		throw std::logic_error("unsupported persistent LTL domain");
