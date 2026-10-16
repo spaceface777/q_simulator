@@ -53,6 +53,12 @@ namespace world {
 			return entries;
 		}
 
+		// The draws of the active seed by module ID. The world asks for them several times in every tick.
+		std::array<const Calibration*, 256>& active_draws() {
+			static std::array<const Calibration*, 256> draws{};
+			return draws;
+		}
+
 		std::optional<uint64_t>& active_seed() {
 			static std::optional<uint64_t> seed;
 			return seed;
@@ -65,6 +71,7 @@ namespace world {
 
 		void forget_draws() {
 			cache().clear();
+			active_draws().fill(nullptr);
 		}
 
 		double clamp(double value, double low, double high) {
@@ -348,7 +355,9 @@ namespace world {
 		if (active_override()) {
 			return *active_override();
 		}
-		return calibration_for(id, active_seed().value_or(0));
+		const Calibration*& draw = active_draws()[id.raw()];
+		if (!draw) draw = &calibration_for(id, active_seed().value_or(0));
+		return *draw;
 	}
 
 	void set_calibration_seed(uint64_t master_seed) {
