@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
@@ -66,8 +67,16 @@ def zephyr():
     checkout.mkdir(parents=True, exist_ok=True)
     if not (checkout / ".git").exists():
         run("git", "init", checkout)
-    run("git", "-C", checkout, "fetch", "--depth=1",
-        "https://github.com/spaceface777/zephyr.git", revision)
+    for attempt in range(3):
+        try:
+            run("git", "-C", checkout, "fetch", "--depth=1",
+                "https://github.com/spaceface777/zephyr.git", revision, timeout=180)
+            break
+        except (subprocess.CalledProcessError, RuntimeError):
+            if attempt == 2:
+                raise
+            print("Retrying Zephyr fetch after a network failure", flush=True)
+            time.sleep(5 * (attempt + 1))
     run("git", "-C", checkout, "checkout", "--detach", revision)
     actual = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip()
     if actual != revision:
