@@ -1,5 +1,6 @@
 #include "world.h"
 
+#include <bitset>
 #include <cmath>
 #include <stdexcept>
 
@@ -608,29 +609,32 @@ namespace world {
 	}
 
 	void State::update_sensors() {
+		std::bitset<256> big_tubs, small_tubs;
+		for (const auto& [id, tub] : tubs_) (tub.belt == Belt::BIG ? big_tubs : small_tubs)[tub.module.raw()] = true;
 		for (auto& entry : modules_) {
 			module::Module* module = &entry.second;
-
-			const Calibration& calibration = calibration_for(module->id());
-			const int64_t      tub_radius  = tub_radius_um(calibration);
 
 			bool left_blocked  = false;
 			bool right_blocked = false;
 
-			for (const auto& entry : tubs_) {
-				const Tub& tub = entry.second;
-				if (!(tub.module == module->id())) {
-					continue;
-				}
-
-				if (tub.belt == Belt::BIG) {
-					// A beam is a line at its calibrated coordinate; the tub blocks it when any
-					// part of its physical extent intersects that line.
-					if (std::llabs(tub.position_um - calibration.hardware.left_laser_position_um) <= tub_radius) {
-						left_blocked = true;
+			if (big_tubs[module->id().raw()]) {
+				const Calibration& calibration = calibration_for(module->id());
+				const int64_t      tub_radius  = tub_radius_um(calibration);
+				for (const auto& entry : tubs_) {
+					const Tub& tub = entry.second;
+					if (!(tub.module == module->id())) {
+						continue;
 					}
-					if (std::llabs(tub.position_um - calibration.hardware.right_laser_position_um) <= tub_radius) {
-						right_blocked = true;
+
+					if (tub.belt == Belt::BIG) {
+						// A beam is a line at its calibrated coordinate; the tub blocks it when any
+						// part of its physical extent intersects that line.
+						if (std::llabs(tub.position_um - calibration.hardware.left_laser_position_um) <= tub_radius) {
+							left_blocked = true;
+						}
+						if (std::llabs(tub.position_um - calibration.hardware.right_laser_position_um) <= tub_radius) {
+							right_blocked = true;
+						}
 					}
 				}
 			}
@@ -638,7 +642,7 @@ namespace world {
 			module->set_left_laser_blocked(left_blocked);
 			module->set_right_laser_blocked(right_blocked);
 
-			const Tub* at_reader = tub_at_reader(module->id());
+			const Tub* at_reader = small_tubs[module->id().raw()] ? tub_at_reader(module->id()) : nullptr;
 			if (at_reader != nullptr) {
 				module->set_rfid_tag(at_reader->uid, at_reader->payload);
 			} else {
