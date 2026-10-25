@@ -364,6 +364,7 @@ namespace platform {
 
 		// Repeated enforcement while a resume is pending extends the physical delayed work.
 		runtime.paused_until_global_tick = tick + PAUSE_DURATION_TICKS;
+		next_resume_tick_ = std::min(next_resume_tick_.value_or(UINT64_MAX), runtime.paused_until_global_tick);
 		if (runtime.pause_resume_pending) return;
 
 		if (module::Module* physical = world_->module(id)) {
@@ -378,6 +379,8 @@ namespace platform {
 	}
 
 	void Manager::prepare_tick(uint64_t tick) {
+		if (!next_resume_tick_ || tick < *next_resume_tick_) return;
+		next_resume_tick_.reset();
 		for (const module::ModuleId id : modules_) {
 			Runtime& runtime = *find(id);
 			if (runtime.lifecycle == Lifecycle::PAUSED && runtime.pause_resume_pending &&
@@ -391,6 +394,8 @@ namespace platform {
 				runtime.lifecycle            = runtime.heartbeat_seen ? Lifecycle::RUNNING : Lifecycle::ACTIVATING;
 				diagnostics_.push_back(Diagnostic{tick, id, Bucket::GLOBAL, "resume", 0, 0});
 			}
+			if (runtime.pause_resume_pending)
+				next_resume_tick_ = std::min(next_resume_tick_.value_or(UINT64_MAX), runtime.paused_until_global_tick);
 		}
 	}
 
@@ -1089,6 +1094,7 @@ namespace platform {
 	}
 
 	bool Manager::is_paused(module::ModuleId id, uint64_t tick) const {
+		if (!next_resume_tick_) return false;
 		const Runtime* runtime = find(id);
 		return runtime != nullptr && runtime->lifecycle == Lifecycle::PAUSED &&
 			   tick < runtime->paused_until_global_tick;

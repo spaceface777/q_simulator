@@ -173,7 +173,9 @@ namespace platform {
 		std::map<std::pair<uint8_t, uint32_t>, uint64_t> hardware_event_draw_ordinals_;
 		std::vector<PendingHardwareEvent>                pending_hardware_events_;
 
-		world::State* world_ = nullptr;
+		// Lower bound for the next resume scan; extensions and stops can leave an earlier deadline.
+		std::optional<uint64_t> next_resume_tick_;
+		world::State*           world_ = nullptr;
 
 		std::vector<Diagnostic> diagnostics_;
 
