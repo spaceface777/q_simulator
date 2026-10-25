@@ -110,7 +110,9 @@ namespace sim {
 		std::optional<ltl::File>             properties_;
 		std::vector<ltl::Monitor>            property_monitors_;
 		std::vector<std::optional<uint64_t>> property_decisive_ticks_;
-		std::size_t                          pending_properties_ = 0;
+		std::size_t                          pending_properties_    = 0;
+		std::size_t                          failed_properties_     = 0;
+		std::size_t                          unresolved_properties_ = 0;
 
 		using PropertyWakeups = std::multimap<uint64_t, std::size_t>;
 

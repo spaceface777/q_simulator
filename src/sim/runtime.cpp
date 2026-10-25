@@ -404,14 +404,7 @@ namespace sim {
 	}
 
 	bool Runtime::failed() const noexcept {
-		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
-			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
-			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (from_tick <= scenario_duration_tick_ && global_tick_ > from_tick &&
-				property_monitors_[index].verdict() == ltl::Verdict::FALSE)
-				return true;
-		}
-		return false;
+		return failed_properties_ != 0;
 	}
 
 	std::size_t Runtime::properties_pending() const noexcept {
@@ -419,27 +412,11 @@ namespace sim {
 	}
 
 	std::size_t Runtime::properties_unresolved() const noexcept {
-		std::size_t unresolved = 0;
-		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
-			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
-			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (from_tick <= scenario_duration_tick_ && global_tick_ > from_tick &&
-				property_monitors_[index].verdict() == ltl::Verdict::UNRESOLVED)
-				unresolved++;
-		}
-		return unresolved;
+		return unresolved_properties_;
 	}
 
 	std::size_t Runtime::properties_failed() const noexcept {
-		std::size_t failed = 0;
-		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
-			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
-			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (from_tick <= scenario_duration_tick_ && global_tick_ > from_tick &&
-				property_monitors_[index].verdict() == ltl::Verdict::FALSE)
-				failed++;
-		}
-		return failed;
+		return failed_properties_;
 	}
 
 	std::vector<PropertyResult> Runtime::property_results() const {
@@ -967,6 +944,8 @@ namespace sim {
 						}
 						if (monitor.verdict() != ltl::Verdict::PENDING) {
 							pending_properties_--;
+							failed_properties_ += monitor.verdict() == ltl::Verdict::FALSE;
+							unresolved_properties_ += monitor.verdict() == ltl::Verdict::UNRESOLVED;
 							property_decisive_ticks_[index] = tick;
 							subscribe_property(index, {});
 							property_schedules_[index].reads.clear();
