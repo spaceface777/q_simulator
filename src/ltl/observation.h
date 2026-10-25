@@ -52,13 +52,13 @@ namespace ltl {
 	};
 
 	struct TubSnapshot {
-		uint16_t                       id          = 0;
-		uint16_t                       module      = 0;
-		world::Belt                    belt        = world::Belt::BIG;
-		int64_t                        position_um = 0;
-		std::optional<world::Position> position;
-		std::vector<uint8_t>           uid;
-		std::vector<uint8_t>           data;
+		uint16_t                                                            id          = 0;
+		uint16_t                                                            module      = 0;
+		world::Belt                                                         belt        = world::Belt::BIG;
+		int64_t                                                             position_um = 0;
+		std::optional<world::Position>                                      position;
+		RfidUid                                                             uid{};
+		std::array<uint8_t, RFID_PAYLOAD_PAGE_COUNT * RFID_PAGE_SIZE_BYTES> data{};
 		// Source of a physical module transition on this observation, otherwise zero.
 		uint16_t previous_module = 0;
 

@@ -139,12 +139,10 @@ namespace ltl {
 				return false;
 			auto data = snapshot.data.begin();
 			for (const RfidPage& page : tub.payload) {
-				if (static_cast<std::size_t>(snapshot.data.end() - data) < page.size() ||
-					!std::equal(page.begin(), page.end(), data))
-					return false;
+				if (!std::equal(page.begin(), page.end(), data)) return false;
 				data += static_cast<std::ptrdiff_t>(page.size());
 			}
-			return data == snapshot.data.end();
+			return true;
 		}
 
 		// Snapshots every tub. Returns the previous snapshots when no tub changed. A tub whose module
@@ -160,10 +158,9 @@ namespace ltl {
 
 			auto result = std::make_shared<TubSnapshots>();
 			for (const auto& [id, tub] : world.tubs()) {
-				TubSnapshot value{id, tub.module.raw(), tub.belt, tub.position_um, world.position_of(tub), {}, {}};
-				value.uid.assign(tub.uid.begin(), tub.uid.end());
-				value.data.reserve(RFID_PAYLOAD_PAGE_COUNT * RFID_PAGE_SIZE_BYTES);
-				for (const RfidPage& page : tub.payload) value.data.insert(value.data.end(), page.begin(), page.end());
+				TubSnapshot value{id, tub.module.raw(), tub.belt, tub.position_um, world.position_of(tub), tub.uid, {}};
+				auto        data = value.data.begin();
+				for (const RfidPage& page : tub.payload) data = std::copy(page.begin(), page.end(), data);
 				if (previous) {
 					const auto before = previous->find(id);
 					if (before != previous->end() && before->second.module != value.module)
@@ -836,8 +833,8 @@ namespace ltl {
 			exit.source_module = before.module;
 			exit.cause = world.removal_reason(static_cast<uint8_t>(id)).value_or(world::TubRemovalReason::EXPLICIT);
 			exit.tick  = logical_tick;
-			exit.uid   = before.uid;
-			exit.data  = before.data;
+			exit.uid.assign(before.uid.begin(), before.uid.end());
+			exit.data.assign(before.data.begin(), before.data.end());
 			if (exit.cause == world::TubRemovalReason::YEETED) {
 				exit.endpoint = before.belt == world::Belt::SMALL ? 1 : (before.position_um == 0 ? 2 : 0);
 			}
