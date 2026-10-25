@@ -30,11 +30,11 @@ namespace engine {
 		bucket->second.push_back(Entry{std::move(label), std::move(run)});
 	}
 
-	std::vector<Queue::Entry> Queue::take_next_bucket() {
+	Queue::Entries Queue::take_next_bucket() {
 		const auto    bucket = buckets_.begin();
 		const TaskKey key    = bucket->first;
 
-		std::vector<Entry> entries = std::move(bucket->second);
+		Entries entries = std::move(bucket->second);
 		buckets_.erase(bucket);
 		if (entries.size() < 2) return entries;
 

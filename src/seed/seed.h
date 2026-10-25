@@ -31,7 +31,8 @@ namespace seed {
 
 	// Deterministic Fisher-Yates shuffle, matching the Go implementation. The caller must put the
 	// sequence into a canonical order first, or the result varies between runs regardless of seed.
-	template <typename T> void shuffle(std::vector<T>& values, uint64_t master, std::string_view label) {
+	template <typename T, typename Allocator>
+	void shuffle(std::vector<T, Allocator>& values, uint64_t master, std::string_view label) {
 		if (values.size() < 2) {
 			return;
 		}
