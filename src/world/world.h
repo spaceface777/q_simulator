@@ -98,7 +98,7 @@ namespace world {
 		[[nodiscard]] const Tub* tub_at_reader(module::ModuleId id) const;
 
 		// Writes the sensor consequences of the current tub positions into the modules.
-		void update_sensors();
+		void update_sensors(module::Changes* changes);
 
 	public:
 		void add_module(module::ModuleId id);
@@ -108,13 +108,14 @@ namespace world {
 
 		// Throws std::invalid_argument if the module does not exist or the tub id is taken.
 		void place(uint8_t id, module::ModuleId module, Position position, const RfidUid& uid,
-				   const RfidPayload& payload);
+				   const RfidPayload& payload, module::Changes* changes = nullptr);
 
 		void place(uint8_t id, module::ModuleId module, Position position, const RfidPayload& payload) {
 			place(id, module, position, RfidUid{}, payload);
 		}
 
-		void remove(uint8_t id, TubRemovalReason reason = TubRemovalReason::EXPLICIT);
+		void remove(uint8_t id, TubRemovalReason reason = TubRemovalReason::EXPLICIT,
+					module::Changes* changes = nullptr);
 
 		[[nodiscard]] std::optional<TubRemovalReason> removal_reason(uint8_t id) const;
 
@@ -125,7 +126,7 @@ namespace world {
 
 		// Advances every tub by one tick and republishes the sensor state that follows. Tubs advance
 		// in ascending id order so contention for the same endpoint always resolves the same way.
-		void advance_tick();
+		void advance_tick(module::Changes* changes = nullptr);
 
 		// Tubs are kept by ascending id. Readers can inspect the immutable range without copying the
 		// RFID payloads stored in each tub.
