@@ -62,6 +62,7 @@ namespace net {
 		Config                      config_;
 		std::vector<Pending>        pending_;
 		std::map<uint8_t, uint64_t> next_ordinal_;
+		uint64_t                    next_delivery_tick_ = UINT64_MAX;
 
 		// Draws a value in [0, 1,000,000) for one keyed decision about one packet leg.
 		[[nodiscard]] uint64_t draw_ppm(module::ModuleId source, module::ModuleId recipient, uint64_t ordinal,
