@@ -22,9 +22,10 @@ namespace firmware::os {
 #ifdef __APPLE__
 		if (::clonefile(source.c_str(), destination.c_str(), 0) == 0) return;
 #elif defined(__linux__)
-		using File = std::unique_ptr<FILE, decltype(&std::fclose)>;
-		File input(std::fopen(source.c_str(), "rb"), &std::fclose);
-		File output(input ? std::fopen(destination.c_str(), "wb") : nullptr, &std::fclose);
+		auto close_file = [](FILE* file) { std::fclose(file); };
+		using File      = std::unique_ptr<FILE, decltype(close_file)>;
+		File input(std::fopen(source.c_str(), "rb"), close_file);
+		File output(input ? std::fopen(destination.c_str(), "wb") : nullptr, close_file);
 		if (input && output && ::ioctl(fileno(output.get()), FICLONE, fileno(input.get())) == 0) return;
 #endif
 		std::filesystem::copy_file(source, destination, std::filesystem::copy_options::overwrite_existing);
