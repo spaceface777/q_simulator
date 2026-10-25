@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory_resource>
 #include <optional>
 #include <string>
 #include <vector>
@@ -66,10 +67,14 @@ namespace engine {
 			std::function<void(TaskContext&)> run;
 		};
 
-		uint64_t                              master_seed_;
-		std::map<TaskKey, std::vector<Entry>> buckets_;
+		using Entries = std::pmr::vector<Entry>;
 
-		[[nodiscard]] std::vector<Entry> take_next_bucket();
+		uint64_t master_seed_;
+		// Future tasks can outlive a tick, so the pool must not be reset at tick boundaries.
+		std::pmr::unsynchronized_pool_resource memory_;
+		std::pmr::map<TaskKey, Entries>        buckets_{&memory_};
+
+		[[nodiscard]] Entries take_next_bucket();
 
 	public:
 		explicit Queue(uint64_t master_seed) : master_seed_(master_seed) {}
