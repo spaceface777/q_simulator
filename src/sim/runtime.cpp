@@ -843,9 +843,10 @@ namespace sim {
 		queue_.schedule(tick, engine::Priority::WORLD_ADVANCE, "world",
 						[this](engine::TaskContext&) { world_.advance_tick(); });
 
-		queue_.schedule(tick, engine::Priority::TRACE_FINALIZE, "trace", [this](engine::TaskContext&) {
-			if (current_observation_) trace_observation(*current_observation_);
-		});
+		if (trace_.enabled())
+			queue_.schedule(tick, engine::Priority::TRACE_FINALIZE, "trace", [this](engine::TaskContext&) {
+				if (current_observation_) trace_observation(*current_observation_);
+			});
 
 		queue_.schedule(tick, engine::Priority::MONITORING, "supervision", [this, tick](engine::TaskContext&) {
 			for (ModuleRuntime& instance : modules_) {
