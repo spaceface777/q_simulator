@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iostream>
 #include <ranges>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <tuple>
@@ -111,12 +112,11 @@ namespace platform {
 			return {value};
 		}
 
-		std::vector<uint8_t> visible_rfid_uid(const module::Module& module) {
+		std::span<const uint8_t> visible_rfid_uid(const module::Module& module) {
 			if (!module.is_rfid_active()) {
 				return {};
 			}
-			const RfidUid& uid = module.rfid_uid();
-			return {uid.begin(), uid.end()};
+			return module.rfid_uid();
 		}
 
 		template <typename T> std::vector<uint8_t> native_payload(T value) {
@@ -589,7 +589,8 @@ namespace platform {
 				runtime.subscriptions |= mask.value();
 				if ((newly_subscribed & EVENT_RFID_DETECT) != 0) {
 					const module::Module* module = world_->module(id);
-					runtime.last_rfid_uid = module == nullptr ? std::vector<uint8_t>{} : visible_rfid_uid(*module);
+					const auto uid = module == nullptr ? std::span<const uint8_t>{} : visible_rfid_uid(*module);
+					runtime.last_rfid_uid.assign(uid.begin(), uid.end());
 				}
 			} else {
 				runtime.subscriptions &= ~mask.value();
@@ -736,12 +737,13 @@ namespace platform {
 			runtime.last_left_clear  = left_clear;
 			runtime.last_right_clear = right_clear;
 
-			const std::vector<uint8_t> uid_payload = visible_rfid_uid(*module);
-			if (uid_payload != runtime.last_rfid_uid) {
-				runtime.last_rfid_uid = uid_payload;
+			const auto uid_payload = visible_rfid_uid(*module);
+			if (!std::ranges::equal(uid_payload, runtime.last_rfid_uid)) {
+				runtime.last_rfid_uid.assign(uid_payload.begin(), uid_payload.end());
 				// Only an arriving tag is worth an event; a departing one is observed by polling.
 				if (!uid_payload.empty()) {
-					schedule_hardware_event(tick, id, EVENT_RFID_DETECT, uid_payload, sample_rfid_event_delay_ms(id));
+					schedule_hardware_event(tick, id, EVENT_RFID_DETECT, runtime.last_rfid_uid,
+											sample_rfid_event_delay_ms(id));
 				}
 			}
 		}
