@@ -344,6 +344,7 @@ namespace sim {
 			property_schedules_.emplace_back();
 			property_schedules_.back().wakeup = property_wakeups_.emplace(from_tick, property_monitors_.size() - 1);
 		}
+		pending_properties_    = property_monitors_.size();
 		property_bitset_words_ = (property_monitors_.size() + 63) / 64;
 		property_subscribers_.resize(ltl::channel::COUNT * property_bitset_words_);
 		property_ready_.resize(property_bitset_words_);
@@ -414,15 +415,7 @@ namespace sim {
 	}
 
 	std::size_t Runtime::properties_pending() const noexcept {
-		std::size_t pending = 0;
-		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
-			const ltl::PropertyDeclaration& declaration = properties_->properties[index];
-			const uint64_t                  from_tick   = declaration.scope ? declaration.scope->from_tick : 0;
-			if (from_tick > scenario_duration_tick_ || global_tick_ <= from_tick ||
-				property_monitors_[index].verdict() == ltl::Verdict::PENDING)
-				pending++;
-		}
-		return pending;
+		return pending_properties_;
 	}
 
 	std::size_t Runtime::properties_unresolved() const noexcept {
@@ -973,6 +966,7 @@ namespace sim {
 								schedule.wakeup = property_wakeups_.emplace(*next_wakeup, index);
 						}
 						if (monitor.verdict() != ltl::Verdict::PENDING) {
+							pending_properties_--;
 							property_decisive_ticks_[index] = tick;
 							subscribe_property(index, {});
 							property_schedules_[index].reads.clear();
