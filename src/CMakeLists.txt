@@ -1,6 +1,8 @@
 
 # === Libraries ===
 
+set(SDL_SHARED OFF CACHE BOOL "Build shared SDL")
+set(SDL_STATIC ON CACHE BOOL "Build static SDL")
 set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(

@@ -29,6 +29,40 @@ if(ENABLE_SANITIZERS)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+option(ENABLE_LTO "Enable LTO in optimized builds (ThinLTO with Clang)" ON)
+foreach(config RELEASE RELWITHDEBINFO MINSIZEREL)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_${config} ${ENABLE_LTO})
+endforeach()
+
+set(PGO OFF CACHE STRING "PGO mode: OFF, TRAIN or USE")
+set(profile_dir "${CMAKE_BINARY_DIR}/pgo")
+if(PGO STREQUAL "TRAIN")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(profile_flags "-fprofile-instr-generate=${profile_dir}/%m-%p.profraw")
+    else()
+        set(profile_flags "-fprofile-generate=${profile_dir}")
+    endif()
+elseif(PGO STREQUAL "USE")
+    file(GLOB_RECURSE profiles "${profile_dir}/*.profraw" "${profile_dir}/*.gcda")
+    if(NOT profiles)
+        message(FATAL_ERROR "No PGO training data; build pgo-train and run the training suite first")
+    endif()
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-prog-name=llvm-profdata
+            OUTPUT_VARIABLE profdata OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+        execute_process(COMMAND "${profdata}" merge -o "${profile_dir}/merged.profdata" ${profiles}
+            COMMAND_ERROR_IS_FATAL ANY)
+        set(profile_flags "-fprofile-instr-use=${profile_dir}/merged.profdata"
+            -Werror=profile-instr-unprofiled -Werror=profile-instr-out-of-date)
+    else()
+        set(profile_flags "-fprofile-use=${profile_dir}" -Werror=missing-profile -Werror=coverage-mismatch)
+    endif()
+elseif(NOT PGO STREQUAL "OFF")
+    message(FATAL_ERROR "PGO must be OFF, TRAIN or USE")
+endif()
+add_compile_options(${profile_flags})
+add_link_options(${profile_flags})
+
 # === Libraries ===
 
 include(FetchContent)
@@ -172,3 +206,11 @@ endif()
 if(BUILD_TESTING)
     add_subdirectory(test)
 endif()
+
+foreach(mode TRAIN USE)
+    string(TOLOWER "${mode}" name)
+    add_custom_target(pgo-${name}
+        COMMAND "${CMAKE_COMMAND}" -S "${CMAKE_SOURCE_DIR}" -B "${CMAKE_BINARY_DIR}" -DPGO=${mode}
+        COMMAND "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target simulation-scenario
+        USES_TERMINAL VERBATIM)
+endforeach()

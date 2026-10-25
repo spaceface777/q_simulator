@@ -18,6 +18,16 @@ cmake --build build -j
 
 Set `TESTING_CONSOLE_BUILD=OFF` to include the GUI. Set `BUILD_TESTING=OFF` to omit tests.
 The simulator build uses SDK headers. It does not build firmware or require a Zephyr checkout.
+Optimized builds enable LTO by default (ThinLTO with Clang, `-DENABLE_LTO=OFF` to disable), and the GUI uses static SDL.
+
+For PGO, build `pgo-train`, run your training suite against `build/simulation-scenario`, then build `pgo-use` in the same directory.
+Missing or mismatched training data causes an error.
+
+```sh
+cmake --build build --target pgo-train
+../q_router_tracing_fork/tests/runner.py --suite scenarios --workers 1
+cmake --build build --target pgo-use
+```
 
 Firmware builds require an external Zephyr workspace. The SDK records its tested revision in
 [`ZEPHYR_REVISION`](external/q_sdk/ZEPHYR_REVISION) and warns if the checkout differs.
