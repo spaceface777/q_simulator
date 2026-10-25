@@ -175,7 +175,8 @@ namespace platform {
 
 		// Lower bound for the next resume scan; extensions and stops can leave an earlier deadline.
 		std::optional<uint64_t> next_resume_tick_;
-		world::State*           world_ = nullptr;
+		world::State*           world_   = nullptr;
+		module::Changes*        changes_ = nullptr; // Borrowed, like world_; must outlive this manager.
 
 		std::vector<Diagnostic> diagnostics_;
 
@@ -208,7 +209,7 @@ namespace platform {
 							  bool heartbeat_failure);
 
 	public:
-		explicit Manager(world::State& world);
+		explicit Manager(world::State& world, module::Changes* changes = nullptr);
 
 		// Exposed for tests; parse_settings drives this normally.
 		void add_module(module::ModuleId id);
@@ -236,7 +237,7 @@ namespace platform {
 
 		// Turns world state and network traffic into application-visible events, landing them in
 		// the per-module backlog rather than sending immediately.
-		void advance(uint64_t tick);
+		void advance(uint64_t tick, const module::Changes* changes = nullptr);
 
 		void enqueue(module::ModuleId id, rpc::Frame frame);
 

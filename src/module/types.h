@@ -1,6 +1,7 @@
 #ifndef MODULE_TYPES_H
 #define MODULE_TYPES_H
 
+#include <bitset>
 #include <stdexcept>
 #include <stdint.h>
 
@@ -8,6 +9,9 @@
 #include "../util.h"
 
 namespace module {
+	// Conservative scalar/sensor changes; not a certificate of mechanical or temporal inactivity.
+	using Changes = std::bitset<MODULE_TABLE_SIZE>;
+
 	class ModuleId {
 	private:
 		uint8_t value_ = 0;

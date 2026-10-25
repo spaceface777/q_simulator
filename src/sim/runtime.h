@@ -86,13 +86,16 @@ namespace sim {
 		std::unique_ptr<firmware::InProcessBackend> backend_;
 		uint64_t                                    generation_ = 0;
 		rpc::FrameReader                            reader_;
-		world::State                                world_;
-		std::optional<platform::Manager>            platform_;
-		engine::Queue                               queue_;
-		uint64_t                                    global_tick_ = 0;
-		std::array<uint64_t, MODULE_TABLE_SIZE>     module_ticks_{};
-		int64_t                                     budget_us_ = 0;
-		bool                                        running_   = false;
+		// Sensor delivery and observation consume changes at different phase boundaries.
+		module::Changes                         module_changes_, observation_changes_;
+		bool                                    module_changes_trusted_ = true;
+		world::State                            world_;
+		std::optional<platform::Manager>        platform_;
+		engine::Queue                           queue_;
+		uint64_t                                global_tick_ = 0;
+		std::array<uint64_t, MODULE_TABLE_SIZE> module_ticks_{};
+		int64_t                                 budget_us_ = 0;
+		bool                                    running_   = false;
 
 		double                                   effective_speed_      = 0.0;
 		bool                                     effective_speed_seen_ = false;
@@ -189,11 +192,17 @@ namespace sim {
 		[[nodiscard]] std::size_t                 properties_unresolved() const noexcept;
 		[[nodiscard]] std::vector<PropertyResult> property_results() const;
 
-		[[nodiscard]] world::State& world() noexcept { return world_; }
+		[[nodiscard]] world::State& world() noexcept {
+			module_changes_trusted_ = false;
+			return world_;
+		}
 
 		[[nodiscard]] const world::State& world() const noexcept { return world_; }
 
-		[[nodiscard]] platform::Manager& platform() { return *platform_; }
+		[[nodiscard]] platform::Manager& platform() {
+			module_changes_trusted_ = false;
+			return *platform_;
+		}
 
 		[[nodiscard]] const platform::Manager& platform() const { return *platform_; }
 	};

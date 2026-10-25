@@ -167,7 +167,8 @@ namespace sim {
 		}
 
 		running_ = true;
-		platform_.emplace(world_);
+		module_changes_.set();
+		platform_.emplace(world_, &module_changes_);
 
 		std::cout << "Waiting for applications to activate" << std::endl;
 
@@ -302,13 +303,13 @@ namespace sim {
 			const RfidPayload      payload  = tub.payload;
 
 			if (tub.tick == 0) {
-				world_.place(id, module, position, uid, payload);
+				world_.place(id, module, position, uid, payload, &module_changes_);
 				continue;
 			}
 
 			queue_.schedule(tub.tick, engine::Priority::SCENARIO_EVENTS, "tub/" + std::to_string(id),
 							[this, id, module, position, uid, payload](engine::TaskContext&) {
-								world_.place(id, module, position, uid, payload);
+								world_.place(id, module, position, uid, payload, &module_changes_);
 							});
 		}
 
@@ -317,9 +318,10 @@ namespace sim {
 				continue;
 			}
 			const uint8_t id = tub.id;
-			queue_.schedule(
-				*tub.removed_tick, engine::Priority::SCENARIO_EVENTS, "tub/" + std::to_string(id) + "/removed",
-				[this, id](engine::TaskContext&) { world_.remove(id, world::TubRemovalReason::SCHEDULED); });
+			queue_.schedule(*tub.removed_tick, engine::Priority::SCENARIO_EVENTS,
+							"tub/" + std::to_string(id) + "/removed", [this, id](engine::TaskContext&) {
+								world_.remove(id, world::TubRemovalReason::SCHEDULED, &module_changes_);
+							});
 		}
 	}
 
@@ -811,7 +813,7 @@ namespace sim {
 		const uint64_t tick = global_tick_;
 
 		queue_.schedule(tick, engine::Priority::WORLD_ADVANCE, "world",
-						[this](engine::TaskContext&) { world_.advance_tick(); });
+						[this](engine::TaskContext&) { world_.advance_tick(&module_changes_); });
 
 		if (trace_.enabled())
 			queue_.schedule(tick, engine::Priority::TRACE_FINALIZE, "trace", [this](engine::TaskContext&) {
@@ -866,8 +868,11 @@ namespace sim {
 				for (const ModuleRuntime& instance : modules_) {
 					module_stepped.emplace(instance.id.raw(), instance.tick_granted);
 				}
+				observation_changes_ |= module_changes_;
 				current_observation_ = property_observer_->observe(
-					tick, world_, std::move(requests), std::move(responses), std::move(events), module_stepped);
+					tick, world_, std::move(requests), std::move(responses), std::move(events), module_stepped,
+					module_changes_trusted_ ? &observation_changes_ : nullptr);
+				observation_changes_.reset();
 				const ltl::Observation& observation = *current_observation_;
 				// The evaluators only capture the observation, so every monitor shares them this tick.
 				const ltl::AtomEvaluator evaluate = [&observation](const ltl::Formula& atom) {
@@ -987,7 +992,9 @@ namespace sim {
 		});
 
 		queue_.schedule(tick, engine::Priority::PLATFORM_OUTBOUND, "outbound", [this, tick](engine::TaskContext&) {
-			platform_->advance(tick);
+			platform_->advance(tick, module_changes_trusted_ ? &module_changes_ : nullptr);
+			observation_changes_ |= module_changes_;
+			module_changes_.reset();
 			for (ModuleRuntime& instance : modules_) {
 				if (!instance.active) continue;
 				// Keep deliveries staged until this module receives another grant.

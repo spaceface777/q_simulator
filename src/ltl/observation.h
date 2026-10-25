@@ -320,10 +320,12 @@ namespace ltl {
 		// tub present in the first observation produces appeared and entered edges.
 		Observer(const std::vector<module::ModuleId>& modules, const world::State& baseline);
 
+		// A supplied change set must cover every module mutation since the previous observation.
 		[[nodiscard]] Observation observe(uint64_t logical_tick, const world::State& world,
 										  std::vector<RpcRequest>  requests  = {},
 										  std::vector<RpcResponse> responses = {}, std::vector<RpcEvent> events = {},
-										  const ModuleSteps& module_stepped = {});
+										  const ModuleSteps&     module_stepped = {},
+										  const module::Changes* changes        = nullptr);
 
 		[[nodiscard]] const RpcRequest*  rpc_request(uint64_t id) const;
 		[[nodiscard]] const RpcResponse* rpc_response_to(uint64_t request_id, uint64_t observation_tick) const;

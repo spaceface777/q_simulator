@@ -251,7 +251,7 @@ namespace world {
 	}
 
 	void State::place(uint8_t id, module::ModuleId module_id, Position position, const RfidUid& uid,
-					  const RfidPayload& payload) {
+					  const RfidPayload& payload, module::Changes* changes) {
 		if (tubs_.count(id) != 0) {
 			throw std::invalid_argument("Tub " + std::to_string(id) + " is already in the world");
 		}
@@ -273,14 +273,14 @@ namespace world {
 
 		removal_reasons_.erase(id);
 		tubs_.emplace(id, std::move(tub));
-		update_sensors();
+		update_sensors(changes);
 	}
 
-	void State::remove(uint8_t id, TubRemovalReason reason) {
+	void State::remove(uint8_t id, TubRemovalReason reason, module::Changes* changes) {
 		if (tubs_.erase(id) != 0) {
 			removal_reasons_[id] = reason;
 		}
-		update_sensors();
+		update_sensors(changes);
 	}
 
 	std::optional<TubRemovalReason> State::removal_reason(uint8_t id) const {
@@ -304,7 +304,7 @@ namespace world {
 		removal_reasons_.clear();
 	}
 
-	void State::advance_tick() {
+	void State::advance_tick(module::Changes* changes) {
 		// std::map iterates in ascending key order, so two tubs contending for the same endpoint
 		// always resolve the same way rather than in whatever order they were created.
 		for (auto iterator = tubs_.begin(); iterator != tubs_.end();) {
@@ -362,10 +362,11 @@ namespace world {
 			const int64_t small    = belt_step_um(hardware.small_belt_speed().raw(), calibration.mechanical.small_belt,
 												  hardware.small_belt_travel_carry());
 			hardware.advance_belt_travel(big, small);
+			if (changes && hardware.is_servo_moving()) changes->set(hardware.id().raw());
 			hardware.advance_servo_travel();
 		}
 
-		update_sensors();
+		update_sensors(changes);
 	}
 
 	int64_t encoder_count(int64_t travel_um, const Calibration& calibration) {
@@ -608,7 +609,7 @@ namespace world {
 		return nullptr;
 	}
 
-	void State::update_sensors() {
+	void State::update_sensors(module::Changes* changes) {
 		std::bitset<256> big_tubs, small_tubs;
 		for (const auto& [id, tub] : tubs_) (tub.belt == Belt::BIG ? big_tubs : small_tubs)[tub.module.raw()] = true;
 		for (auto& entry : modules_) {
@@ -639,10 +640,12 @@ namespace world {
 				}
 			}
 
+			const Tub* at_reader = small_tubs[module->id().raw()] ? tub_at_reader(module->id()) : nullptr;
+			if (changes && (module->is_left_laser_blocked() != left_blocked ||
+							module->is_right_laser_blocked() != right_blocked || at_reader || module->is_rfid_active()))
+				changes->set(module->id().raw());
 			module->set_left_laser_blocked(left_blocked);
 			module->set_right_laser_blocked(right_blocked);
-
-			const Tub* at_reader = small_tubs[module->id().raw()] ? tub_at_reader(module->id()) : nullptr;
 			if (at_reader != nullptr) {
 				module->set_rfid_tag(at_reader->uid, at_reader->payload);
 			} else {

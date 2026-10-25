@@ -258,13 +258,14 @@ namespace platform {
 		return found == runtimes_.end() ? nullptr : &found->second;
 	}
 
-	Manager::Manager(world::State& world)
+	Manager::Manager(world::State& world, module::Changes* changes)
 		: network_(static_cast<uint64_t>(settings::get_setting<int>("seed")), net::config_from_settings()),
 		  log_network_(static_cast<uint64_t>(settings::get_setting<int>("seed")), log_channel_config()),
 		  master_seed_(static_cast<uint64_t>(settings::get_setting<int>("seed"))),
 		  laser_event_extra_delay_ms_(static_cast<uint64_t>(settings::get_setting<int>("laser_event_extra_delay_ms"))),
 		  rfid_event_delay_mean_ms_(settings::get_setting<double>("rfid_event_extra_delay_mean_ms")),
-		  rfid_event_delay_sd_ms_(settings::get_setting<double>("rfid_event_extra_delay_sd_ms")), world_(&world) {
+		  rfid_event_delay_sd_ms_(settings::get_setting<double>("rfid_event_extra_delay_sd_ms")), world_(&world),
+		  changes_(changes) {
 		for (const module::ModuleId id : settings::get_configured_modules()) {
 			known_modules_.insert(id.raw());
 		}
@@ -368,6 +369,7 @@ namespace platform {
 		if (runtime.pause_resume_pending) return;
 
 		if (module::Module* physical = world_->module(id)) {
+			if (changes_) changes_->set(id.raw());
 			runtime.restore_big_belt_speed   = physical->big_belt_speed();
 			runtime.restore_small_belt_speed = physical->small_belt_speed();
 			runtime.belt_restore_valid       = true;
@@ -386,6 +388,7 @@ namespace platform {
 			if (runtime.lifecycle == Lifecycle::PAUSED && runtime.pause_resume_pending &&
 				tick >= runtime.paused_until_global_tick) {
 				if (module::Module* physical = world_->module(id); physical != nullptr && runtime.belt_restore_valid) {
+					if (changes_) changes_->set(id.raw());
 					physical->set_big_belt_speed(runtime.restore_big_belt_speed);
 					physical->set_small_belt_speed(runtime.restore_small_belt_speed);
 				}
@@ -431,6 +434,7 @@ namespace platform {
 		// Core0's safe stop affects this module's outputs only. Sensors and accumulated physical
 		// state remain part of the world, while moving/energized actuators are made safe.
 		if (module::Module* physical = world_->module(id)) {
+			if (changes_) changes_->set(id.raw());
 			physical->set_big_belt_speed(module::BeltSpeed{});
 			physical->set_small_belt_speed(module::BeltSpeed{});
 			physical->reset_belt_travel();
@@ -719,8 +723,9 @@ namespace platform {
 		return true;
 	}
 
-	void Manager::advance(uint64_t tick) {
+	void Manager::advance(uint64_t tick, const module::Changes* changes) {
 		for (const module::ModuleId id : modules_) {
+			if (changes && !(*changes)[id.raw()]) continue;
 			Runtime& runtime = runtimes_[id.raw()];
 			if (runtime.lifecycle == Lifecycle::STOPPED) {
 				continue;
@@ -821,6 +826,7 @@ namespace platform {
 			return response;
 		}
 
+		if (changes_) changes_->set(id.raw());
 		module::Module* module = world_->module(id);
 		if (module == nullptr) {
 			response.status = STATUS_NO_ENTRY;

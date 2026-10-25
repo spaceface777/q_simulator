@@ -104,10 +104,18 @@ namespace ltl {
 
 		std::shared_ptr<const ModuleSnapshots> snapshot_modules(const std::vector<module::ModuleId>&   ids,
 																const world::State&                    world,
-																std::shared_ptr<const ModuleSnapshots> previous = {}) {
+																std::shared_ptr<const ModuleSnapshots> previous = {},
+																const module::Changes* changes = nullptr) {
 			std::shared_ptr<ModuleSnapshots> result;
 			if (!previous) result = std::make_shared<ModuleSnapshots>();
 			for (const module::ModuleId id : ids) {
+				if (changes && !(*changes)[id.raw()]) {
+					const auto& before      = previous->at(id.raw());
+					const auto& calibration = world::calibration_for(id);
+					if (before.leg_length_um == calibration.endpoint_to_junction_um &&
+						before.tub_radius_um == world::tub_radius_um(calibration))
+						continue;
+				}
 				const module::Module* hardware = world.module(id);
 				if (hardware == nullptr) {
 					throw std::logic_error("cannot observe module " + std::to_string(id.raw()) +
@@ -760,12 +768,12 @@ namespace ltl {
 
 	Observation Observer::observe(uint64_t logical_tick, const world::State& world, std::vector<RpcRequest> requests,
 								  std::vector<RpcResponse> responses, std::vector<RpcEvent> events,
-								  const ModuleSteps& module_stepped) {
+								  const ModuleSteps& module_stepped, const module::Changes* changes) {
 		Observation observation;
 		observation.tick_           = logical_tick;
 		observation.timestamp_      = std::chrono::milliseconds(logical_tick);
 		observation.module_stepped_ = module_stepped;
-		observation.modules_        = snapshot_modules(module_ids_, world, previous_modules_);
+		observation.modules_        = snapshot_modules(module_ids_, world, previous_modules_, changes);
 		observation.tubs_           = snapshot_tubs(world, previous_tubs_);
 		static const TubSnapshots no_tubs;
 		const TubSnapshots&       tubs     = *observation.tubs_;
