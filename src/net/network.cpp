@@ -76,16 +76,19 @@ namespace net {
 			}
 
 			Pending message;
-			message.due_tick  = tick + pick_delay_ms(sender, recipient, ordinal) + config_.extra_delay_ms;
-			message.ordinal   = ordinal;
-			message.source    = sender;
-			message.recipient = recipient;
-			message.payload   = payload;
+			message.due_tick    = tick + pick_delay_ms(sender, recipient, ordinal) + config_.extra_delay_ms;
+			message.ordinal     = ordinal;
+			message.source      = sender;
+			message.recipient   = recipient;
+			message.payload     = payload;
+			next_delivery_tick_ = std::min(next_delivery_tick_, message.due_tick);
 			pending_.push_back(std::move(message));
 		}
 	}
 
 	std::vector<Delivery> Model::deliver_due(uint64_t tick) {
+		if (tick < next_delivery_tick_) return {};
+		next_delivery_tick_ = UINT64_MAX;
 		std::vector<Pending> due;
 		std::vector<Pending> remaining;
 		remaining.reserve(pending_.size());
@@ -94,6 +97,7 @@ namespace net {
 			if (message.due_tick <= tick) {
 				due.push_back(std::move(message));
 			} else {
+				next_delivery_tick_ = std::min(next_delivery_tick_, message.due_tick);
 				remaining.push_back(std::move(message));
 			}
 		}
