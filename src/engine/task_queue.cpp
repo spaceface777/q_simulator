@@ -36,6 +36,7 @@ namespace engine {
 
 		std::vector<Entry> entries = std::move(bucket->second);
 		buckets_.erase(bucket);
+		if (entries.size() < 2) return entries;
 
 		const auto by_label = [](const Entry& left, const Entry& right) { return left.label < right.label; };
 
