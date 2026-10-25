@@ -439,6 +439,7 @@ namespace platform {
 	}
 
 	std::vector<module::ModuleId> Manager::check_supervision(uint64_t tick) {
+		std::vector<module::ModuleId> stopped;
 		for (const module::ModuleId id : modules_) {
 			Runtime& runtime = *find(id);
 
@@ -447,6 +448,7 @@ namespace platform {
 					throw std::runtime_error("Module " + std::to_string(id.raw()) +
 											 " was stopped: " + runtime.stop_reason);
 				}
+				if (runtime.heartbeat_failed) stopped.push_back(id);
 				continue;
 			}
 
@@ -459,6 +461,7 @@ namespace platform {
 				if (tick >= ACTIVATION_DEADLINE_TICKS) {
 					stop_application(tick, id, "did not send a first heartbeat before its activation deadline",
 									 Bucket::HEARTBEAT, true);
+					stopped.push_back(id);
 				}
 				continue;
 			}
@@ -466,6 +469,7 @@ namespace platform {
 			const uint64_t silence = tick - runtime.last_heartbeat_global_tick;
 			if (silence > HEARTBEAT_FAILURE_TICKS) {
 				stop_application(tick, id, "stopped sending heartbeats", Bucket::HEARTBEAT, true);
+				stopped.push_back(id);
 				continue;
 			}
 			if (silence > HEARTBEAT_WARNING_TICKS && !runtime.heartbeat_warned) {
@@ -474,13 +478,6 @@ namespace platform {
 			}
 		}
 
-		std::vector<module::ModuleId> stopped;
-		for (const module::ModuleId id : modules_) {
-			const Runtime* runtime = find(id);
-			if (runtime->lifecycle == Lifecycle::STOPPED && runtime->heartbeat_failed) {
-				stopped.push_back(id);
-			}
-		}
 		return stopped;
 	}
 
