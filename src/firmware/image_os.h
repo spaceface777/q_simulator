@@ -7,6 +7,7 @@ namespace firmware::os {
 	using Entry = const void* (*)();
 
 	uint64_t process_id();
+	void     copy_file(const std::filesystem::path& source, const std::filesystem::path& destination);
 	void*    open(const std::filesystem::path& path);
 	Entry    entry(void* handle);
 	void     close(void* handle) noexcept;

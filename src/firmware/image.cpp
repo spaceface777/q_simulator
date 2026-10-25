@@ -20,7 +20,7 @@ namespace firmware {
 
 	namespace {
 		// The host loader validates each new file on its first load, which costs tens of milliseconds
-		// on macOS. Copies therefore persist in <root>/<SHA-256 of the image>/<slot>.dll. Within one
+		// on macOS. Copies persist in <root>/<hash[:2]>/<hash[2:]>/<slot>.dll and are trusted. Within one
 		// process each loaded copy needs its own slot, so that the loader does not reuse a loaded
 		// image. Separate processes can share a slot.
 		constexpr std::size_t KEPT_IMAGES = 8;
@@ -50,7 +50,7 @@ namespace firmware {
 		}
 
 		// Hashes each source once per process. Modules commonly share one image.
-		std::string digest_of(const std::filesystem::path& source, const std::string& contents) {
+		std::string digest_of(const std::filesystem::path& source) {
 			struct Known {
 				std::filesystem::file_time_type time;
 				std::uintmax_t                  size;
@@ -61,40 +61,30 @@ namespace firmware {
 			static std::map<std::filesystem::path, Known> known;
 			std::error_code                               error;
 			const auto                                    time = std::filesystem::last_write_time(source, error);
-			if (error) return seed::sha256_hex(contents);
+			const auto                                    size = error ? 0 : std::filesystem::file_size(source, error);
+			if (error) return seed::sha256_hex(read_file(source));
 			std::lock_guard<std::mutex> lock(mutex);
-			const auto                  found = known.find(source);
-			if (found != known.end() && found->second.time == time && found->second.size == contents.size())
+			const auto                  key   = std::filesystem::absolute(source);
+			const auto                  found = known.find(key);
+			if (found != known.end() && found->second.time == time && found->second.size == size)
 				return found->second.digest;
-			auto digest = seed::sha256_hex(contents);
-			known.insert_or_assign(source, Known{time, contents.size(), digest});
+			const auto contents = read_file(source);
+			auto       digest   = seed::sha256_hex(contents);
+			known.insert_or_assign(key, Known{time, contents.size(), digest});
 			return digest;
 		}
 
-		bool same_contents(const std::filesystem::path& path, const std::string& contents) {
-			std::error_code error;
-			if (std::filesystem::file_size(path, error) != contents.size() || error) return false;
-			try {
-				return read_file(path) == contents;
-			} catch (const std::runtime_error&) {
-				return false;
-			}
-		}
-
 		// Writes a complete file and renames it into place, so that no process loads a partial copy.
-		void store(const std::filesystem::path& path, const std::string& contents) {
+		void store(const std::filesystem::path& path, const std::filesystem::path& source) {
 			static std::atomic<uint64_t> sequence{0};
 			const auto temporary = std::filesystem::path(path).concat(".tmp-" + std::to_string(os::process_id()) + "-" +
 																	  std::to_string(sequence.fetch_add(1)));
-			{
-				std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-				output.write(contents.data(), static_cast<std::streamsize>(contents.size()));
-				output.close();
-				if (!output) {
-					std::error_code ignored;
-					std::filesystem::remove(temporary, ignored);
-					throw std::runtime_error("write: cannot write " + temporary.string());
-				}
+			try {
+				os::copy_file(source, temporary);
+			} catch (...) {
+				std::error_code ignored;
+				std::filesystem::remove(temporary, ignored);
+				throw;
 			}
 			std::error_code error;
 			std::filesystem::rename(temporary, path, error);
@@ -102,7 +92,7 @@ namespace firmware {
 				std::error_code ignored;
 				std::filesystem::remove(temporary, ignored);
 				// Another process can hold the target open on Windows. Its contents are then the same.
-				if (!same_contents(path, contents)) throw std::system_error(error, "rename " + path.string());
+				if (!std::filesystem::exists(path)) throw std::system_error(error, "rename " + path.string());
 			}
 		}
 
@@ -110,10 +100,14 @@ namespace firmware {
 		void prune(const std::filesystem::path& root) {
 			std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> images;
 			std::error_code                                                                error;
-			for (const auto& entry : std::filesystem::directory_iterator(root, error)) {
-				std::error_code time_error;
-				const auto      time = entry.last_write_time(time_error);
-				if (entry.is_directory(time_error) && !time_error) images.emplace_back(time, entry.path());
+			for (const auto& shard : std::filesystem::directory_iterator(root, error)) {
+				std::error_code shard_error;
+				if (!shard.is_directory(shard_error) || shard_error) continue;
+				for (const auto& entry : std::filesystem::directory_iterator(shard.path(), shard_error)) {
+					std::error_code time_error;
+					const auto      time = entry.last_write_time(time_error);
+					if (entry.is_directory(time_error) && !time_error) images.emplace_back(time, entry.path());
+				}
 			}
 			if (images.size() <= KEPT_IMAGES) return;
 			std::sort(images.begin(), images.end(), [](const auto& left, const auto& right) { return left > right; });
@@ -142,19 +136,21 @@ namespace firmware {
 
 	LoadedImage::LoadedImage(const std::filesystem::path& source) {
 		try {
-			const std::string contents = read_file(source);
-			digest_                    = digest_of(std::filesystem::absolute(source), contents);
-			slot_                      = acquire_slot(digest_);
+			digest_ = digest_of(source);
+			slot_   = acquire_slot(digest_);
 
 			const auto      root      = cache_root();
-			const auto      directory = root / digest_;
+			const auto      directory = root / digest_.substr(0, 2) / digest_.substr(2);
 			const bool      created   = std::filesystem::create_directories(directory);
 			std::error_code ignored;
 			std::filesystem::last_write_time(directory, std::filesystem::file_time_type::clock::now(), ignored);
 			if (created) prune(root);
 
 			copy_ = directory / (std::to_string(slot_) + ".dll");
-			if (!same_contents(copy_, contents)) store(copy_, contents);
+			if (!std::filesystem::exists(copy_)) {
+				const auto first = directory / "0.dll";
+				store(copy_, std::filesystem::exists(first) ? first : source);
+			}
 			handle_    = os::open(copy_);
 			auto entry = os::entry(handle_);
 			api_       = entry();

@@ -43,7 +43,7 @@ namespace {
 			std::filesystem::remove_all(root_, ignored);
 		}
 
-		// Cached copies relative to the cache root, such as "<digest>/0.dll".
+		// Cached copies relative to the cache root, such as "<prefix>/<digest-tail>/0.dll".
 		std::set<std::string> copies() const {
 			std::set<std::string> result;
 			if (!std::filesystem::exists(root_)) return result;
@@ -121,12 +121,12 @@ TEST_F(FirmwareImage, CachedCopyIsReusedUnchanged) {
 	EXPECT_EQ(std::filesystem::last_write_time(copy), stamp);
 }
 
-TEST_F(FirmwareImage, ModifiedCopyIsReplaced) {
+TEST_F(FirmwareImage, MissingCopyIsRecreated) {
 	{
 		firmware::LoadedImage image(COUNTER_IMAGE);
 	}
 	const auto copy = root_ / *copies().begin();
-	std::ofstream(copy, std::ios::binary | std::ios::trunc) << "not an image";
+	std::filesystem::remove(copy);
 	firmware::LoadedImage image(COUNTER_IMAGE);
 	EXPECT_EQ(next(image), 1u);
 	EXPECT_EQ(std::filesystem::file_size(copy), std::filesystem::file_size(COUNTER_IMAGE));
@@ -142,7 +142,7 @@ TEST_F(FirmwareImage, CacheKeepsOnlyRecentImages) {
 	}
 	std::filesystem::remove_all(sources);
 	std::set<std::string> images;
-	for (const auto& copy : copies()) images.insert(copy.substr(0, copy.find('/')));
+	for (const auto& copy : copies()) images.insert(std::filesystem::path(copy).parent_path().generic_string());
 	EXPECT_EQ(images.size(), 8u);
 }
 

@@ -18,6 +18,10 @@ namespace firmware::os {
 		return GetCurrentProcessId();
 	}
 
+	void copy_file(const std::filesystem::path& source, const std::filesystem::path& destination) {
+		std::filesystem::copy_file(source, destination, std::filesystem::copy_options::overwrite_existing);
+	}
+
 	void* open(const std::filesystem::path& path) {
 		void* handle = LoadLibraryW(path.c_str());
 		if (!handle) throw std::system_error(GetLastError(), std::system_category(), "load library");
