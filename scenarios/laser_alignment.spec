@@ -93,8 +93,11 @@ prop follows_alignment_and_brightness_changes_in_order = sequence {
     aligned_dim;
 };
 
+// The applet polls the RFID reader at 4 Hz to stay inside the 5/s RFID rate limit, so a tag edge
+// can wait 250 ms for a poll and 100 ms for the display loop. The 500 ms budget covers that on the
+// applet clock and in the scenario's 20% skipped-tick variant.
 prop responds_to_each_scenario_edge = G (
-    (appeared(tag) -> (F[0ms, 250ms] aligned_bright))
+    (appeared(tag) -> (F[0ms, 500ms] aligned_bright))
     && (appeared(obstruction) -> (F[0ms, 250ms] left_blocked_bright))
     && (disappeared(obstruction) -> (
         (F[0ms, 250ms] recovering_bright)
@@ -103,7 +106,7 @@ prop responds_to_each_scenario_edge = G (
         // 20% skipped-tick variant while the lower bound still enforces 30 seconds of recovery.
         && (F[30s, 40s] aligned_dim)
     ))
-    && (disappeared(tag) -> (F[0ms, 250ms] recovering_dim))
+    && (disappeared(tag) -> (F[0ms, 500ms] recovering_dim))
 );
 
 // RPC read errors are deliberately collapsed into the same booleans as blocked beams. The
