@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #ifdef __linux__
@@ -145,8 +146,8 @@ namespace sim {
 			modules_.push_back(std::move(instance));
 		}
 		grants_.resize(modules_.size());
+		auto bindings = firmware_bindings_;
 		try {
-			auto bindings = firmware_bindings_;
 			if (bindings.empty())
 				for (const auto id : active_modules_) bindings.push_back({id, settings::get_module_firmware(id)});
 			for (const auto id : active_modules_) {
@@ -169,6 +170,20 @@ namespace sim {
 		running_ = true;
 		module_changes_.set();
 		platform_.emplace(world_, &module_changes_);
+
+		// Core0 measures each image as it launches it, for attestation. Modules commonly share one image.
+		std::map<std::string, platform::ImageDigest> digests;
+		for (const auto& binding : bindings) {
+			auto [digest, inserted] = digests.try_emplace(binding.path);
+			if (inserted) {
+				std::ifstream              file(binding.path, std::ios::binary);
+				const std::vector<uint8_t> contents{std::istreambuf_iterator<char>(file), {}};
+				if (!file.good() && !file.eof())
+					throw std::runtime_error("Could not measure firmware image " + binding.path);
+				digest->second = seed::sha256(contents.data(), contents.size());
+			}
+			platform_->application_launched(binding.module, digest->second);
+		}
 
 		std::cout << "Waiting for applications to activate" << std::endl;
 

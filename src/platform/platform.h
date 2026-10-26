@@ -35,15 +35,23 @@ namespace platform {
 
 	// Negated errno values returned to applications.
 	inline constexpr int16_t STATUS_OK        = 0;
-	inline constexpr int16_t STATUS_PERM      = -1;  // -EPERM
-	inline constexpr int16_t STATUS_NO_ENTRY  = -2;  // -ENOENT
-	inline constexpr int16_t STATUS_TRY_AGAIN = -11; // -EAGAIN
-	inline constexpr int16_t STATUS_INVALID   = -22; // -EINVAL
-	inline constexpr int16_t STATUS_RANGE     = -34; // -ERANGE
-	inline constexpr int16_t STATUS_NO_SYS    = -88; // -ENOSYS
+	inline constexpr int16_t STATUS_PERM      = -1;   // -EPERM
+	inline constexpr int16_t STATUS_NO_ENTRY  = -2;   // -ENOENT
+	inline constexpr int16_t STATUS_TRY_AGAIN = -11;  // -EAGAIN
+	inline constexpr int16_t STATUS_INVALID   = -22;  // -EINVAL
+	inline constexpr int16_t STATUS_RANGE     = -34;  // -ERANGE
+	inline constexpr int16_t STATUS_NO_DATA   = -61;  // -ENODATA
+	inline constexpr int16_t STATUS_BAD_MSG   = -77;  // -EBADMSG
+	inline constexpr int16_t STATUS_NO_SYS    = -88;  // -ENOSYS
+	inline constexpr int16_t STATUS_MSG_SIZE  = -122; // -EMSGSIZE
 
 	// CMD_ENTROPY_GET always returns this many bytes.
 	inline constexpr std::size_t ENTROPY_RESPONSE_SIZE = 1000;
+
+	// The fleet attestation key, and the SHA-256 digest that measures a launched image.
+	inline constexpr std::size_t ATTESTATION_KEY_SIZE = 32;
+	using AttestationKey                              = std::array<uint8_t, ATTESTATION_KEY_SIZE>;
+	using ImageDigest                                 = std::array<uint8_t, 32>;
 
 	// A grant carries at most four frames within its bounded byte buffer.
 	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = QSIM_MAX_GRANT_FRAMES;
@@ -76,6 +84,7 @@ namespace platform {
 		LED,
 		CV_SENSOR,
 		ENTROPY,
+		ATTESTATION,
 		COUNT,
 	};
 
@@ -111,6 +120,9 @@ namespace platform {
 	// The category a command is charged to and serialized by on Core0. GLOBAL means none.
 	[[nodiscard]] Bucket request_bucket(uint8_t cmd);
 
+	// Parses an attestation_key setting: empty for an unprovisioned fleet, or 64 hexadecimal digits.
+	[[nodiscard]] std::optional<AttestationKey> parse_attestation_key(const std::string& text);
+
 	// Per-module lifecycle and RPC state owned by the platform.
 	struct Runtime {
 		bool                     present                  = false;
@@ -142,6 +154,9 @@ namespace platform {
 		bool                 last_left_clear  = false;
 		bool                 last_right_clear = false;
 		std::vector<uint8_t> last_rfid_uid;
+
+		// Truncated SHA-256 of the launched image. Empty when no application runs.
+		std::optional<std::array<uint8_t, RPC_ATTEST_FINGERPRINT_SIZE>> app_fingerprint;
 
 		// CMD_ENTROPY_GET calls so far; each selects its own deterministic stream.
 		uint64_t entropy_draws = 0;
@@ -187,6 +202,9 @@ namespace platform {
 
 		std::vector<Diagnostic> diagnostics_;
 
+		// Fleet attestation key; empty when the fleet is unprovisioned.
+		std::optional<AttestationKey> attestation_key_;
+
 		[[nodiscard]] rpc::Frame dispatch(module::ModuleId id, const rpc::Frame& request, uint64_t global_tick);
 
 		struct ChargeResult {
@@ -203,6 +221,12 @@ namespace platform {
 		[[nodiscard]] ChargeResult escalate(module::ModuleId id, Bucket bucket, int count, ModuleTime time);
 
 		void note_heartbeat(module::ModuleId id, uint64_t global_tick);
+
+		[[nodiscard]] int16_t attest(module::ModuleId id, const std::vector<uint8_t>& message,
+									 std::vector<uint8_t>& response) const;
+
+		[[nodiscard]] int16_t attest_verify(module::ModuleId id, const std::vector<uint8_t>& request,
+											std::vector<uint8_t>& response) const;
 
 		void publish(module::ModuleId id, uint32_t event, std::vector<uint8_t> payload);
 
@@ -234,6 +258,9 @@ namespace platform {
 		// so queueing delays cannot turn correctly spaced calls into a violation or a missed heartbeat.
 		[[nodiscard]] IngressAdmission account_ingress(module::ModuleId id, ModuleTime time = {},
 													   std::span<const uint8_t> frame = {});
+
+		// Measures the image a module launched, for attestation.
+		void application_launched(module::ModuleId id, const ImageDigest& image_digest);
 
 		// Returns the response to send, or nothing when the request was non-confirmable.
 		[[nodiscard]] std::optional<rpc::Frame> handle_request(module::ModuleId id, const rpc::Frame& request,

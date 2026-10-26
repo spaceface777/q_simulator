@@ -1,5 +1,7 @@
 #include "settings.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <functional>
 #include <map>
@@ -213,6 +215,12 @@ namespace settings {
 		// on, rather than Core 0 to its destination directly.
 		parse_optional_setting("network_log_extra_delay_ms", 2, [](int value) { return value >= 0 && value <= 10000; });
 		parse_optional_setting<std::string>("trace_path", "trace.ndjson", [](const std::string&) { return true; });
+		// The fleet attestation key as 64 hexadecimal digits. Empty leaves the fleet unprovisioned.
+		parse_optional_setting<std::string>("attestation_key", "", [](const std::string& value) {
+			return value.empty() || (value.size() == 64 && std::ranges::all_of(value, [](char character) {
+										 return std::isxdigit(static_cast<unsigned char>(character)) != 0;
+									 }));
+		});
 
 		// The calibration tunables. These are the figures docs/physical_calibration_2026-08-06.md
 		// marks as assumptions rather than measurements - a population prior and the provisional

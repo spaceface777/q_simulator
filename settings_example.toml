@@ -15,6 +15,11 @@ simulation_speed = 1.0
 # reproducing its seed.
 seed = 1
 
+# === Attestation ===
+# The 32-byte fleet key the platform uses for CMD_ATTEST and CMD_ATTEST_VERIFY, as 64 hexadecimal
+# digits. Leave it out to model an unprovisioned fleet, where both commands return -ENODATA.
+# attestation_key = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+
 # === Hardware event latency ===
 # Hardware events already cross the next 1 ms application handoff. These are added delays before
 # that handoff. RFID samples are deterministic for a run seed, rounded to whole ms, and clamped at 0.

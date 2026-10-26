@@ -66,6 +66,7 @@ namespace {
 			settings::set_setting("rfid_event_extra_delay_mean_ms", 35.0);
 			settings::set_setting("rfid_event_extra_delay_sd_ms", 5.0);
 			settings::set_setting("seed", 1);
+			settings::set_setting<std::string>("attestation_key", "");
 
 			settings::ModuleSettings first{};
 			first.active = true;
@@ -732,4 +733,118 @@ TEST_F(PlatformTest, ServesDeterministicEntropy) {
 	manager = std::make_unique<platform::Manager>(world_);
 	tick_   = 0;
 	EXPECT_EQ(call(CMD_ENTROPY_GET).payload, first.payload);
+}
+
+TEST_F(PlatformTest, AttestationNeedsAProvisionedKey) {
+	manager->application_launched(module::ModuleId{MODULE}, platform::ImageDigest{1});
+	EXPECT_EQ(call(CMD_ATTEST, {1, 2, 3}).status, platform::STATUS_NO_DATA);
+	EXPECT_EQ(call(CMD_ATTEST_VERIFY, std::vector<uint8_t>(sizeof(rpc_attest_proof_t))).status,
+			  platform::STATUS_NO_DATA);
+
+	EXPECT_FALSE(platform::parse_attestation_key(std::string(64, '0')).has_value());
+	EXPECT_FALSE(platform::parse_attestation_key(std::string(64, 'f')).has_value());
+	EXPECT_FALSE(platform::parse_attestation_key(std::string(63, '1')).has_value());
+	EXPECT_FALSE(platform::parse_attestation_key(std::string(63, '1') + "g").has_value());
+}
+
+namespace {
+
+	class AttestationTest : public PlatformTest {
+	protected:
+		void SetUp() override {
+			PlatformTest::SetUp();
+			settings::set_setting<std::string>("attestation_key",
+											   "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+			manager = std::make_unique<platform::Manager>(world_);
+		}
+
+		static platform::ImageDigest digest(uint8_t first) {
+			platform::ImageDigest value{};
+			for (std::size_t index = 0; index < value.size(); index++)
+				value[index] = static_cast<uint8_t>(first + index);
+			return value;
+		}
+
+		static rpc_attest_proof_t proof_of(const rpc::Frame& response) {
+			rpc_attest_proof_t proof{};
+			EXPECT_EQ(response.payload.size(), sizeof(proof));
+			if (response.payload.size() == sizeof(proof)) std::memcpy(&proof, response.payload.data(), sizeof(proof));
+			return proof;
+		}
+
+		static std::vector<uint8_t> packet(std::vector<uint8_t> message, const rpc_attest_proof_t& proof) {
+			const auto* bytes = reinterpret_cast<const uint8_t*>(&proof);
+			message.insert(message.end(), bytes, bytes + sizeof(proof));
+			return message;
+		}
+	};
+
+} // namespace
+
+TEST_F(AttestationTest, NeedsALaunchedApplication) {
+	EXPECT_EQ(call(CMD_ATTEST, {1}).status, platform::STATUS_TRY_AGAIN);
+}
+
+TEST_F(AttestationTest, ProofMatchesTheHmacKnownAnswer) {
+	manager->application_launched(module::ModuleId{MODULE}, digest(0xA0));
+	const rpc::Frame response = call(CMD_ATTEST, {'h', 'e', 'l', 'l', 'o'});
+	EXPECT_EQ(response.status, platform::STATUS_OK);
+	const rpc_attest_proof_t proof = proof_of(response);
+	EXPECT_EQ(proof.version, RPC_ATTEST_VERSION);
+	EXPECT_EQ(proof.module_id, MODULE);
+	for (std::size_t index = 0; index < RPC_ATTEST_FINGERPRINT_SIZE; index++)
+		EXPECT_EQ(proof.app_fingerprint[index], 0xA0 + index);
+	// HMAC-SHA-256(00..1f, "quercus.app-attestation" || 01 01 || a0..af || "hello"), first 16 bytes.
+	const std::vector<uint8_t> expected = {0x19, 0xb4, 0x61, 0x85, 0x48, 0x45, 0xab, 0x53,
+										   0x0d, 0xea, 0x2d, 0x36, 0x73, 0xb4, 0x78, 0x39};
+	EXPECT_EQ(std::vector<uint8_t>(proof.tag, proof.tag + RPC_ATTEST_TAG_SIZE), expected);
+}
+
+TEST_F(AttestationTest, VerifiesProofsAcrossModules) {
+	manager->application_launched(module::ModuleId{MODULE}, digest(1));
+	manager->application_launched(module::ModuleId{NEIGHBOUR}, digest(1));
+	manager->application_launched(module::ModuleId{TOWER_MODULE_ID}, digest(2));
+	const std::vector<uint8_t> message = {'n', 'o', 'n', 'c', 'e'};
+	const rpc_attest_proof_t   proof   = proof_of(call(CMD_ATTEST, message));
+
+	rpc::Frame response = call(CMD_ATTEST_VERIFY, packet(message, proof), NEIGHBOUR);
+	EXPECT_EQ(response.status, platform::STATUS_OK);
+	ASSERT_EQ(response.payload.size(), sizeof(rpc_attest_result_t));
+	rpc_attest_result_t result{};
+	std::memcpy(&result, response.payload.data(), sizeof(result));
+	EXPECT_EQ(result.module_id, MODULE);
+	EXPECT_EQ(result.same_app, 1);
+	EXPECT_EQ(std::vector<uint8_t>(result.app_fingerprint, result.app_fingerprint + RPC_ATTEST_FINGERPRINT_SIZE),
+			  std::vector<uint8_t>(proof.app_fingerprint, proof.app_fingerprint + RPC_ATTEST_FINGERPRINT_SIZE));
+
+	// A module running another image still authenticates the proof, but not as its own image.
+	response = call(CMD_ATTEST_VERIFY, packet(message, proof), TOWER_MODULE_ID);
+	EXPECT_EQ(response.status, platform::STATUS_OK);
+	std::memcpy(&result, response.payload.data(), sizeof(result));
+	EXPECT_EQ(result.same_app, 0);
+}
+
+TEST_F(AttestationTest, RejectsInvalidProofs) {
+	manager->application_launched(module::ModuleId{MODULE}, digest(1));
+	const std::vector<uint8_t> message = {1, 2, 3};
+	const rpc_attest_proof_t   proof   = proof_of(call(CMD_ATTEST, message));
+
+	EXPECT_EQ(call(CMD_ATTEST_VERIFY, packet({1, 2, 4}, proof)).status, platform::STATUS_BAD_MSG);
+	rpc_attest_proof_t forged = proof;
+	forged.module_id          = NEIGHBOUR;
+	EXPECT_EQ(call(CMD_ATTEST_VERIFY, packet(message, forged)).status, platform::STATUS_BAD_MSG);
+	forged         = proof;
+	forged.version = RPC_ATTEST_VERSION + 1;
+	EXPECT_EQ(call(CMD_ATTEST_VERIFY, packet(message, forged)).status, platform::STATUS_BAD_MSG);
+	forged           = proof;
+	forged.module_id = 0;
+	EXPECT_EQ(call(CMD_ATTEST_VERIFY, packet(message, forged)).status, platform::STATUS_BAD_MSG);
+	EXPECT_EQ(call(CMD_ATTEST_VERIFY, std::vector<uint8_t>(sizeof(rpc_attest_proof_t) - 1)).status,
+			  platform::STATUS_INVALID);
+}
+
+TEST_F(AttestationTest, LimitsTheMessageSize) {
+	manager->application_launched(module::ModuleId{MODULE}, digest(1));
+	EXPECT_EQ(call(CMD_ATTEST, std::vector<uint8_t>(RPC_ATTEST_MAX_MESSAGE)).status, platform::STATUS_OK);
+	EXPECT_EQ(call(CMD_ATTEST, std::vector<uint8_t>(RPC_ATTEST_MAX_MESSAGE + 1)).status, platform::STATUS_MSG_SIZE);
 }
