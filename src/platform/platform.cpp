@@ -152,34 +152,38 @@ namespace platform {
 			case CMD_LASER_LEFT_SET:
 			case CMD_LASER_RIGHT_DETECT:
 			case CMD_LASER_RIGHT_GET:
-			case CMD_LASER_RIGHT_SET:        return Bucket::LASER;
+			case CMD_LASER_RIGHT_SET:              return Bucket::LASER;
+			case CMD_BELT_BIG_GET_ENCODER_COUNT:
+			case CMD_BELT_BIG_GET_ENCODER_FREQ:
 			case CMD_BELT_BIG_GET_SPEED:
 			case CMD_BELT_BIG_SET_SPEED:
+			case CMD_BELT_SMALL_GET_ENCODER_COUNT:
+			case CMD_BELT_SMALL_GET_ENCODER_FREQ:
 			case CMD_BELT_SMALL_GET_SPEED:
-			case CMD_BELT_SMALL_SET_SPEED:   return Bucket::BELT;
+			case CMD_BELT_SMALL_SET_SPEED:         return Bucket::BELT;
 			case CMD_SERVO_ANGLE_GET:
-			case CMD_SERVO_ANGLE_SET:        return Bucket::SERVO;
+			case CMD_SERVO_ANGLE_SET:              return Bucket::SERVO;
 			case CMD_LED_GET_COLOR:
-			case CMD_LED_SET_COLOR:          return Bucket::LED;
+			case CMD_LED_SET_COLOR:                return Bucket::LED;
 			case CMD_RFID_CHECK_TAG:
 			case CMD_RFID_GET_UID:
 			case CMD_RFID_READ_DATA_BLOCK:
-			case CMD_RFID_WRITE_DATA_BLOCK:  return Bucket::RFID;
+			case CMD_RFID_WRITE_DATA_BLOCK:        return Bucket::RFID;
 			case CMD_SEND_PACKET:
-			case CMD_BROADCAST_PACKET:       return Bucket::NETWORK;
+			case CMD_BROADCAST_PACKET:             return Bucket::NETWORK;
 			case CMD_GET_OWN_ID:
 			case CMD_GET_NETWORK_MAP:
-			case CMD_GET_MODULE_LIST:        return Bucket::PLATFORM_MANAGEMENT;
-			case CMD_SET_FLIGHT_SCHEDULE:    return Bucket::SCHEDULE;
+			case CMD_GET_MODULE_LIST:              return Bucket::PLATFORM_MANAGEMENT;
+			case CMD_SET_FLIGHT_SCHEDULE:          return Bucket::SCHEDULE;
 			case CMD_SUBSCRIBE_TO_EVENT:
-			case CMD_UNSUBSCRIBE_FROM_EVENT: return Bucket::EVENTS;
-			case CMD_HEARTBEAT:              return Bucket::HEARTBEAT;
+			case CMD_UNSUBSCRIBE_FROM_EVENT:       return Bucket::EVENTS;
+			case CMD_HEARTBEAT:                    return Bucket::HEARTBEAT;
 			case CMD_LOG:
-			case CMD_PANIC_REPORT:           return Bucket::LOGGING;
+			case CMD_PANIC_REPORT:                 return Bucket::LOGGING;
 			case CMD_CV_SENSOR_GET_CURRENT:
 			case CMD_CV_SENSOR_GET_POWER:
-			case CMD_CV_SENSOR_GET_VOLTAGE:  return Bucket::CV_SENSOR;
-			default:                         return Bucket::GLOBAL;
+			case CMD_CV_SENSOR_GET_VOLTAGE:        return Bucket::CV_SENSOR;
+			default:                               return Bucket::GLOBAL;
 			}
 		}
 
