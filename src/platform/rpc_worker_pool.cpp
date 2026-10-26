@@ -4,68 +4,53 @@
 
 namespace platform {
 
-	bool RpcWorkerPool::bucket_running(Bucket bucket) const {
-		return std::ranges::any_of(lanes_, [bucket](const Lane& lane) {
-			return lane.running && lane.work.has_value() && lane.work->bucket == bucket;
-		});
+	bool RpcWorkerPool::bucket_busy(Bucket bucket) const {
+		// Unknown commands have no category, so any number of them can run together.
+		if (bucket == Bucket::GLOBAL) return false;
+		return std::ranges::any_of(
+			lanes_, [bucket](const std::optional<Work>& lane) { return lane && lane->bucket == bucket; });
 	}
 
-	void RpcWorkerPool::start_waiting(std::vector<RequestId>& started) {
-		for (Lane& lane : lanes_) {
-			if (!lane.work.has_value() || lane.running || bucket_running(lane.work->bucket)) {
-				continue;
-			}
-			lane.running = true;
-			started.push_back(lane.work->id);
+	void RpcWorkerPool::dispatch(std::vector<RequestId>& started) {
+		for (std::optional<Work>& lane : lanes_) {
+			if (lane.has_value()) continue;
+			// Skipped requests keep their queue order.
+			const auto eligible =
+				std::ranges::find_if(queued_, [this](const Work& work) { return !bucket_busy(work.bucket); });
+			if (eligible == queued_.end()) return;
+			lane = *eligible;
+			queued_.erase(eligible);
+			started.push_back(lane->id);
 		}
-	}
-
-	void RpcWorkerPool::fill_free_lanes(std::vector<RequestId>& started) {
-		for (Lane& lane : lanes_) {
-			if (lane.work.has_value() || queued_.empty()) {
-				continue;
-			}
-			lane.work = queued_.front();
-			queued_.pop_front();
-		}
-		start_waiting(started);
 	}
 
 	std::optional<RpcWorkerPool::RequestId> RpcWorkerPool::enqueue(RequestId id, Bucket bucket) {
 		std::vector<RequestId> started;
 		queued_.push_back(Work{id, bucket});
-		fill_free_lanes(started);
+		dispatch(started);
 		return started.empty() ? std::nullopt : std::optional<RequestId>{started.front()};
 	}
 
 	std::vector<RpcWorkerPool::RequestId> RpcWorkerPool::complete(RequestId id) {
-		for (Lane& lane : lanes_) {
-			if (lane.running && lane.work.has_value() && lane.work->id == id) {
-				lane = Lane{};
+		for (std::optional<Work>& lane : lanes_) {
+			if (lane && lane->id == id) {
+				lane.reset();
 				break;
 			}
 		}
 
 		std::vector<RequestId> started;
-		// Existing lane owners reached the category mutex before requests still outside the pool.
-		start_waiting(started);
-		fill_free_lanes(started);
+		dispatch(started);
 		return started;
 	}
 
-	bool RpcWorkerPool::is_occupied(RequestId id) const {
-		return std::ranges::any_of(lanes_,
-								   [id](const Lane& lane) { return lane.work.has_value() && lane.work->id == id; });
-	}
-
 	bool RpcWorkerPool::is_running(RequestId id) const {
-		return std::ranges::any_of(
-			lanes_, [id](const Lane& lane) { return lane.running && lane.work.has_value() && lane.work->id == id; });
+		return std::ranges::any_of(lanes_, [id](const std::optional<Work>& lane) { return lane && lane->id == id; });
 	}
 
 	std::size_t RpcWorkerPool::occupied() const {
 		return static_cast<std::size_t>(
-			std::ranges::count_if(lanes_, [](const Lane& lane) { return lane.work.has_value(); }));
+			std::ranges::count_if(lanes_, [](const std::optional<Work>& lane) { return lane.has_value(); }));
 	}
 
 } // namespace platform

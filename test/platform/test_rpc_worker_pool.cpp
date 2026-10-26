@@ -15,26 +15,55 @@ TEST(RpcWorkerPoolTest, DifferentCategoriesStartAndResolveTogether) {
 	EXPECT_TRUE(workers.is_running(2));
 
 	EXPECT_TRUE(workers.complete(2).empty());
-	EXPECT_FALSE(workers.is_occupied(2));
+	EXPECT_FALSE(workers.is_running(2));
 	EXPECT_TRUE(workers.is_running(1));
 	EXPECT_TRUE(workers.complete(1).empty());
 }
 
-TEST(RpcWorkerPoolTest, ThreeOccupiedLanesBlockAFourthUntilOneCompletes) {
+TEST(RpcWorkerPoolTest, ABusyCategoryDoesNotHoldAWorker) {
 	platform::RpcWorkerPool workers;
 
 	EXPECT_TRUE(workers.enqueue(1, platform::Bucket::RFID).has_value());
 	EXPECT_FALSE(workers.enqueue(2, platform::Bucket::RFID).has_value());
 	EXPECT_FALSE(workers.enqueue(3, platform::Bucket::RFID).has_value());
-	EXPECT_FALSE(workers.enqueue(4, platform::Bucket::CV_SENSOR).has_value());
+	// Requests waiting for the RFID category stay queued, so other categories still get workers.
+	EXPECT_EQ(workers.enqueue(4, platform::Bucket::CV_SENSOR), 4u);
+	EXPECT_EQ(workers.enqueue(5, platform::Bucket::LED), 5u);
 	EXPECT_EQ(workers.occupied(), platform::RPC_HANDLER_LANES);
-	EXPECT_EQ(workers.queued(), 1u);
-	EXPECT_FALSE(workers.is_occupied(4));
+	EXPECT_FALSE(workers.enqueue(6, platform::Bucket::SERVO).has_value());
+	EXPECT_EQ(workers.queued(), 3u);
 
-	const auto started = workers.complete(1);
-	EXPECT_EQ(started, std::vector<uint64_t>({2, 4}));
-	EXPECT_TRUE(workers.is_running(4));
+	EXPECT_EQ(workers.complete(1), std::vector<uint64_t>({2}));
+	// Request 3 still waits for the RFID category, so the idle worker skips it.
+	EXPECT_EQ(workers.complete(4), std::vector<uint64_t>({6}));
+	EXPECT_EQ(workers.queued(), 1u);
+	EXPECT_EQ(workers.complete(2), std::vector<uint64_t>({3}));
 	EXPECT_EQ(workers.queued(), 0u);
+}
+
+TEST(RpcWorkerPoolTest, SkippedRequestsKeepTheirQueueOrder) {
+	platform::RpcWorkerPool workers;
+
+	EXPECT_TRUE(workers.enqueue(1, platform::Bucket::RFID).has_value());
+	EXPECT_TRUE(workers.enqueue(2, platform::Bucket::CV_SENSOR).has_value());
+	EXPECT_TRUE(workers.enqueue(3, platform::Bucket::LED).has_value());
+	EXPECT_FALSE(workers.enqueue(4, platform::Bucket::RFID).has_value());
+	EXPECT_FALSE(workers.enqueue(5, platform::Bucket::SERVO).has_value());
+	EXPECT_FALSE(workers.enqueue(6, platform::Bucket::BELT).has_value());
+
+	EXPECT_EQ(workers.complete(2), std::vector<uint64_t>({5}));
+	EXPECT_EQ(workers.complete(1), std::vector<uint64_t>({4}));
+	EXPECT_EQ(workers.complete(3), std::vector<uint64_t>({6}));
+}
+
+TEST(RpcWorkerPoolTest, CommandsWithoutACategoryRunTogether) {
+	platform::RpcWorkerPool workers;
+
+	EXPECT_EQ(workers.enqueue(1, platform::Bucket::GLOBAL), 1u);
+	EXPECT_EQ(workers.enqueue(2, platform::Bucket::GLOBAL), 2u);
+	EXPECT_EQ(workers.enqueue(3, platform::Bucket::GLOBAL), 3u);
+	EXPECT_FALSE(workers.enqueue(4, platform::Bucket::GLOBAL).has_value());
+	EXPECT_EQ(workers.complete(2), std::vector<uint64_t>({4}));
 }
 
 TEST(RpcWorkerPoolTest, RequestsInOneCategoryRemainSerialized) {

@@ -104,7 +104,7 @@ namespace platform {
 	// How many requests per simulated second the bucket allows.
 	[[nodiscard]] int capacity_of(Bucket bucket);
 
-	// The per-category mutex a command uses on Core0.
+	// The category a command is charged to and serialized by on Core0. GLOBAL means none.
 	[[nodiscard]] Bucket request_bucket(uint8_t cmd);
 
 	// Per-module lifecycle and RPC state owned by the platform.
