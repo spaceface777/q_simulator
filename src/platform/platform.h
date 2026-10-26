@@ -37,6 +37,7 @@ namespace platform {
 	inline constexpr int16_t STATUS_OK        = 0;
 	inline constexpr int16_t STATUS_PERM      = -1;   // -EPERM
 	inline constexpr int16_t STATUS_NO_ENTRY  = -2;   // -ENOENT
+	inline constexpr int16_t STATUS_IO        = -5;   // -EIO
 	inline constexpr int16_t STATUS_TRY_AGAIN = -11;  // -EAGAIN
 	inline constexpr int16_t STATUS_INVALID   = -22;  // -EINVAL
 	inline constexpr int16_t STATUS_RANGE     = -34;  // -ERANGE

@@ -357,7 +357,7 @@ TEST_F(OverloadTest, AFullRfidReadCostsThreeFifthsOfTheRfidBucket) {
 	EXPECT_EQ(platform::request_cost(CMD_RFID_READ_DATA_FULL), 3);
 	EXPECT_EQ(platform::request_cost(CMD_RFID_READ_DATA_BLOCK), 1);
 
-	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 1), platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 1), platform::STATUS_IO);
 	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 1u);
 	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::RFID), 3u);
 
@@ -366,9 +366,9 @@ TEST_F(OverloadTest, AFullRfidReadCostsThreeFifthsOfTheRfidBucket) {
 
 	// A full read leaves room for two page reads in its window.
 	const uint64_t window = 1 + platform::RATE_LIMIT_WINDOW_TICKS;
-	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, window), platform::STATUS_NO_ENTRY);
-	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, window, {0}), platform::STATUS_NO_ENTRY);
-	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, window, {0}), platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, window), platform::STATUS_IO);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, window, {0}), platform::STATUS_IO);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, window, {0}), platform::STATUS_IO);
 	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, window, {0}), platform::STATUS_TRY_AGAIN);
 }
 
