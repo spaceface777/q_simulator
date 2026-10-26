@@ -244,15 +244,15 @@ namespace platform {
 		case Bucket::SCHEDULE:            return 2;
 		case Bucket::NETWORK:             return 5;
 		case Bucket::LOGGING:             return 5;
-		case Bucket::RFID:                return 10;
+		case Bucket::RFID:                return 5;
+		case Bucket::PLATFORM_MANAGEMENT: return 5;
 		case Bucket::BELT:                return 10;
 		case Bucket::SERVO:               return 10;
-		case Bucket::PLATFORM_MANAGEMENT: return 25;
+		case Bucket::CV_SENSOR:           return 10;
 		case Bucket::HEARTBEAT:           return 25;
 		case Bucket::EVENTS:              return 25;
 		case Bucket::LASER:               return 50;
 		case Bucket::LED:                 return 50;
-		case Bucket::CV_SENSOR:           return 10;
 		case Bucket::COUNT:               break;
 		}
 		return 0;
