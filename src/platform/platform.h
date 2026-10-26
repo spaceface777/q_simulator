@@ -40,7 +40,6 @@ namespace platform {
 	inline constexpr int16_t STATUS_TRY_AGAIN = -11;  // -EAGAIN
 	inline constexpr int16_t STATUS_INVALID   = -22;  // -EINVAL
 	inline constexpr int16_t STATUS_RANGE     = -34;  // -ERANGE
-	inline constexpr int16_t STATUS_NO_DATA   = -61;  // -ENODATA
 	inline constexpr int16_t STATUS_BAD_MSG   = -77;  // -EBADMSG
 	inline constexpr int16_t STATUS_NO_SYS    = -88;  // -ENOSYS
 	inline constexpr int16_t STATUS_MSG_SIZE  = -122; // -EMSGSIZE
@@ -48,10 +47,15 @@ namespace platform {
 	// CMD_ENTROPY_GET always returns this many bytes.
 	inline constexpr std::size_t ENTROPY_RESPONSE_SIZE = 1000;
 
-	// The fleet attestation key, and the SHA-256 digest that measures a launched image.
-	inline constexpr std::size_t ATTESTATION_KEY_SIZE = 32;
-	using AttestationKey                              = std::array<uint8_t, ATTESTATION_KEY_SIZE>;
-	using ImageDigest                                 = std::array<uint8_t, 32>;
+	// The SHA-256 digest that measures a launched image.
+	using ImageDigest = std::array<uint8_t, 32>;
+
+	// Every simulated module shares this well-known test key (the bytes 0x00 to 0x1f), so proofs made in
+	// the simulator are reproducible and authenticate nothing on a real fleet.
+	inline constexpr std::array<uint8_t, 32> ATTESTATION_TEST_KEY = {
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+		0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+	};
 
 	// A grant carries at most four frames within its bounded byte buffer.
 	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = QSIM_MAX_GRANT_FRAMES;
@@ -122,9 +126,6 @@ namespace platform {
 
 	// How many slots of its bucket one request takes.
 	[[nodiscard]] int request_cost(uint8_t cmd);
-
-	// Parses an attestation_key setting: empty for an unprovisioned fleet, or 64 hexadecimal digits.
-	[[nodiscard]] std::optional<AttestationKey> parse_attestation_key(const std::string& text);
 
 	// Per-module lifecycle and RPC state owned by the platform.
 	struct Runtime {
@@ -204,9 +205,6 @@ namespace platform {
 		module::Changes*        changes_ = nullptr; // Borrowed, like world_; must outlive this manager.
 
 		std::vector<Diagnostic> diagnostics_;
-
-		// Fleet attestation key; empty when the fleet is unprovisioned.
-		std::optional<AttestationKey> attestation_key_;
 
 		[[nodiscard]] rpc::Frame dispatch(module::ModuleId id, const rpc::Frame& request, uint64_t global_tick);
 

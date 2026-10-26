@@ -227,11 +227,12 @@ namespace platform {
 		constexpr std::size_t      ATTESTATION_HEADER = offsetof(rpc_attest_proof_t, tag);
 		constexpr std::size_t      SHA256_BLOCK_SIZE  = 64;
 
-		std::array<uint8_t, RPC_ATTEST_TAG_SIZE>
-		attestation_tag(const AttestationKey& key, const rpc_attest_proof_t& proof, std::span<const uint8_t> message) {
-			const auto key_pad = [&key](uint8_t pad) {
+		std::array<uint8_t, RPC_ATTEST_TAG_SIZE> attestation_tag(const rpc_attest_proof_t& proof,
+																 std::span<const uint8_t>  message) {
+			const auto key_pad = [](uint8_t pad) {
 				std::vector<uint8_t> block(SHA256_BLOCK_SIZE, pad);
-				for (std::size_t index = 0; index < key.size(); index++) block[index] ^= key[index];
+				for (std::size_t index = 0; index < ATTESTATION_TEST_KEY.size(); index++)
+					block[index] ^= ATTESTATION_TEST_KEY[index];
 				return block;
 			};
 
@@ -319,28 +320,6 @@ namespace platform {
 		return 1;
 	}
 
-	std::optional<AttestationKey> parse_attestation_key(const std::string& text) {
-		if (text.size() != 2 * ATTESTATION_KEY_SIZE) return {};
-		const auto digit = [](char character) -> int {
-			if (character >= '0' && character <= '9') return character - '0';
-			if (character >= 'a' && character <= 'f') return character - 'a' + 10;
-			if (character >= 'A' && character <= 'F') return character - 'A' + 10;
-			return -1;
-		};
-		AttestationKey key{};
-		for (std::size_t index = 0; index < key.size(); index++) {
-			const int high = digit(text[2 * index]);
-			const int low  = digit(text[(2 * index) + 1]);
-			if (high < 0 || low < 0) return {};
-			key[index] = static_cast<uint8_t>((high << 4) | low);
-		}
-		// The platform treats erased (all 0x00 or all 0xFF) keys as unprovisioned.
-		if (std::ranges::all_of(key, [](uint8_t byte) { return byte == 0x00; }) ||
-			std::ranges::all_of(key, [](uint8_t byte) { return byte == 0xFF; }))
-			return {};
-		return key;
-	}
-
 	Runtime* Manager::find(module::ModuleId id) {
 		const auto found = runtimes_.find(id.raw());
 		return found == runtimes_.end() ? nullptr : &found->second;
@@ -358,8 +337,7 @@ namespace platform {
 		  laser_event_extra_delay_ms_(static_cast<uint64_t>(settings::get_setting<int>("laser_event_extra_delay_ms"))),
 		  rfid_event_delay_mean_ms_(settings::get_setting<double>("rfid_event_extra_delay_mean_ms")),
 		  rfid_event_delay_sd_ms_(settings::get_setting<double>("rfid_event_extra_delay_sd_ms")), world_(&world),
-		  changes_(changes),
-		  attestation_key_(parse_attestation_key(settings::get_setting<std::string>("attestation_key"))) {
+		  changes_(changes) {
 		for (const module::ModuleId id : settings::get_configured_modules()) {
 			known_modules_.insert(id.raw());
 		}
@@ -1244,7 +1222,6 @@ namespace platform {
 							std::vector<uint8_t>& response) const {
 		const Runtime& runtime = *find(id);
 		if (message.size() > RPC_ATTEST_MAX_MESSAGE) return STATUS_MSG_SIZE;
-		if (!attestation_key_) return STATUS_NO_DATA;
 		// Simulated modules have no debugger that could taint an application (-EACCES).
 		if (!runtime.app_fingerprint) return STATUS_TRY_AGAIN;
 
@@ -1252,7 +1229,7 @@ namespace platform {
 		proof.version   = RPC_ATTEST_VERSION;
 		proof.module_id = id.raw();
 		std::ranges::copy(*runtime.app_fingerprint, proof.app_fingerprint);
-		std::ranges::copy(attestation_tag(*attestation_key_, proof, message), proof.tag);
+		std::ranges::copy(attestation_tag(proof, message), proof.tag);
 		response = struct_payload(proof);
 		return STATUS_OK;
 	}
@@ -1266,9 +1243,8 @@ namespace platform {
 		std::memcpy(&proof, request.data() + message_length, sizeof(proof));
 
 		if (message_length > RPC_ATTEST_MAX_MESSAGE) return STATUS_MSG_SIZE;
-		if (!attestation_key_) return STATUS_NO_DATA;
 		if (proof.version != RPC_ATTEST_VERSION || proof.module_id == 0) return STATUS_BAD_MSG;
-		const auto tag = attestation_tag(*attestation_key_, proof, std::span(request.data(), message_length));
+		const auto tag = attestation_tag(proof, std::span(request.data(), message_length));
 		if (!tags_equal(tag.data(), proof.tag)) return STATUS_BAD_MSG;
 
 		const Runtime&      runtime = *find(id);

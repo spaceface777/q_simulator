@@ -66,7 +66,6 @@ namespace {
 			settings::set_setting("rfid_event_extra_delay_mean_ms", 35.0);
 			settings::set_setting("rfid_event_extra_delay_sd_ms", 5.0);
 			settings::set_setting("seed", 1);
-			settings::set_setting<std::string>("attestation_key", "");
 
 			settings::ModuleSettings first{};
 			first.active = true;
@@ -754,29 +753,10 @@ TEST_F(PlatformTest, ServesDeterministicEntropy) {
 	EXPECT_EQ(call(CMD_ENTROPY_GET).payload, first.payload);
 }
 
-TEST_F(PlatformTest, AttestationNeedsAProvisionedKey) {
-	manager->application_launched(module::ModuleId{MODULE}, platform::ImageDigest{1});
-	EXPECT_EQ(call(CMD_ATTEST, {1, 2, 3}).status, platform::STATUS_NO_DATA);
-	EXPECT_EQ(call(CMD_ATTEST_VERIFY, std::vector<uint8_t>(sizeof(rpc_attest_proof_t))).status,
-			  platform::STATUS_NO_DATA);
-
-	EXPECT_FALSE(platform::parse_attestation_key(std::string(64, '0')).has_value());
-	EXPECT_FALSE(platform::parse_attestation_key(std::string(64, 'f')).has_value());
-	EXPECT_FALSE(platform::parse_attestation_key(std::string(63, '1')).has_value());
-	EXPECT_FALSE(platform::parse_attestation_key(std::string(63, '1') + "g").has_value());
-}
-
 namespace {
 
 	class AttestationTest : public PlatformTest {
 	protected:
-		void SetUp() override {
-			PlatformTest::SetUp();
-			settings::set_setting<std::string>("attestation_key",
-											   "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-			manager = std::make_unique<platform::Manager>(world_);
-		}
-
 		static platform::ImageDigest digest(uint8_t first) {
 			platform::ImageDigest value{};
 			for (std::size_t index = 0; index < value.size(); index++)
@@ -813,7 +793,8 @@ TEST_F(AttestationTest, ProofMatchesTheHmacKnownAnswer) {
 	EXPECT_EQ(proof.module_id, MODULE);
 	for (std::size_t index = 0; index < RPC_ATTEST_FINGERPRINT_SIZE; index++)
 		EXPECT_EQ(proof.app_fingerprint[index], 0xA0 + index);
-	// HMAC-SHA-256(00..1f, "quercus.app-attestation" || 01 01 || a0..af || "hello"), first 16 bytes.
+	// HMAC-SHA-256(test key 00..1f, "quercus.app-attestation" || 01 01 || a0..af || "hello"), first 16
+	// bytes.
 	const std::vector<uint8_t> expected = {0x19, 0xb4, 0x61, 0x85, 0x48, 0x45, 0xab, 0x53,
 										   0x0d, 0xea, 0x2d, 0x36, 0x73, 0xb4, 0x78, 0x39};
 	EXPECT_EQ(std::vector<uint8_t>(proof.tag, proof.tag + RPC_ATTEST_TAG_SIZE), expected);

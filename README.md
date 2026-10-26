@@ -126,6 +126,9 @@ Repeated `getenv` calls return stable values without allocating. Traces record t
 The router smoke scenario uses this input with `layouts/physical_layout.toml`:
 all conveyor modules run the router, and module 255 runs `atc_fixed.dll`.
 
+Every simulated module has the same public attestation test key: the bytes `0x00` to `0x1f`.
+`CMD_ATTEST` measures an application by the SHA-256 of its `.dll` file.
+
 ## Tests
 
 Portable tests use a scripted shared image to exercise the real loader and runtime ABI.
