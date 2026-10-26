@@ -183,6 +183,7 @@ namespace platform {
 			case CMD_CV_SENSOR_GET_CURRENT:
 			case CMD_CV_SENSOR_GET_POWER:
 			case CMD_CV_SENSOR_GET_VOLTAGE:        return Bucket::CV_SENSOR;
+			case CMD_ENTROPY_GET:                  return Bucket::ENTROPY;
 			default:                               return Bucket::GLOBAL;
 			}
 		}
@@ -232,6 +233,7 @@ namespace platform {
 		case Bucket::LASER:               return "laser";
 		case Bucket::LED:                 return "led";
 		case Bucket::CV_SENSOR:           return "cv_sensor";
+		case Bucket::ENTROPY:             return "entropy";
 		case Bucket::COUNT:               break;
 		}
 		return "global";
@@ -242,6 +244,7 @@ namespace platform {
 		switch (bucket) {
 		case Bucket::GLOBAL:              return 100;
 		case Bucket::SCHEDULE:            return 2;
+		case Bucket::ENTROPY:             return 2;
 		case Bucket::NETWORK:             return 5;
 		case Bucket::LOGGING:             return 5;
 		case Bucket::RFID:                return 5;
@@ -1102,6 +1105,24 @@ namespace platform {
 				}
 			}
 			break;
+
+		case CMD_ENTROPY_GET: {
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			// Core0 serves CSPRNG output. The simulator draws a deterministic stream per module and call.
+			Runtime&         runtime = *find(id);
+			seed::SplitMix64 stream(seed::derive(master_seed_, "entropy/" + std::to_string(id.raw()) + "/" +
+																   std::to_string(runtime.entropy_draws++)));
+			response.payload.resize(ENTROPY_RESPONSE_SIZE);
+			for (std::size_t offset = 0; offset < response.payload.size(); offset += sizeof(uint64_t)) {
+				const uint64_t value = stream.next();
+				for (std::size_t byte = 0; byte < sizeof(uint64_t) && offset + byte < response.payload.size(); byte++)
+					response.payload[offset + byte] = static_cast<uint8_t>(value >> (8 * byte));
+			}
+			break;
+		}
 
 		case CMD_HEARTBEAT:
 			// Liveness was recorded at ingress, so a queued heartbeat cannot refresh it later.

@@ -42,6 +42,9 @@ namespace platform {
 	inline constexpr int16_t STATUS_RANGE     = -34; // -ERANGE
 	inline constexpr int16_t STATUS_NO_SYS    = -88; // -ENOSYS
 
+	// CMD_ENTROPY_GET always returns this many bytes.
+	inline constexpr std::size_t ENTROPY_RESPONSE_SIZE = 1000;
+
 	// A grant carries at most four frames within its bounded byte buffer.
 	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = QSIM_MAX_GRANT_FRAMES;
 
@@ -72,6 +75,7 @@ namespace platform {
 		LASER,
 		LED,
 		CV_SENSOR,
+		ENTROPY,
 		COUNT,
 	};
 
@@ -138,6 +142,9 @@ namespace platform {
 		bool                 last_left_clear  = false;
 		bool                 last_right_clear = false;
 		std::vector<uint8_t> last_rfid_uid;
+
+		// CMD_ENTROPY_GET calls so far; each selects its own deterministic stream.
+		uint64_t entropy_draws = 0;
 
 		std::deque<rpc::Frame> outbound;
 	};
