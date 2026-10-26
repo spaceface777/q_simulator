@@ -246,9 +246,10 @@ TEST_F(PlatformTest, ReadsAndWritesRfidOnlyWhileATagIsPresent) {
 	EXPECT_TRUE(call(CMD_RFID_GET_UID).payload.empty());
 
 	// A data block still refuses, because there is no value it could honestly return.
-	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, {0}).status, platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, {0}).status, platform::STATUS_IO);
 	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, {32}).status, platform::STATUS_RANGE);
 	EXPECT_EQ(call(CMD_RFID_WRITE_DATA_BLOCK, {32, 1, 2, 3, 4}).status, platform::STATUS_RANGE);
+	EXPECT_EQ(call(CMD_RFID_WRITE_DATA_BLOCK, {0, 1, 2, 3, 4}).status, platform::STATUS_IO);
 
 	RfidPayload data{};
 	data[0]  = {1, 2, 3, 4};
@@ -271,7 +272,7 @@ TEST_F(PlatformTest, ReadsAndWritesRfidOnlyWhileATagIsPresent) {
 }
 
 TEST_F(PlatformTest, ReadsEveryRfidPageAtOnce) {
-	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL).status, platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL).status, platform::STATUS_IO);
 	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, {0}).status, platform::STATUS_INVALID);
 
 	RfidPayload data{};

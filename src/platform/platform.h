@@ -35,14 +35,15 @@ namespace platform {
 
 	// Negated errno values returned to applications.
 	inline constexpr int16_t STATUS_OK        = 0;
-	inline constexpr int16_t STATUS_PERM      = -1;  // -EPERM
-	inline constexpr int16_t STATUS_NO_ENTRY  = -2;  // -ENOENT
-	inline constexpr int16_t STATUS_TRY_AGAIN = -11; // -EAGAIN
-	inline constexpr int16_t STATUS_INVALID   = -22; // -EINVAL
-	inline constexpr int16_t STATUS_RANGE     = -34; // -ERANGE
-	inline constexpr int16_t STATUS_BAD_MSG   = -77;
-	inline constexpr int16_t STATUS_MSG_SIZE  = -122;
-	inline constexpr int16_t STATUS_NO_SYS    = -38; // -ENOSYS
+	inline constexpr int16_t STATUS_PERM      = -1;   // -EPERM
+	inline constexpr int16_t STATUS_NO_ENTRY  = -2;   // -ENOENT
+	inline constexpr int16_t STATUS_IO        = -5;   // -EIO
+	inline constexpr int16_t STATUS_TRY_AGAIN = -11;  // -EAGAIN
+	inline constexpr int16_t STATUS_INVALID   = -22;  // -EINVAL
+	inline constexpr int16_t STATUS_RANGE     = -34;  // -ERANGE
+	inline constexpr int16_t STATUS_BAD_MSG   = -77;  // -EBADMSG
+	inline constexpr int16_t STATUS_NO_SYS    = -38;  // -ENOSYS
+	inline constexpr int16_t STATUS_MSG_SIZE  = -122; // -EMSGSIZE
 
 	// CMD_ENTROPY_GET always returns this many bytes.
 	inline constexpr std::size_t ENTROPY_RESPONSE_SIZE = 1000;

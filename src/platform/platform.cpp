@@ -1168,7 +1168,7 @@ namespace platform {
 				break;
 			}
 			if (!module->is_rfid_active()) {
-				response.status = STATUS_NO_ENTRY;
+				response.status = STATUS_IO;
 				break;
 			}
 			const RfidPage value = module->rfid_page(page);
@@ -1181,7 +1181,7 @@ namespace platform {
 				break;
 			}
 			if (!module->is_rfid_active()) {
-				response.status = STATUS_NO_ENTRY;
+				response.status = STATUS_IO;
 				break;
 			}
 			response.payload.reserve(RFID_PAYLOAD_PAGE_COUNT * RFID_PAGE_SIZE_BYTES);
@@ -1200,7 +1200,7 @@ namespace platform {
 				break;
 			}
 			if (!module->is_rfid_active()) {
-				response.status = STATUS_NO_ENTRY;
+				response.status = STATUS_IO;
 				break;
 			}
 			RfidPage value{};
