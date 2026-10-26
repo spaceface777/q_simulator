@@ -201,6 +201,13 @@ TEST_F(OverloadTest, PauseStopsWorldMotionExtendsAndRestoresBelts) {
 	EXPECT_NE(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
 }
 
+TEST_F(OverloadTest, EncoderReadsShareTheBeltBucket) {
+	for (const uint8_t cmd : {CMD_BELT_BIG_GET_ENCODER_COUNT, CMD_BELT_BIG_GET_ENCODER_FREQ,
+							  CMD_BELT_SMALL_GET_ENCODER_COUNT, CMD_BELT_SMALL_GET_ENCODER_FREQ}) {
+		EXPECT_EQ(platform::request_bucket(cmd), platform::Bucket::BELT) << static_cast<unsigned>(cmd);
+	}
+}
+
 TEST_F(OverloadTest, TheGlobalBucketCatchesTrafficSpreadAcrossCategories) {
 	// The global bucket catches what rotating commands would let past each individual limit.
 	const uint8_t commands[] = {CMD_LASER_LEFT_GET, CMD_SERVO_ANGLE_GET, CMD_LED_GET_COLOR, CMD_RFID_CHECK_TAG,
