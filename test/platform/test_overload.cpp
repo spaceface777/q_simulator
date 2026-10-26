@@ -214,6 +214,7 @@ TEST_F(OverloadTest, BucketCapacitiesMatchThePlatform) {
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::CV_SENSOR), 10);
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::HEARTBEAT), 25);
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::EVENTS), 25);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::ATTESTATION), 25);
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::LASER), 50);
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::LED), 50);
 }

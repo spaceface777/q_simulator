@@ -11,7 +11,7 @@ namespace firmware {
 	} // namespace
 
 	InProcessBackend::InProcessBackend(std::span<const ImageBinding> bindings, uint64_t seed) {
-		for (const auto& [module, api] : bindings) {
+		for (const auto& [module, api, digest] : bindings) {
 			auto& instance = instances_[module.raw()];
 			if (instance.api || !api || api->abi_version != QSIM_IMAGE_ABI_VERSION || !api->bind || !api->run)
 				throw failure(module, "invalid image binding");

@@ -2,6 +2,7 @@
 """Assemble a world from a simulator object and one firmware object per active module."""
 
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -63,17 +64,24 @@ def main() -> None:
         with tempfile.TemporaryDirectory(dir=output.parent) as directory:
             scratch = Path(directory)
             (scratch / "layout.toml").write_bytes(contents)
-            subprocess.run([
-                *([shell] if os.name != "nt" else []), objcopy, "-I", "binary",
-                "-O", {"aarch64": "elf64-littleaarch64", "x86_64": "elf64-x86-64"}[arch],
-                "-B", {"aarch64": "aarch64", "x86_64": "i386:x86-64"}[arch],
-                "--rename-section", ".data=.rodata,alloc,load,readonly,data,contents",
-                "layout.toml", "layout.o",
-            ], cwd=scratch, check=True)
+            digests = {}
+            for image in firmware:
+                if image not in digests:
+                    with image.open("rb") as stream:
+                        digests[image] = hashlib.file_digest(stream, "sha256").digest()
+            (scratch / "firmware_digests").write_bytes(b"".join(digests[image] for image in firmware))
+            for name in ("layout.toml", "firmware_digests"):
+                subprocess.run([
+                    *([shell] if os.name != "nt" else []), objcopy, "-I", "binary",
+                    "-O", {"aarch64": "elf64-littleaarch64", "x86_64": "elf64-x86-64"}[arch],
+                    "-B", {"aarch64": "aarch64", "x86_64": "i386:x86-64"}[arch],
+                    "--rename-section", ".data=.rodata,alloc,load,readonly,data,contents",
+                    name, name + ".o",
+                ], cwd=scratch, check=True)
             world = scratch / "world.exe"
             subprocess.run([
                 shell, compiler, "-o", world, simulator,
-                scratch / "layout.o", *firmware, "-pthread",
+                scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread",
             ], check=True)
             symbols = scratch / "world.exe.dbg"
             if "@CMAKE_HOST_SYSTEM_NAME@" == "Darwin" and arch == "aarch64":

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <iostream>
 #include <ranges>
@@ -185,6 +186,8 @@ namespace platform {
 			case CMD_CV_SENSOR_GET_POWER:
 			case CMD_CV_SENSOR_GET_VOLTAGE:        return Bucket::CV_SENSOR;
 			case CMD_ENTROPY_GET:                  return Bucket::ENTROPY;
+			case CMD_ATTEST:
+			case CMD_ATTEST_VERIFY:                return Bucket::ATTESTATION;
 			default:                               return Bucket::GLOBAL;
 			}
 		}
@@ -217,6 +220,48 @@ namespace platform {
 			return static_cast<int>(samples.size());
 		}
 
+		// Attestation tags are HMAC-SHA-256 (RFC 2104) over this domain, the proof without its tag, and
+		// the message, truncated to RPC_ATTEST_TAG_SIZE bytes.
+		constexpr std::string_view ATTESTATION_DOMAIN = "quercus.app-attestation";
+		constexpr std::size_t      ATTESTATION_HEADER = offsetof(rpc_attest_proof_t, tag);
+		constexpr std::size_t      SHA256_BLOCK_SIZE  = 64;
+
+		std::array<uint8_t, RPC_ATTEST_TAG_SIZE> attestation_tag(const rpc_attest_proof_t& proof,
+																 std::span<const uint8_t>  message) {
+			const auto key_pad = [](uint8_t pad) {
+				std::vector<uint8_t> block(SHA256_BLOCK_SIZE, pad);
+				for (std::size_t index = 0; index < ATTESTATION_TEST_KEY.size(); index++)
+					block[index] ^= ATTESTATION_TEST_KEY[index];
+				return block;
+			};
+
+			std::vector<uint8_t> inner = key_pad(0x36);
+			inner.insert(inner.end(), ATTESTATION_DOMAIN.begin(), ATTESTATION_DOMAIN.end());
+			const auto* header = reinterpret_cast<const uint8_t*>(&proof);
+			inner.insert(inner.end(), header, header + ATTESTATION_HEADER);
+			inner.insert(inner.end(), message.begin(), message.end());
+			const std::array<uint8_t, 32> inner_digest = seed::sha256(inner.data(), inner.size());
+
+			std::vector<uint8_t> outer = key_pad(0x5c);
+			outer.insert(outer.end(), inner_digest.begin(), inner_digest.end());
+			const std::array<uint8_t, 32> digest = seed::sha256(outer.data(), outer.size());
+
+			std::array<uint8_t, RPC_ATTEST_TAG_SIZE> tag{};
+			std::copy_n(digest.begin(), tag.size(), tag.begin());
+			return tag;
+		}
+
+		bool tags_equal(const uint8_t* left, const uint8_t* right) {
+			uint8_t difference = 0;
+			for (std::size_t index = 0; index < RPC_ATTEST_TAG_SIZE; index++) difference |= left[index] ^ right[index];
+			return difference == 0;
+		}
+
+		template <typename T> std::vector<uint8_t> struct_payload(const T& value) {
+			const auto* bytes = reinterpret_cast<const uint8_t*>(&value);
+			return {bytes, bytes + sizeof(value)};
+		}
+
 	} // namespace
 
 	std::string to_string(Bucket bucket) {
@@ -235,6 +280,7 @@ namespace platform {
 		case Bucket::LED:                 return "led";
 		case Bucket::CV_SENSOR:           return "cv_sensor";
 		case Bucket::ENTROPY:             return "entropy";
+		case Bucket::ATTESTATION:         return "attestation";
 		case Bucket::COUNT:               break;
 		}
 		return "global";
@@ -255,6 +301,7 @@ namespace platform {
 		case Bucket::CV_SENSOR:           return 10;
 		case Bucket::HEARTBEAT:           return 25;
 		case Bucket::EVENTS:              return 25;
+		case Bucket::ATTESTATION:         return 25;
 		case Bucket::LASER:               return 50;
 		case Bucket::LED:                 return 50;
 		case Bucket::COUNT:               break;
@@ -408,6 +455,14 @@ namespace platform {
 		}
 	}
 
+	void Manager::application_launched(module::ModuleId id, const ImageDigest& image_digest) {
+		Runtime* runtime = find(id);
+		if (runtime == nullptr) return;
+		std::array<uint8_t, RPC_ATTEST_FINGERPRINT_SIZE> fingerprint{};
+		std::copy_n(image_digest.begin(), fingerprint.size(), fingerprint.begin());
+		runtime->app_fingerprint = fingerprint;
+	}
+
 	void Manager::pause_application(module::ModuleId id, uint64_t tick) {
 		Runtime* runtime_ptr = find(id);
 		if (runtime_ptr == nullptr || runtime_ptr->lifecycle == Lifecycle::STOPPED) return;
@@ -477,6 +532,7 @@ namespace platform {
 		runtime.last_left_clear            = false;
 		runtime.last_right_clear           = false;
 		runtime.last_rfid_uid.clear();
+		runtime.app_fingerprint.reset();
 		runtime.outbound.clear();
 
 		std::erase_if(pending_hardware_events_, [id](const PendingHardwareEvent& event) { return event.module == id; });
@@ -1124,6 +1180,8 @@ namespace platform {
 			}
 			break;
 		}
+		case CMD_ATTEST:        response.status = attest(id, request.payload, response.payload); break;
+		case CMD_ATTEST_VERIFY: response.status = attest_verify(id, request.payload, response.payload); break;
 
 		case CMD_HEARTBEAT:
 			// Liveness was recorded at ingress, so a queued heartbeat cannot refresh it later.
@@ -1136,6 +1194,45 @@ namespace platform {
 		}
 
 		return response;
+	}
+
+	int16_t Manager::attest(module::ModuleId id, const std::vector<uint8_t>& message,
+							std::vector<uint8_t>& response) const {
+		const Runtime& runtime = *find(id);
+		if (message.size() > RPC_ATTEST_MAX_MESSAGE) return STATUS_MSG_SIZE;
+		// Simulated modules have no debugger that could taint an application (-EACCES).
+		if (!runtime.app_fingerprint) return STATUS_TRY_AGAIN;
+
+		rpc_attest_proof_t proof{};
+		proof.version   = RPC_ATTEST_VERSION;
+		proof.module_id = id.raw();
+		std::ranges::copy(*runtime.app_fingerprint, proof.app_fingerprint);
+		std::ranges::copy(attestation_tag(proof, message), proof.tag);
+		response = struct_payload(proof);
+		return STATUS_OK;
+	}
+
+	int16_t Manager::attest_verify(module::ModuleId id, const std::vector<uint8_t>& request,
+								   std::vector<uint8_t>& response) const {
+		// The request is message || rpc_attest_proof_t.
+		if (request.size() < sizeof(rpc_attest_proof_t)) return STATUS_INVALID;
+		const std::size_t  message_length = request.size() - sizeof(rpc_attest_proof_t);
+		rpc_attest_proof_t proof;
+		std::memcpy(&proof, request.data() + message_length, sizeof(proof));
+
+		if (message_length > RPC_ATTEST_MAX_MESSAGE) return STATUS_MSG_SIZE;
+		if (proof.version != RPC_ATTEST_VERSION || proof.module_id == 0) return STATUS_BAD_MSG;
+		const auto tag = attestation_tag(proof, std::span(request.data(), message_length));
+		if (!tags_equal(tag.data(), proof.tag)) return STATUS_BAD_MSG;
+
+		const Runtime&      runtime = *find(id);
+		rpc_attest_result_t result{};
+		result.module_id = proof.module_id;
+		std::ranges::copy(proof.app_fingerprint, result.app_fingerprint);
+		result.same_app =
+			runtime.app_fingerprint.has_value() && std::ranges::equal(*runtime.app_fingerprint, proof.app_fingerprint);
+		response = struct_payload(result);
+		return STATUS_OK;
 	}
 
 	uint32_t Manager::subscriptions(module::ModuleId id) const {

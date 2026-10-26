@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <span>
 
 #include <quercus/sim_instance.h>
@@ -10,8 +11,9 @@
 namespace firmware {
 
 	struct ImageBinding {
-		module::ModuleId        module;
-		const qsim_image_api_t* api;
+		module::ModuleId                       module;
+		const qsim_image_api_t*                api;
+		std::optional<std::array<uint8_t, 32>> digest{};
 	};
 
 	struct ExecutionGrant {

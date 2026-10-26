@@ -40,10 +40,22 @@ namespace platform {
 	inline constexpr int16_t STATUS_TRY_AGAIN = -11; // -EAGAIN
 	inline constexpr int16_t STATUS_INVALID   = -22; // -EINVAL
 	inline constexpr int16_t STATUS_RANGE     = -34; // -ERANGE
+	inline constexpr int16_t STATUS_BAD_MSG   = -77;
+	inline constexpr int16_t STATUS_MSG_SIZE  = -122;
 	inline constexpr int16_t STATUS_NO_SYS    = -38; // -ENOSYS
 
 	// CMD_ENTROPY_GET always returns this many bytes.
 	inline constexpr std::size_t ENTROPY_RESPONSE_SIZE = 1000;
+
+	// The SHA-256 digest that measures a launched image.
+	using ImageDigest = std::array<uint8_t, 32>;
+
+	// Every simulated module shares this well-known test key (the bytes 0x00 to 0x1f), so proofs made in
+	// the simulator are reproducible and authenticate nothing on a real fleet.
+	inline constexpr std::array<uint8_t, 32> ATTESTATION_TEST_KEY = {
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+		0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+	};
 
 	// A grant carries at most four frames within its bounded byte buffer.
 	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = QUERCUS_MAILBOX_SLOTS;
@@ -76,6 +88,7 @@ namespace platform {
 		LED,
 		CV_SENSOR,
 		ENTROPY,
+		ATTESTATION,
 		COUNT,
 	};
 
@@ -143,6 +156,9 @@ namespace platform {
 		bool                 last_right_clear = false;
 		std::vector<uint8_t> last_rfid_uid;
 
+		// Truncated SHA-256 of the launched image. Empty when no application runs.
+		std::optional<std::array<uint8_t, RPC_ATTEST_FINGERPRINT_SIZE>> app_fingerprint;
+
 		// CMD_ENTROPY_GET calls so far; each selects its own deterministic stream.
 		uint64_t entropy_draws = 0;
 
@@ -204,6 +220,12 @@ namespace platform {
 
 		void note_heartbeat(module::ModuleId id, uint64_t global_tick);
 
+		[[nodiscard]] int16_t attest(module::ModuleId id, const std::vector<uint8_t>& message,
+									 std::vector<uint8_t>& response) const;
+
+		[[nodiscard]] int16_t attest_verify(module::ModuleId id, const std::vector<uint8_t>& request,
+											std::vector<uint8_t>& response) const;
+
 		void publish(module::ModuleId id, uint32_t event, std::vector<uint8_t> payload);
 
 		void schedule_hardware_event(uint64_t tick, module::ModuleId id, uint32_t event, std::vector<uint8_t> payload,
@@ -234,6 +256,9 @@ namespace platform {
 		// so queueing delays cannot turn correctly spaced calls into a violation or a missed heartbeat.
 		[[nodiscard]] IngressAdmission account_ingress(module::ModuleId id, ModuleTime time = {},
 													   std::span<const uint8_t> frame = {});
+
+		// Measures the image a module launched, for attestation.
+		void application_launched(module::ModuleId id, const ImageDigest& image_digest);
 
 		// Returns the response to send, or nothing when the request was non-confirmable.
 		[[nodiscard]] std::optional<rpc::Frame> handle_request(module::ModuleId id, const rpc::Frame& request,

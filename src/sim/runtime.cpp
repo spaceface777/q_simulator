@@ -117,8 +117,8 @@ namespace sim {
 			modules_.push_back(std::move(instance));
 		}
 		grants_.resize(modules_.size());
+		const auto& bindings = firmware_bindings_;
 		try {
-			const auto& bindings = firmware_bindings_;
 			for (const auto id : active_modules_) {
 				if (std::ranges::count(bindings, id, &firmware::ImageBinding::module) != 1)
 					throw std::invalid_argument("Module " + std::to_string(id.raw()) + " requires one firmware image");
@@ -136,6 +136,10 @@ namespace sim {
 		running_ = true;
 		module_changes_.set();
 		platform_.emplace(world_, &module_changes_);
+
+		for (const auto& binding : bindings) {
+			if (binding.digest) platform_->application_launched(binding.module, *binding.digest);
+		}
 
 		std::cout << "Waiting for applications to activate" << std::endl;
 
