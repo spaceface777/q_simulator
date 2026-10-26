@@ -201,6 +201,22 @@ TEST_F(OverloadTest, PauseStopsWorldMotionExtendsAndRestoresBelts) {
 	EXPECT_NE(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
 }
 
+TEST_F(OverloadTest, BucketCapacitiesMatchThePlatform) {
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::GLOBAL), 100);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::SCHEDULE), 2);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::NETWORK), 5);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::LOGGING), 5);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::RFID), 5);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::PLATFORM_MANAGEMENT), 5);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::BELT), 10);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::SERVO), 10);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::CV_SENSOR), 10);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::HEARTBEAT), 25);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::EVENTS), 25);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::LASER), 50);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::LED), 50);
+}
+
 TEST_F(OverloadTest, EncoderReadsShareTheBeltBucket) {
 	for (const uint8_t cmd : {CMD_BELT_BIG_GET_ENCODER_COUNT, CMD_BELT_BIG_GET_ENCODER_FREQ,
 							  CMD_BELT_SMALL_GET_ENCODER_COUNT, CMD_BELT_SMALL_GET_ENCODER_FREQ}) {
