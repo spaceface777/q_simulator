@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -47,13 +48,16 @@ namespace {
 			}
 		}
 
-		int16_t call(uint8_t cmd, uint64_t tick) { return call(cmd, platform::ModuleTime{tick, tick}); }
+		int16_t call(uint8_t cmd, uint64_t tick, std::vector<uint8_t> payload = {}) {
+			return call(cmd, platform::ModuleTime{tick, tick}, std::move(payload));
+		}
 
-		int16_t call(uint8_t cmd, platform::ModuleTime time) {
+		int16_t call(uint8_t cmd, platform::ModuleTime time, std::vector<uint8_t> payload = {}) {
 			rpc::Frame frame;
 			frame.type                               = MT_REQ;
 			frame.cmd                                = cmd;
 			frame.call_id                            = 1;
+			frame.payload                            = std::move(payload);
 			const std::optional<rpc::Frame> response = manager->handle_request(module::ModuleId{MODULE}, frame, time);
 			return response ? response->status : platform::STATUS_OK;
 		}
@@ -84,28 +88,32 @@ TEST_F(OverloadTest, RefusesRequestsPastTheBucketLimit) {
 	const int limit = platform::capacity_of(platform::Bucket::LASER);
 
 	// Everything inside one simulated second, which is the window the limit is quoted over.
-	for (int index = 0; index < limit - 1; index++) {
+	for (int index = 0; index < limit; index++) {
 		EXPECT_EQ(call(CMD_LASER_LEFT_GET, 1), platform::STATUS_OK) << "refused request " << index;
 	}
 
 	EXPECT_EQ(call(CMD_LASER_LEFT_GET, 1), platform::STATUS_TRY_AGAIN);
 }
 
-TEST_F(OverloadTest, TheWindowSlidesSoASustainedRateBelowTheLimitIsNeverRefused) {
+TEST_F(OverloadTest, AWindowEndsASecondAfterItsFirstRequest) {
 	const int limit = platform::capacity_of(platform::Bucket::LASER);
-
-	// The window slides rather than resetting, so a rate just under the limit is never refused.
-	const uint64_t spacing = (platform::RATE_LIMIT_WINDOW_TICKS / static_cast<uint64_t>(limit)) + 1;
-	for (uint64_t index = 0; index < 200; index++) {
-		EXPECT_EQ(call(CMD_LASER_LEFT_GET, 1 + (index * spacing)), platform::STATUS_OK)
-			<< "refused at request " << index;
+	for (int index = 0; index < limit; index++) {
+		EXPECT_EQ(call(CMD_LASER_LEFT_GET, 100), platform::STATUS_OK);
 	}
+
+	// Core0 counts in fixed windows started by a request, not in a window that slides.
+	EXPECT_EQ(call(CMD_LASER_LEFT_GET, 99 + platform::RATE_LIMIT_WINDOW_TICKS), platform::STATUS_TRY_AGAIN);
+	for (int index = 0; index < limit; index++) {
+		EXPECT_EQ(call(CMD_LASER_LEFT_GET, 100 + platform::RATE_LIMIT_WINDOW_TICKS), platform::STATUS_OK);
+	}
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::LASER),
+			  static_cast<std::size_t>(limit));
 }
 
 TEST_F(OverloadTest, GlobalTimeAgesRequestsWhileModuleLocalTimeIsFrozen) {
 	const int limit = platform::capacity_of(platform::Bucket::LASER);
 
-	for (int index = 0; index < limit - 1; index++) {
+	for (int index = 0; index < limit; index++) {
 		EXPECT_EQ(call(CMD_LASER_LEFT_GET, platform::ModuleTime{1, 1}), platform::STATUS_OK);
 	}
 	EXPECT_EQ(call(CMD_LASER_LEFT_GET, platform::ModuleTime{platform::RATE_LIMIT_WINDOW_TICKS + 1, 1}),
@@ -113,39 +121,71 @@ TEST_F(OverloadTest, GlobalTimeAgesRequestsWhileModuleLocalTimeIsFrozen) {
 }
 
 TEST_F(OverloadTest, EscalatesFromWarningToPauseToStop) {
-	const int limit = platform::capacity_of(platform::Bucket::LASER);
+	const int  limit      = platform::capacity_of(platform::Bucket::LASER);
+	int        sent       = 0;
+	const auto send_until = [&](int count) {
+		for (; sent < count; sent++) call(CMD_LASER_LEFT_GET, 1);
+		collect();
+	};
 
-	for (int index = 0; index < limit; index++) {
-		call(CMD_LASER_LEFT_GET, 1);
-	}
-	collect();
+	// Exceeding the limit only refuses requests.
+	send_until((limit * 5 / 4) - 1);
 	EXPECT_FALSE(raised("warning"));
 
-	// 120 percent of the limit is a complaint.
-	for (int index = 0; index < limit / 4; index++) {
-		call(CMD_LASER_LEFT_GET, 1);
-	}
-	collect();
+	// 125 percent of the limit is a complaint, sent to the application's log.
+	send_until(limit * 5 / 4 + 1);
 	EXPECT_TRUE(raised("warning"));
 	EXPECT_FALSE(raised("pause"));
+	for (uint64_t tick = 1; tick < 2000; tick++) manager->advance(tick);
+	ASSERT_EQ(manager->logs(module::ModuleId{MODULE}).size(), 1u);
+	EXPECT_NE(manager->logs(module::ModuleId{MODULE})
+				  .front()
+				  .find("laser RPC traffic exceeded its limit. Allowed: 50 requests/s, peak: 63"),
+			  std::string::npos);
 
 	// 150 percent takes the application's time away for a second.
-	for (int index = 0; index < limit / 2; index++) {
-		call(CMD_LASER_LEFT_GET, 1);
-	}
-	collect();
+	send_until((limit * 3 / 2) - 1);
+	EXPECT_FALSE(raised("pause"));
+	send_until(limit * 3 / 2);
 	EXPECT_TRUE(raised("pause"));
 	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
 	EXPECT_TRUE(manager->is_paused(module::ModuleId{MODULE}, 1));
 	EXPECT_FALSE(raised("stop"));
 
 	// 200 percent stops it.
-	for (int index = 0; index < limit; index++) {
-		call(CMD_LASER_LEFT_GET, 1);
-	}
-	collect();
+	send_until((limit * 2) - 1);
+	EXPECT_FALSE(raised("stop"));
+	send_until(limit * 2);
 	EXPECT_TRUE(raised("stop"));
 	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::STOPPED);
+}
+
+TEST_F(OverloadTest, WarnsAtMostOnceEveryTenSeconds) {
+	const int limit = platform::capacity_of(platform::Bucket::LASER);
+	for (int index = 0; index <= limit * 5 / 4; index++) call(CMD_LASER_LEFT_GET, 1);
+	for (int index = 0; index <= limit * 5 / 4; index++) call(CMD_LASER_LEFT_GET, 1001);
+	collect();
+	EXPECT_EQ(std::ranges::count(collected, std::string("warning"), &platform::Diagnostic::kind), 1);
+
+	for (int index = 0; index <= limit * 5 / 4; index++) call(CMD_LASER_LEFT_GET, 10001);
+	collect();
+	EXPECT_EQ(std::ranges::count(collected, std::string("warning"), &platform::Diagnostic::kind), 2);
+}
+
+TEST_F(OverloadTest, ARecentPeakKeepsCountingForFiveSeconds) {
+	const int limit = platform::capacity_of(platform::Bucket::LASER);
+	for (int index = 0; index < limit * 3 / 2; index++) call(CMD_LASER_LEFT_GET, 1);
+	manager->prepare_tick(1 + platform::PAUSE_DURATION_TICKS);
+	ASSERT_NE(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
+
+	// A window only just over the limit is judged by the earlier burst, so it pauses again.
+	for (int index = 0; index <= limit; index++) call(CMD_LASER_LEFT_GET, 4000);
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
+	manager->prepare_tick(4000 + platform::PAUSE_DURATION_TICKS);
+
+	// Five seconds later the burst no longer counts.
+	for (int index = 0; index <= limit; index++) call(CMD_LASER_LEFT_GET, 1 + platform::RATE_LIMIT_HISTORY_TICKS);
+	EXPECT_NE(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::PAUSED);
 }
 
 TEST_F(OverloadTest, APauseExpiresAfterASimulatedSecond) {
@@ -289,7 +329,8 @@ TEST_F(OverloadTest, IngressChargesTheCategorySoQueueingDelaysCannotCauseAViolat
 		ASSERT_TRUE(response.has_value());
 		EXPECT_EQ(response->status, platform::STATUS_OK) << "refused call " << frame.call_id;
 	}
-	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::RFID), 4u);
+	// Core0 started a second window at the fifth request.
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::RFID), 2u);
 	collect();
 	EXPECT_TRUE(collected.empty());
 }
@@ -299,7 +340,7 @@ TEST_F(OverloadTest, DispatchChecksTheBucketIncludingLaterArrivals) {
 	rpc::Frame frame;
 	frame.type = MT_REQ;
 	frame.cmd  = CMD_RFID_CHECK_TAG;
-	for (int index = 0; index < limit; index++) {
+	for (int index = 0; index <= limit; index++) {
 		(void)manager->account_ingress(module::ModuleId{MODULE}, platform::ModuleTime{1, 1}, rpc::encode(frame));
 	}
 
@@ -309,7 +350,7 @@ TEST_F(OverloadTest, DispatchChecksTheBucketIncludingLaterArrivals) {
 	ASSERT_TRUE(response.has_value());
 	EXPECT_EQ(response->status, platform::STATUS_TRY_AGAIN);
 	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::RFID),
-			  static_cast<std::size_t>(limit));
+			  static_cast<std::size_t>(limit + 1));
 }
 
 TEST_F(OverloadTest, AFullRfidReadCostsThreeFifthsOfTheRfidBucket) {
@@ -322,8 +363,13 @@ TEST_F(OverloadTest, AFullRfidReadCostsThreeFifthsOfTheRfidBucket) {
 
 	// Two full reads in one window exceed the RFID limit.
 	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 2), platform::STATUS_TRY_AGAIN);
-	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 1 + platform::RATE_LIMIT_WINDOW_TICKS), platform::STATUS_TRY_AGAIN);
-	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 2 + (2 * platform::RATE_LIMIT_WINDOW_TICKS)), platform::STATUS_NO_ENTRY);
+
+	// A full read leaves room for two page reads in its window.
+	const uint64_t window = 1 + platform::RATE_LIMIT_WINDOW_TICKS;
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, window), platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, window, {0}), platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, window, {0}), platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_BLOCK, window, {0}), platform::STATUS_TRY_AGAIN);
 }
 
 TEST_F(OverloadTest, ACategoryViolationAtIngressCanStopTheApplication) {
@@ -366,7 +412,8 @@ TEST_F(OverloadTest, RawIngressAloneEscalatesGlobalWarningPauseAndStop) {
 	}
 	collect();
 
-	EXPECT_TRUE(raised("warning"));
+	// Core0 sends warnings with an admission check, and raw ingress alone never reaches one.
+	EXPECT_FALSE(raised("warning"));
 	EXPECT_TRUE(raised("pause"));
 	EXPECT_TRUE(raised("stop"));
 	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::STOPPED);
@@ -434,7 +481,7 @@ TEST_F(OverloadTest, RateStopResetsStateAndRejectsQueuedSettersAfterCleanup) {
 
 TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {
 	const int limit = platform::capacity_of(platform::Bucket::SERVO);
-	for (int index = 0; index < limit - 1; index++) {
+	for (int index = 0; index < limit; index++) {
 		call(CMD_SERVO_ANGLE_GET, 1);
 	}
 
@@ -452,7 +499,7 @@ TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {
 
 TEST_F(OverloadTest, ARateRejectedHeartbeatStillActivatesAtIngress) {
 	const int global_limit = platform::capacity_of(platform::Bucket::GLOBAL);
-	for (int index = 0; index < global_limit - 1; index++) {
+	for (int index = 0; index < global_limit; index++) {
 		EXPECT_EQ(call(0xFE, 1), platform::STATUS_NO_SYS);
 	}
 
@@ -474,7 +521,7 @@ TEST_F(OverloadTest, ARateRejectedHeartbeatStillActivatesAtIngress) {
 
 TEST_F(OverloadTest, ANonConfirmableRateRejectedHeartbeatStillActivates) {
 	const int global_limit = platform::capacity_of(platform::Bucket::GLOBAL);
-	for (int index = 0; index < global_limit - 1; index++) {
+	for (int index = 0; index < global_limit; index++) {
 		EXPECT_EQ(call(0xFE, 1), platform::STATUS_NO_SYS);
 	}
 
@@ -494,7 +541,7 @@ TEST_F(OverloadTest, ARateRejectedHeartbeatClearsTheWarningAndRefreshesLiveness)
 	(void)manager->take_diagnostics();
 
 	const int global_limit = platform::capacity_of(platform::Bucket::GLOBAL);
-	for (int index = 0; index < global_limit - 2; index++) {
+	for (int index = 0; index < global_limit - 1; index++) {
 		EXPECT_EQ(call(0xFE, 600), platform::STATUS_NO_SYS);
 	}
 	rpc::Frame heartbeat;
