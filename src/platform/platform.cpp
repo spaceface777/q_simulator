@@ -90,6 +90,7 @@ namespace platform {
 			case CMD_RFID_CHECK_TAG:
 			case CMD_RFID_GET_UID:
 			case CMD_RFID_READ_DATA_BLOCK:
+			case CMD_RFID_READ_DATA_FULL:
 			case CMD_RFID_WRITE_DATA_BLOCK:
 			case CMD_CV_SENSOR_GET_CURRENT:
 			case CMD_CV_SENSOR_GET_POWER:
@@ -169,6 +170,7 @@ namespace platform {
 			case CMD_RFID_CHECK_TAG:
 			case CMD_RFID_GET_UID:
 			case CMD_RFID_READ_DATA_BLOCK:
+			case CMD_RFID_READ_DATA_FULL:
 			case CMD_RFID_WRITE_DATA_BLOCK:        return Bucket::RFID;
 			case CMD_SEND_PACKET:
 			case CMD_BROADCAST_PACKET:             return Bucket::NETWORK;
@@ -311,6 +313,12 @@ namespace platform {
 		return bucket_for(cmd);
 	}
 
+	int request_cost(uint8_t cmd) {
+		// A full RFID read replaces 32 page reads with one exchange, so it costs 3/5 of the RFID bucket.
+		if (cmd == CMD_RFID_READ_DATA_FULL) return std::max(1, capacity_of(Bucket::RFID) * 3 / 5);
+		return 1;
+	}
+
 	std::optional<AttestationKey> parse_attestation_key(const std::string& text) {
 		if (text.size() != 2 * ATTESTATION_KEY_SIZE) return {};
 		const auto digit = [](char character) -> int {
@@ -390,7 +398,7 @@ namespace platform {
 		network_map_ = stream.str();
 	}
 
-	Manager::ChargeResult Manager::charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time) {
+	Manager::ChargeResult Manager::charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time, int cost) {
 		Runtime* runtime_ptr = find(id);
 		if (runtime_ptr == nullptr || runtime_ptr->lifecycle == Lifecycle::STOPPED) {
 			return {};
@@ -400,7 +408,7 @@ namespace platform {
 		}
 
 		std::deque<uint64_t>& samples = runtime_ptr->bucket_samples[static_cast<std::size_t>(bucket)];
-		samples.push_back(time.global_tick);
+		samples.insert(samples.end(), static_cast<std::size_t>(cost), time.global_tick);
 		return escalate(id, bucket, window_count(samples, time.global_tick), time);
 	}
 
@@ -459,7 +467,7 @@ namespace platform {
 
 		// Unknown commands have no category.
 		if (const Bucket bucket = request_bucket(header.cmd); bucket != Bucket::GLOBAL) {
-			if (charge_bucket(id, bucket, time).stop_triggered) return IngressAdmission{true};
+			if (charge_bucket(id, bucket, time, request_cost(header.cmd)).stop_triggered) return IngressAdmission{true};
 		}
 		if (header.cmd == CMD_HEARTBEAT && header.payload_len == 0) note_heartbeat(id, time.global_tick);
 		return {};
@@ -1127,6 +1135,21 @@ namespace platform {
 			response.payload.assign(value.begin(), value.end());
 			break;
 		}
+		case CMD_RFID_READ_DATA_FULL:
+			if (!request.payload.empty()) {
+				response.status = STATUS_INVALID;
+				break;
+			}
+			if (!module->is_rfid_active()) {
+				response.status = STATUS_NO_ENTRY;
+				break;
+			}
+			response.payload.reserve(RFID_PAYLOAD_PAGE_COUNT * RFID_PAGE_SIZE_BYTES);
+			for (std::size_t page = 0; page < RFID_PAYLOAD_PAGE_COUNT; page++) {
+				const RfidPage value = module->rfid_page(page);
+				response.payload.insert(response.payload.end(), value.begin(), value.end());
+			}
+			break;
 		case CMD_RFID_WRITE_DATA_BLOCK: {
 			if (request.payload.size() != 1 + RFID_PAGE_SIZE_BYTES) {
 				response.status = STATUS_INVALID;

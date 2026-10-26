@@ -143,9 +143,10 @@ TEST_F(PlatformTest, RespondsWithTheRequestsCommandAndCallId) {
 }
 
 TEST_F(PlatformTest, RejectsUnexpectedPayloadsForZeroArgumentCalls) {
-	for (const uint8_t cmd : {CMD_LASER_LEFT_DETECT, CMD_LASER_LEFT_GET, CMD_RFID_CHECK_TAG, CMD_RFID_GET_UID,
-							  CMD_GET_OWN_ID, CMD_GET_NETWORK_MAP, CMD_GET_MODULE_LIST, CMD_CV_SENSOR_GET_CURRENT,
-							  CMD_CV_SENSOR_GET_POWER, CMD_CV_SENSOR_GET_VOLTAGE, CMD_ENTROPY_GET}) {
+	for (const uint8_t cmd :
+		 {CMD_LASER_LEFT_DETECT, CMD_LASER_LEFT_GET, CMD_RFID_CHECK_TAG, CMD_RFID_GET_UID, CMD_GET_OWN_ID,
+		  CMD_GET_NETWORK_MAP, CMD_GET_MODULE_LIST, CMD_CV_SENSOR_GET_CURRENT, CMD_CV_SENSOR_GET_POWER,
+		  CMD_CV_SENSOR_GET_VOLTAGE, CMD_RFID_READ_DATA_FULL, CMD_ENTROPY_GET}) {
 		EXPECT_EQ(call(cmd, {0}).status, platform::STATUS_INVALID) << "command " << static_cast<unsigned>(cmd);
 	}
 
@@ -270,6 +271,23 @@ TEST_F(PlatformTest, ReadsAndWritesRfidOnlyWhileATagIsPresent) {
 	EXPECT_EQ(call(CMD_RFID_WRITE_DATA_BLOCK, {0, 1}).status, platform::STATUS_INVALID);
 }
 
+TEST_F(PlatformTest, ReadsEveryRfidPageAtOnce) {
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL).status, platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, {0}).status, platform::STATUS_INVALID);
+
+	RfidPayload data{};
+	for (std::size_t page = 0; page < RFID_PAYLOAD_PAGE_COUNT; page++)
+		for (std::size_t byte = 0; byte < RFID_PAGE_SIZE_BYTES; byte++)
+			data[page][byte] = static_cast<uint8_t>((page * RFID_PAGE_SIZE_BYTES) + byte);
+	hardware()->set_rfid_tag({1, 2, 3, 4, 5, 6, 7}, data);
+
+	const rpc::Frame response = call(CMD_RFID_READ_DATA_FULL);
+	EXPECT_EQ(response.status, platform::STATUS_OK);
+	ASSERT_EQ(response.payload.size(), RFID_PAYLOAD_PAGE_COUNT * RFID_PAGE_SIZE_BYTES);
+	for (std::size_t index = 0; index < response.payload.size(); index++)
+		EXPECT_EQ(response.payload[index], static_cast<uint8_t>(index));
+}
+
 TEST_F(PlatformTest, RfidWritesSurviveTheNextWorldTick) {
 	RfidPayload data{};
 	data[2] = {9, 8, 7, 6};
@@ -328,6 +346,7 @@ TEST_F(PlatformTest, RefusesSubscriptionToUnsupportedEvents) {
 TEST_F(PlatformTest, RefusesHardwareAccessFromTheTower) {
 	EXPECT_EQ(call(CMD_SERVO_ANGLE_SET, native_bytes<int32_t>(90), TOWER_MODULE_ID).status, platform::STATUS_PERM);
 	EXPECT_EQ(call(CMD_LASER_LEFT_DETECT, {}, TOWER_MODULE_ID).status, platform::STATUS_PERM);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, {}, TOWER_MODULE_ID).status, platform::STATUS_PERM);
 	EXPECT_EQ(call(CMD_SUBSCRIBE_TO_EVENT, native_bytes<uint32_t>(EVENT_LASER_LEFT_DETECT), TOWER_MODULE_ID).status,
 			  platform::STATUS_PERM);
 
