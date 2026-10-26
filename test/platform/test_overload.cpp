@@ -312,6 +312,20 @@ TEST_F(OverloadTest, DispatchChecksTheBucketIncludingLaterArrivals) {
 			  static_cast<std::size_t>(limit));
 }
 
+TEST_F(OverloadTest, AFullRfidReadCostsThreeFifthsOfTheRfidBucket) {
+	EXPECT_EQ(platform::request_cost(CMD_RFID_READ_DATA_FULL), 3);
+	EXPECT_EQ(platform::request_cost(CMD_RFID_READ_DATA_BLOCK), 1);
+
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 1), platform::STATUS_NO_ENTRY);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 1u);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::RFID), 3u);
+
+	// Two full reads in one window exceed the RFID limit.
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 2), platform::STATUS_TRY_AGAIN);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 1 + platform::RATE_LIMIT_WINDOW_TICKS), platform::STATUS_TRY_AGAIN);
+	EXPECT_EQ(call(CMD_RFID_READ_DATA_FULL, 2 + (2 * platform::RATE_LIMIT_WINDOW_TICKS)), platform::STATUS_NO_ENTRY);
+}
+
 TEST_F(OverloadTest, ACategoryViolationAtIngressCanStopTheApplication) {
 	const int  limit = platform::capacity_of(platform::Bucket::RFID);
 	rpc::Frame frame;

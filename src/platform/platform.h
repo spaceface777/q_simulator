@@ -124,6 +124,9 @@ namespace platform {
 	// The category a command is charged to and serialized by on Core0. GLOBAL means none.
 	[[nodiscard]] Bucket request_bucket(uint8_t cmd);
 
+	// How many slots of its bucket one request takes.
+	[[nodiscard]] int request_cost(uint8_t cmd);
+
 	// Per-module lifecycle and RPC state owned by the platform.
 	struct Runtime {
 		bool                     present                  = false;
@@ -210,8 +213,8 @@ namespace platform {
 			bool stop_triggered = false;
 		};
 
-		// Adds a sample to a bucket at the receive boundary, then escalates any violation.
-		[[nodiscard]] ChargeResult charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time);
+		// Adds cost samples to a bucket at the receive boundary, then escalates any violation.
+		[[nodiscard]] ChargeResult charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time, int cost = 1);
 
 		// Checks a bucket at dispatch without charging it. A refusal re-evaluates the violation.
 		[[nodiscard]] ChargeResult check_bucket(module::ModuleId id, Bucket bucket, ModuleTime time);
