@@ -201,6 +201,16 @@ namespace platform {
 			return std::sqrt(-2.0 * std::log(first)) * std::cos(2.0 * M_PI * second);
 		}
 
+		// Drops samples that left the sliding window ending at global_tick and returns the rest.
+		int window_count(std::deque<uint64_t>& samples, uint64_t global_tick) {
+			const uint64_t oldest =
+				global_tick >= (RATE_LIMIT_WINDOW_TICKS - 1) ? global_tick - (RATE_LIMIT_WINDOW_TICKS - 1) : 0;
+			while (!samples.empty() && samples.front() < oldest) {
+				samples.pop_front();
+			}
+			return static_cast<int>(samples.size());
+		}
+
 	} // namespace
 
 	std::string to_string(Bucket bucket) {
@@ -309,22 +319,34 @@ namespace platform {
 		if (runtime_ptr == nullptr || runtime_ptr->lifecycle == Lifecycle::STOPPED) {
 			return {};
 		}
-		Runtime&          runtime = *runtime_ptr;
-		const std::size_t index   = static_cast<std::size_t>(bucket);
-		const int         limit   = capacity_of(bucket);
+		if (capacity_of(bucket) == 0) {
+			return ChargeResult{true, false};
+		}
+
+		std::deque<uint64_t>& samples = runtime_ptr->bucket_samples[static_cast<std::size_t>(bucket)];
+		samples.push_back(time.global_tick);
+		return escalate(id, bucket, window_count(samples, time.global_tick), time);
+	}
+
+	Manager::ChargeResult Manager::check_bucket(module::ModuleId id, Bucket bucket, ModuleTime time) {
+		Runtime* runtime_ptr = find(id);
+		if (runtime_ptr == nullptr || runtime_ptr->lifecycle == Lifecycle::STOPPED) {
+			return {};
+		}
+		const int limit = capacity_of(bucket);
 		if (limit == 0) {
 			return ChargeResult{true, false};
 		}
 
-		std::deque<uint64_t>& samples = runtime.bucket_samples[index];
-		samples.push_back(time.global_tick);
-		const uint64_t oldest =
-			time.global_tick >= (RATE_LIMIT_WINDOW_TICKS - 1) ? time.global_tick - (RATE_LIMIT_WINDOW_TICKS - 1) : 0;
-		while (!samples.empty() && samples.front() < oldest) {
-			samples.pop_front();
-		}
+		const int count = window_count(runtime_ptr->bucket_samples[static_cast<std::size_t>(bucket)], time.global_tick);
+		// Like Core0, a refused request re-evaluates the violation, which can extend a pause.
+		return count < limit ? ChargeResult{true, false} : escalate(id, bucket, count, time);
+	}
 
-		const int count = static_cast<int>(samples.size());
+	Manager::ChargeResult Manager::escalate(module::ModuleId id, Bucket bucket, int count, ModuleTime time) {
+		Runtime&          runtime = *find(id);
+		const std::size_t index   = static_cast<std::size_t>(bucket);
+		const int         limit   = capacity_of(bucket);
 
 		// Escalation mirrors the platform: refuse, warn, pause, then stop.
 		if (count >= threshold(limit, 120) &&
@@ -347,15 +369,35 @@ namespace platform {
 		return ChargeResult{count < limit, false};
 	}
 
-	IngressAdmission Manager::account_ingress(module::ModuleId id, ModuleTime time) {
-		const ChargeResult charged = charge_bucket(id, Bucket::GLOBAL, time);
-		return IngressAdmission{charged.allowed, charged.stop_triggered};
+	IngressAdmission Manager::account_ingress(module::ModuleId id, ModuleTime time, std::span<const uint8_t> frame) {
+		if (charge_bucket(id, Bucket::GLOBAL, time).stop_triggered) return IngressAdmission{true};
+		if (frame.size() < rpc::HEADER_SIZE) return {};
+
+		// Only a well-formed request with known flags is charged to its category.
+		rpc_message_t header;
+		std::memcpy(&header, frame.data(), sizeof(header));
+		if (header.type != MT_REQ || header.payload_len < 0 || header.payload_len >= RPC_MAX_PAYLOAD ||
+			frame.size() != rpc::HEADER_SIZE + static_cast<std::size_t>(header.payload_len) ||
+			(header.flags & ~RPC_FLAG_NON_CON) != 0)
+			return {};
+
+		// Unknown commands have no category.
+		if (const Bucket bucket = request_bucket(header.cmd); bucket != Bucket::GLOBAL) {
+			if (charge_bucket(id, bucket, time).stop_triggered) return IngressAdmission{true};
+		}
+		if (header.cmd == CMD_HEARTBEAT && header.payload_len == 0) note_heartbeat(id, time.global_tick);
+		return {};
 	}
 
-	Manager::ChargeResult Manager::charge_category(module::ModuleId id, uint8_t cmd, ModuleTime time) {
-		const Bucket bucket = request_bucket(cmd);
-		// Unknown commands use the global worker lane but have no semantic category.
-		return bucket == Bucket::GLOBAL ? ChargeResult{true, false} : charge_bucket(id, bucket, time);
+	void Manager::note_heartbeat(module::ModuleId id, uint64_t global_tick) {
+		Runtime* runtime = find(id);
+		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED) return;
+		runtime->heartbeat_seen             = true;
+		runtime->last_heartbeat_global_tick = global_tick;
+		runtime->heartbeat_warned           = false;
+		if (runtime->lifecycle == Lifecycle::ACTIVATING) {
+			runtime->lifecycle = Lifecycle::RUNNING;
+		}
 	}
 
 	void Manager::pause_application(module::ModuleId id, uint64_t tick) {
@@ -506,8 +548,9 @@ namespace platform {
 
 	std::optional<rpc::Frame> Manager::handle_request(module::ModuleId id, const rpc::Frame& request, ModuleTime time,
 													  std::optional<IngressAdmission> ingress) {
-		const IngressAdmission ingress_admission = ingress.has_value() ? *ingress : account_ingress(id, time);
-		Runtime*               runtime_ptr       = find(id);
+		const IngressAdmission ingress_admission =
+			ingress.has_value() ? *ingress : account_ingress(id, time, rpc::encode(request));
+		Runtime* runtime_ptr = find(id);
 		if (runtime_ptr == nullptr) {
 			return {};
 		}
@@ -526,8 +569,8 @@ namespace platform {
 			return response;
 		}
 
-		// These permission gates precede semantic command admission on physical Core0. The raw frame
-		// has already consumed global capacity, but a denied call does not consume its category.
+		// These permission gates precede command admission on physical Core0. The frame has already
+		// consumed global and category capacity at ingress.
 		if ((id == TOWER_MODULE_ID && is_hardware_command(request.cmd)) ||
 			(id != TOWER_MODULE_ID && request.cmd == CMD_SET_FLIGHT_SCHEDULE)) {
 			if ((request.flags & RPC_FLAG_NON_CON) != 0) {
@@ -541,8 +584,13 @@ namespace platform {
 			return response;
 		}
 
-		const ChargeResult category = charge_category(id, request.cmd, time);
-		if (!ingress_admission.allowed || !category.allowed) {
+		// Admission checks the buckets as they are now, including requests that arrived later.
+		const ChargeResult global   = check_bucket(id, Bucket::GLOBAL, time);
+		const Bucket       bucket   = request_bucket(request.cmd);
+		const ChargeResult category = bucket == Bucket::GLOBAL || global.stop_triggered
+										  ? ChargeResult{true, false}
+										  : check_bucket(id, bucket, time);
+		if (!global.allowed || !category.allowed) {
 			// Over its limit: refuse rather than queue, matching what hardware would do.
 			if ((request.flags & RPC_FLAG_NON_CON) != 0) {
 				return {};
@@ -552,28 +600,8 @@ namespace platform {
 			response.cmd                 = request.cmd;
 			response.call_id             = request.call_id;
 			response.status              = STATUS_TRY_AGAIN;
-			response.stop_after_delivery = ingress_admission.stop_triggered || category.stop_triggered;
+			response.stop_after_delivery = global.stop_triggered || category.stop_triggered;
 			return response;
-		}
-		if (request.cmd == CMD_HEARTBEAT && !request.payload.empty()) {
-			if ((request.flags & RPC_FLAG_NON_CON) != 0) {
-				return {};
-			}
-			rpc::Frame response;
-			response.type    = MT_RESP;
-			response.cmd     = request.cmd;
-			response.call_id = request.call_id;
-			response.status  = STATUS_INVALID;
-			return response;
-		}
-		// A heartbeat only counts after both raw-ingress and category admission succeed.
-		if (request.cmd == CMD_HEARTBEAT) {
-			runtime.heartbeat_seen             = true;
-			runtime.last_heartbeat_global_tick = time.global_tick;
-			runtime.heartbeat_warned           = false;
-			if (runtime.lifecycle == Lifecycle::ACTIVATING) {
-				runtime.lifecycle = Lifecycle::RUNNING;
-			}
 		}
 		if (request.cmd == CMD_LOG) {
 			log_network_.send(time.global_tick, id, {id}, tag_diagnostic(DIAGNOSTIC_KIND_LOG, request.payload));
@@ -1072,6 +1100,7 @@ namespace platform {
 			break;
 
 		case CMD_HEARTBEAT:
+			// Liveness was recorded at ingress, so a queued heartbeat cannot refresh it later.
 		case CMD_LOG:
 		case CMD_PANIC_REPORT:
 			// Already recorded before dispatch.

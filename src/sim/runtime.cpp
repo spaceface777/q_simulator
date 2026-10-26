@@ -652,9 +652,9 @@ namespace sim {
 		}
 
 		for (std::size_t index = 0; index < batch.size(); index++) {
-			const firmware::FrameBatchView::Frame bytes = batch[index];
-			const platform::IngressAdmission      ingress =
-				platform_->account_ingress(instance.id, platform::ModuleTime{source_global_tick, source_local_tick});
+			const firmware::FrameBatchView::Frame bytes   = batch[index];
+			const platform::IngressAdmission      ingress = platform_->account_ingress(
+				instance.id, platform::ModuleTime{source_global_tick, source_local_tick}, bytes);
 			rpc::Frame frame;
 			reader_.clear();
 			reader_.append(bytes.data(), bytes.size());

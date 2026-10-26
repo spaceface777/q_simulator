@@ -227,6 +227,8 @@ TEST_F(RuntimeTest, RateStopDeliversTryAgainBeforeRetiringOnlyTheOffendingModule
 
 	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
+	// Activation happens at ingress, so let the startup heartbeat finish before injecting the stop.
+	ASSERT_NO_THROW(runtime.advance(std::chrono::microseconds(16000), 1.0, std::chrono::milliseconds(50)));
 	// Strict grants honor pauses before another burst. Preload ingress to isolate the stop handshake.
 	const platform::ModuleTime now{runtime.tick(), runtime.module_tick(module::ModuleId{FIRST})};
 	platform::IngressAdmission admission;
@@ -876,6 +878,8 @@ prop resolved_early during [1ms, 4ms] = eventually true;
 	test_app::Runtime runtime(7);
 	runtime.load_properties(std::move(properties), 2, "runtime.spec");
 	ASSERT_NO_THROW(runtime.start(2));
+	// Applications can activate before the scenario ends, so run the rest of it.
+	ASSERT_NO_THROW(runtime.advance(std::chrono::microseconds(16000), 1.0, std::chrono::milliseconds(50)));
 	const auto results = runtime.property_results();
 	ASSERT_EQ(results.size(), 3u);
 	EXPECT_EQ(results[0].verdict, ltl::Verdict::PENDING);

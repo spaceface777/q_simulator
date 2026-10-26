@@ -150,8 +150,9 @@ TEST_F(PlatformTest, RejectsUnexpectedPayloadsForZeroArgumentCalls) {
 
 	const std::optional<rpc::Frame> heartbeat =
 		manager->handle_request(module::ModuleId{MODULE}, request(CMD_HEARTBEAT, {0}), platform::ModuleTime{1, 1});
+	// Core0 answers it like any heartbeat, but only an empty one records liveness.
 	ASSERT_TRUE(heartbeat.has_value());
-	EXPECT_EQ(heartbeat->status, platform::STATUS_INVALID);
+	EXPECT_EQ(heartbeat->status, platform::STATUS_OK);
 	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::ACTIVATING);
 	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
 }

@@ -8,6 +8,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -91,10 +92,9 @@ namespace platform {
 		uint64_t local_tick  = 0;
 	};
 
-	// The result of charging one frame at the receive boundary. It follows a decoded request to
-	// command admission so the global bucket is checked without being incremented again.
+	// The result of charging one frame at the receive boundary. Command admission later checks the
+	// buckets again without charging them, so it only needs to know whether ingress stopped the module.
 	struct IngressAdmission {
-		bool allowed        = false;
 		bool stop_triggered = false;
 	};
 
@@ -187,9 +187,15 @@ namespace platform {
 			bool stop_triggered = false;
 		};
 
+		// Adds a sample to a bucket at the receive boundary, then escalates any violation.
 		[[nodiscard]] ChargeResult charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time);
 
-		[[nodiscard]] ChargeResult charge_category(module::ModuleId id, uint8_t cmd, ModuleTime time);
+		// Checks a bucket at dispatch without charging it. A refusal re-evaluates the violation.
+		[[nodiscard]] ChargeResult check_bucket(module::ModuleId id, Bucket bucket, ModuleTime time);
+
+		[[nodiscard]] ChargeResult escalate(module::ModuleId id, Bucket bucket, int count, ModuleTime time);
+
+		void note_heartbeat(module::ModuleId id, uint64_t global_tick);
 
 		void publish(module::ModuleId id, uint32_t event, std::vector<uint8_t> payload);
 
@@ -216,8 +222,11 @@ namespace platform {
 
 		void rebuild_topology();
 
-		// Charges every frame as soon as it reaches the platform receive boundary, before decoding.
-		[[nodiscard]] IngressAdmission account_ingress(module::ModuleId id, ModuleTime time = {});
+		// Charges every frame to the global bucket as soon as it reaches the platform receive boundary.
+		// A well-formed request is also charged to its category, and a heartbeat refreshes liveness,
+		// so queueing delays cannot turn correctly spaced calls into a violation or a missed heartbeat.
+		[[nodiscard]] IngressAdmission account_ingress(module::ModuleId id, ModuleTime time = {},
+													   std::span<const uint8_t> frame = {});
 
 		// Returns the response to send, or nothing when the request was non-confirmable.
 		[[nodiscard]] std::optional<rpc::Frame> handle_request(module::ModuleId id, const rpc::Frame& request,
