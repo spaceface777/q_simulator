@@ -60,8 +60,16 @@ namespace platform {
 	// A grant carries at most four frames within its bounded byte buffer.
 	inline constexpr std::size_t MAX_OUTBOUND_PER_TICK = QSIM_MAX_GRANT_FRAMES;
 
-	// Physical rate windows use Core0 uptime, so they keep aging while Core1 is paused.
+	// Core0 counts requests in fixed one-second windows, each started by the first request after the
+	// previous one ends. They use Core0 uptime, so they keep aging while Core1 is paused.
 	inline constexpr uint64_t RATE_LIMIT_WINDOW_TICKS = 1000;
+
+	// Violations are judged by the busiest window of the last five seconds.
+	inline constexpr uint64_t    RATE_LIMIT_HISTORY_TICKS   = 5000;
+	inline constexpr std::size_t RATE_LIMIT_HISTORY_WINDOWS = 5;
+
+	// Core0 sends a module at most one rate-limit warning in this time.
+	inline constexpr uint64_t RATE_LIMIT_WARNING_TICKS = 10000;
 
 	// Forced pauses and heartbeat supervision belong to the external platform and use global time.
 	// A pause cannot use module-local time because the paused module is deliberately granted no ticks.
@@ -90,6 +98,35 @@ namespace platform {
 		ENTROPY,
 		ATTESTATION,
 		COUNT,
+	};
+
+	// One rate-limit window: the tick it started and the request slots taken in it.
+	struct RateWindow {
+		uint64_t start_tick = 0;
+		uint16_t count      = 0;
+	};
+
+	// A bucket's current window and the windows before it.
+	struct RateState {
+		RateWindow                                         current;
+		uint8_t                                            history_head = 0;
+		std::array<RateWindow, RATE_LIMIT_HISTORY_WINDOWS> history{};
+	};
+
+	// Core0's responses to a bucket's peak, in increasing severity.
+	enum class RateAction : uint8_t {
+		NONE,
+		WARN,
+		PAUSE,
+		STOP,
+	};
+
+	// The worst violation found while handling one frame, and the bucket that caused it.
+	struct RateViolation {
+		RateAction action = RateAction::NONE;
+		Bucket     bucket = Bucket::GLOBAL;
+		int        limit  = 0;
+		int        peak   = 0;
 	};
 
 	// Something the platform noticed about an application's behaviour.
@@ -141,11 +178,11 @@ namespace platform {
 		std::vector<std::string> logs;
 		std::vector<std::string> panics;
 
-		// One sliding window of Core0/global request ticks per bucket, and the global tick last warned
-		// at, so that a sustained overload warns once rather than every request.
-		std::array<std::deque<uint64_t>, static_cast<std::size_t>(Bucket::COUNT)> bucket_samples;
-		std::array<uint64_t, static_cast<std::size_t>(Bucket::COUNT)>             bucket_warned_tick{};
-		std::array<bool, static_cast<std::size_t>(Bucket::COUNT)>                 bucket_has_warned{};
+		// Core0's rate-limit windows per bucket, when it last warned this module, and a warning it has
+		// decided to send with the next admission check.
+		std::array<RateState, static_cast<std::size_t>(Bucket::COUNT)> rate_states{};
+		std::optional<uint64_t>                                        last_rate_warning_tick;
+		std::optional<RateViolation>                                   pending_rate_warning;
 
 		uint64_t    last_heartbeat_global_tick = 0;
 		bool        heartbeat_warned           = false;
@@ -213,13 +250,15 @@ namespace platform {
 			bool stop_triggered = false;
 		};
 
-		// Adds cost samples to a bucket at the receive boundary, then escalates any violation.
-		[[nodiscard]] ChargeResult charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time, int cost = 1);
+		// Judges a bucket that is over its limit by its recent peak, folding the result into violation and
+		// scheduling a warning if none was sent recently.
+		void defer_violation(Runtime& runtime, Bucket bucket, uint64_t tick, RateViolation& violation);
 
-		// Checks a bucket at dispatch without charging it. A refusal re-evaluates the violation.
-		[[nodiscard]] ChargeResult check_bucket(module::ModuleId id, Bucket bucket, ModuleTime time);
+		// Pauses or stops the application as Core0's enforcement work does. Returns whether it stopped.
+		[[nodiscard]] bool enforce(module::ModuleId id, const RateViolation& violation, uint64_t tick);
 
-		[[nodiscard]] ChargeResult escalate(module::ModuleId id, Bucket bucket, int count, ModuleTime time);
+		// Checks the global and command buckets at dispatch without charging them.
+		[[nodiscard]] ChargeResult admit(module::ModuleId id, uint8_t cmd, ModuleTime time);
 
 		void note_heartbeat(module::ModuleId id, uint64_t global_tick);
 
@@ -276,7 +315,7 @@ namespace platform {
 
 		[[nodiscard]] std::vector<Diagnostic> take_diagnostics();
 
-		// Current samples in a bucket's sliding window; useful for platform observability and tests.
+		// Request slots taken in a bucket's current window; useful for platform observability and tests.
 		[[nodiscard]] std::size_t rate_sample_count(module::ModuleId id, Bucket bucket) const;
 
 		// Turns world state and network traffic into application-visible events, landing them in

@@ -193,11 +193,6 @@ namespace platform {
 			}
 		}
 
-		// A percentage of a capacity, rounded up.
-		int threshold(int limit, int percent) {
-			return ((limit * percent) + 99) / 100;
-		}
-
 		uint8_t neighbor_or_zero(const std::optional<module::ModuleId>& neighbor) {
 			return neighbor ? neighbor->raw() : 0;
 		}
@@ -211,14 +206,65 @@ namespace platform {
 			return std::sqrt(-2.0 * std::log(first)) * std::cos(2.0 * M_PI * second);
 		}
 
-		// Drops samples that left the sliding window ending at global_tick and returns the rest.
-		int window_count(std::deque<uint64_t>& samples, uint64_t global_tick) {
-			const uint64_t oldest =
-				global_tick >= (RATE_LIMIT_WINDOW_TICKS - 1) ? global_tick - (RATE_LIMIT_WINDOW_TICKS - 1) : 0;
-			while (!samples.empty() && samples.front() < oldest) {
-				samples.pop_front();
+		// Closes the current window once it is a second old; a new one starts with the next request.
+		void refresh_window(RateState& state, uint64_t tick) {
+			if (state.current.count == 0) {
+				state.current.start_tick = tick;
+				return;
 			}
-			return static_cast<int>(samples.size());
+			if (tick - state.current.start_tick < RATE_LIMIT_WINDOW_TICKS) return;
+			state.history[state.history_head] = state.current;
+			state.history_head                = static_cast<uint8_t>((state.history_head + 1) % state.history.size());
+			state.current                     = RateWindow{tick, 0};
+		}
+
+		void record_request(RateState& state, uint64_t tick, int cost) {
+			refresh_window(state, tick);
+			state.current.count = static_cast<uint16_t>(std::min<int>(state.current.count + cost, UINT16_MAX));
+		}
+
+		// The busiest window that started within the last five seconds.
+		int peak_count(const RateState& state, uint64_t tick) {
+			int peak = 0;
+			if (state.current.count > 0 && tick - state.current.start_tick < RATE_LIMIT_HISTORY_TICKS)
+				peak = state.current.count;
+			for (const RateWindow& window : state.history) {
+				if (window.count > 0 && tick - window.start_tick < RATE_LIMIT_HISTORY_TICKS)
+					peak = std::max<int>(peak, window.count);
+			}
+			return peak;
+		}
+
+		// Stop at 200 percent of the limit, pause at 150 percent, and warn at 125 percent.
+		RateAction action_for_peak(int peak, int limit) {
+			if (limit == 0) return RateAction::NONE;
+			if (peak >= limit * 2) return RateAction::STOP;
+			if (peak * 2 >= limit * 3) return RateAction::PAUSE;
+			if (peak * 4 >= limit * 5) return RateAction::WARN;
+			return RateAction::NONE;
+		}
+
+		// The names Core0 uses in its rate-limit warning.
+		std::string_view bucket_label(Bucket bucket) {
+			switch (bucket) {
+			case Bucket::GLOBAL:              return "overall RPC traffic";
+			case Bucket::SCHEDULE:            return "schedule RPC traffic";
+			case Bucket::NETWORK:             return "network RPC traffic";
+			case Bucket::LOGGING:             return "logging RPC traffic";
+			case Bucket::RFID:                return "RFID RPC traffic";
+			case Bucket::BELT:                return "belt RPC traffic";
+			case Bucket::SERVO:               return "servo RPC traffic";
+			case Bucket::PLATFORM_MANAGEMENT: return "platform management RPC traffic";
+			case Bucket::HEARTBEAT:           return "heartbeat RPC traffic";
+			case Bucket::EVENTS:              return "event RPC traffic";
+			case Bucket::LASER:               return "laser RPC traffic";
+			case Bucket::LED:                 return "LED RPC traffic";
+			case Bucket::CV_SENSOR:           return "CV sensor RPC traffic";
+			case Bucket::ENTROPY:             return "entropy RPC traffic";
+			case Bucket::ATTESTATION:         return "attestation RPC traffic";
+			case Bucket::COUNT:               break;
+			}
+			return "this RPC command";
 		}
 
 		// Attestation tags are HMAC-SHA-256 (RFC 2104) over this domain, the proof without its tag, and
@@ -376,79 +422,98 @@ namespace platform {
 		network_map_ = stream.str();
 	}
 
-	Manager::ChargeResult Manager::charge_bucket(module::ModuleId id, Bucket bucket, ModuleTime time, int cost) {
-		Runtime* runtime_ptr = find(id);
-		if (runtime_ptr == nullptr || runtime_ptr->lifecycle == Lifecycle::STOPPED) {
-			return {};
-		}
-		if (capacity_of(bucket) == 0) {
-			return ChargeResult{true, false};
-		}
+	void Manager::defer_violation(Runtime& runtime, Bucket bucket, uint64_t tick, RateViolation& violation) {
+		const int        limit  = capacity_of(bucket);
+		const int        peak   = peak_count(runtime.rate_states[static_cast<std::size_t>(bucket)], tick);
+		const RateAction action = action_for_peak(peak, limit);
+		if (action == RateAction::NONE) return;
 
-		std::deque<uint64_t>& samples = runtime_ptr->bucket_samples[static_cast<std::size_t>(bucket)];
-		samples.insert(samples.end(), static_cast<std::size_t>(cost), time.global_tick);
-		return escalate(id, bucket, window_count(samples, time.global_tick), time);
+		// Equal actions go to the bucket that is furthest over its limit.
+		if (action > violation.action ||
+			(action == violation.action && peak * violation.limit > violation.peak * limit)) {
+			violation = RateViolation{action, bucket, limit, peak};
+		}
+		if (!runtime.last_rate_warning_tick || tick - *runtime.last_rate_warning_tick >= RATE_LIMIT_WARNING_TICKS) {
+			runtime.pending_rate_warning   = RateViolation{action, bucket, limit, peak};
+			runtime.last_rate_warning_tick = tick;
+		}
 	}
 
-	Manager::ChargeResult Manager::check_bucket(module::ModuleId id, Bucket bucket, ModuleTime time) {
-		Runtime* runtime_ptr = find(id);
-		if (runtime_ptr == nullptr || runtime_ptr->lifecycle == Lifecycle::STOPPED) {
-			return {};
+	bool Manager::enforce(module::ModuleId id, const RateViolation& violation, uint64_t tick) {
+		if (violation.action == RateAction::PAUSE) {
+			pause_application(id, tick);
+			diagnostics_.push_back(Diagnostic{tick, id, violation.bucket, "pause", violation.peak, violation.limit});
+		} else if (violation.action == RateAction::STOP) {
+			stop_application(tick, id,
+							 to_string(violation.bucket) + " bucket exceeded its stop threshold (" +
+								 std::to_string(violation.peak) + "/" + std::to_string(violation.limit) + ")",
+							 violation.bucket, false);
+			return true;
 		}
-		const int limit = capacity_of(bucket);
-		if (limit == 0) {
-			return ChargeResult{true, false};
-		}
-
-		const int count = window_count(runtime_ptr->bucket_samples[static_cast<std::size_t>(bucket)], time.global_tick);
-		// Like Core0, a refused request re-evaluates the violation, which can extend a pause.
-		return count < limit ? ChargeResult{true, false} : escalate(id, bucket, count, time);
-	}
-
-	Manager::ChargeResult Manager::escalate(module::ModuleId id, Bucket bucket, int count, ModuleTime time) {
-		Runtime&          runtime = *find(id);
-		const std::size_t index   = static_cast<std::size_t>(bucket);
-		const int         limit   = capacity_of(bucket);
-
-		// Escalation mirrors the platform: refuse, warn, pause, then stop.
-		if (count >= threshold(limit, 120) &&
-			(!runtime.bucket_has_warned[index] || runtime.bucket_warned_tick[index] != time.global_tick)) {
-			runtime.bucket_has_warned[index]  = true;
-			runtime.bucket_warned_tick[index] = time.global_tick;
-			diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "warning", count, limit});
-		}
-		if (count >= threshold(limit, 150)) {
-			pause_application(id, time.global_tick);
-			diagnostics_.push_back(Diagnostic{time.global_tick, id, bucket, "pause", count, limit});
-		}
-		if (count >= threshold(limit, 200)) {
-			stop_application(time.global_tick, id,
-							 to_string(bucket) + " bucket exceeded its stop threshold (" + std::to_string(count) + "/" +
-								 std::to_string(limit) + ")",
-							 bucket, false);
-			return ChargeResult{false, true};
-		}
-		return ChargeResult{count < limit, false};
+		return false;
 	}
 
 	IngressAdmission Manager::account_ingress(module::ModuleId id, ModuleTime time, std::span<const uint8_t> frame) {
-		if (charge_bucket(id, Bucket::GLOBAL, time).stop_triggered) return IngressAdmission{true};
-		if (frame.size() < rpc::HEADER_SIZE) return {};
+		Runtime* runtime = find(id);
+		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED) return {};
+		const uint64_t tick = time.global_tick;
+		RateViolation  violation;
+
+		RateState& global = runtime->rate_states[static_cast<std::size_t>(Bucket::GLOBAL)];
+		record_request(global, tick, 1);
+		if (global.current.count > capacity_of(Bucket::GLOBAL))
+			defer_violation(*runtime, Bucket::GLOBAL, tick, violation);
 
 		// Only a well-formed request with known flags is charged to its category.
-		rpc_message_t header;
-		std::memcpy(&header, frame.data(), sizeof(header));
-		if (header.type != MT_REQ || header.payload_len < 0 || header.payload_len >= RPC_MAX_PAYLOAD ||
-			frame.size() != rpc::HEADER_SIZE + static_cast<std::size_t>(header.payload_len) ||
-			(header.flags & ~RPC_FLAG_NON_CON) != 0)
-			return {};
-
+		rpc_message_t header{};
+		if (frame.size() >= rpc::HEADER_SIZE) std::memcpy(&header, frame.data(), sizeof(header));
+		const bool request = frame.size() >= rpc::HEADER_SIZE && header.type == MT_REQ && header.payload_len >= 0 &&
+							 header.payload_len < RPC_MAX_PAYLOAD &&
+							 frame.size() == rpc::HEADER_SIZE + static_cast<std::size_t>(header.payload_len) &&
+							 (header.flags & ~RPC_FLAG_NON_CON) == 0;
 		// Unknown commands have no category.
-		if (const Bucket bucket = request_bucket(header.cmd); bucket != Bucket::GLOBAL) {
-			if (charge_bucket(id, bucket, time, request_cost(header.cmd)).stop_triggered) return IngressAdmission{true};
+		if (const Bucket bucket = request_bucket(header.cmd); request && bucket != Bucket::GLOBAL) {
+			RateState& state = runtime->rate_states[static_cast<std::size_t>(bucket)];
+			record_request(state, tick, request_cost(header.cmd));
+			if (state.current.count > capacity_of(bucket)) defer_violation(*runtime, bucket, tick, violation);
 		}
-		if (header.cmd == CMD_HEARTBEAT && header.payload_len == 0) note_heartbeat(id, time.global_tick);
-		return {};
+		if (request && header.cmd == CMD_HEARTBEAT && header.payload_len == 0) note_heartbeat(id, tick);
+
+		return IngressAdmission{enforce(id, violation, tick)};
+	}
+
+	Manager::ChargeResult Manager::admit(module::ModuleId id, uint8_t cmd, ModuleTime time) {
+		Runtime* runtime = find(id);
+		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED) return {};
+		const uint64_t tick    = time.global_tick;
+		bool           allowed = true;
+		RateViolation  violation;
+
+		for (const Bucket bucket : {Bucket::GLOBAL, request_bucket(cmd)}) {
+			RateState& state = runtime->rate_states[static_cast<std::size_t>(bucket)];
+			refresh_window(state, tick);
+			if (state.current.count > capacity_of(bucket)) {
+				allowed = false;
+				defer_violation(*runtime, bucket, tick, violation);
+			}
+			// Unknown commands have no category, so only the global bucket applies.
+			if (bucket == Bucket::GLOBAL && request_bucket(cmd) == Bucket::GLOBAL) break;
+		}
+
+		// Core0 sends a pending warning to the application's log with the next admission check.
+		if (runtime->pending_rate_warning) {
+			const RateViolation warning = *runtime->pending_rate_warning;
+			runtime->pending_rate_warning.reset();
+			const std::string text = "\x1b[1;38;5;214m[RPC rate limit] " + std::string(bucket_label(warning.bucket)) +
+									 " exceeded its limit. Allowed: " + std::to_string(warning.limit) +
+									 " requests/s, peak: " + std::to_string(warning.peak) + "\x1b[0m\n";
+			log_network_.send(tick, id, {id},
+							  tag_diagnostic(DIAGNOSTIC_KIND_LOG, std::vector<uint8_t>(text.begin(), text.end())));
+			diagnostics_.push_back(Diagnostic{tick, id, warning.bucket, "warning", warning.peak, warning.limit});
+		}
+
+		const bool stopped = enforce(id, violation, tick);
+		return ChargeResult{allowed && !stopped, stopped};
 	}
 
 	void Manager::note_heartbeat(module::ModuleId id, uint64_t global_tick) {
@@ -533,11 +598,11 @@ namespace platform {
 		runtime.paused_until_global_tick   = 0;
 		runtime.pause_resume_pending       = false;
 		runtime.belt_restore_valid         = false;
-		runtime.bucket_samples             = {};
-		runtime.bucket_warned_tick         = {};
-		runtime.bucket_has_warned          = {};
-		runtime.last_left_clear            = false;
-		runtime.last_right_clear           = false;
+		runtime.rate_states                = {};
+		runtime.last_rate_warning_tick.reset();
+		runtime.pending_rate_warning.reset();
+		runtime.last_left_clear  = false;
+		runtime.last_right_clear = false;
 		runtime.last_rfid_uid.clear();
 		runtime.app_fingerprint.reset();
 		runtime.outbound.clear();
@@ -614,7 +679,7 @@ namespace platform {
 		if (runtime == nullptr || bucket >= Bucket::COUNT) {
 			return 0;
 		}
-		return runtime->bucket_samples[static_cast<std::size_t>(bucket)].size();
+		return runtime->rate_states[static_cast<std::size_t>(bucket)].current.count;
 	}
 
 	std::optional<rpc::Frame> Manager::handle_request(module::ModuleId id, const rpc::Frame& request, ModuleTime time,
@@ -656,12 +721,8 @@ namespace platform {
 		}
 
 		// Admission checks the buckets as they are now, including requests that arrived later.
-		const ChargeResult global   = check_bucket(id, Bucket::GLOBAL, time);
-		const Bucket       bucket   = request_bucket(request.cmd);
-		const ChargeResult category = bucket == Bucket::GLOBAL || global.stop_triggered
-										  ? ChargeResult{true, false}
-										  : check_bucket(id, bucket, time);
-		if (!global.allowed || !category.allowed) {
+		const ChargeResult admission = admit(id, request.cmd, time);
+		if (!admission.allowed) {
 			// Over its limit: refuse rather than queue, matching what hardware would do.
 			if ((request.flags & RPC_FLAG_NON_CON) != 0) {
 				return {};
@@ -671,7 +732,7 @@ namespace platform {
 			response.cmd                 = request.cmd;
 			response.call_id             = request.call_id;
 			response.status              = STATUS_TRY_AGAIN;
-			response.stop_after_delivery = global.stop_triggered || category.stop_triggered;
+			response.stop_after_delivery = admission.stop_triggered;
 			return response;
 		}
 		if (request.cmd == CMD_LOG) {
