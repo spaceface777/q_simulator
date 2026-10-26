@@ -144,7 +144,7 @@ TEST_F(PlatformTest, RespondsWithTheRequestsCommandAndCallId) {
 TEST_F(PlatformTest, RejectsUnexpectedPayloadsForZeroArgumentCalls) {
 	for (const uint8_t cmd : {CMD_LASER_LEFT_DETECT, CMD_LASER_LEFT_GET, CMD_RFID_CHECK_TAG, CMD_RFID_GET_UID,
 							  CMD_GET_OWN_ID, CMD_GET_NETWORK_MAP, CMD_GET_MODULE_LIST, CMD_CV_SENSOR_GET_CURRENT,
-							  CMD_CV_SENSOR_GET_POWER, CMD_CV_SENSOR_GET_VOLTAGE}) {
+							  CMD_CV_SENSOR_GET_POWER, CMD_CV_SENSOR_GET_VOLTAGE, CMD_ENTROPY_GET}) {
 		EXPECT_EQ(call(cmd, {0}).status, platform::STATUS_INVALID) << "command " << static_cast<unsigned>(cmd);
 	}
 
@@ -715,4 +715,21 @@ TEST_F(PlatformTest, IgnoresRequestsFromAModuleItDoesNotOwn) {
 	rpc::Frame frame = request(CMD_GET_OWN_ID);
 	EXPECT_FALSE(manager->handle_request(module::ModuleId{5}, frame).has_value());
 	EXPECT_EQ(manager->lifecycle(module::ModuleId{5}), platform::Lifecycle::STOPPED);
+}
+
+TEST_F(PlatformTest, ServesDeterministicEntropy) {
+	EXPECT_EQ(call(CMD_ENTROPY_GET, {0}).status, platform::STATUS_INVALID);
+
+	const rpc::Frame first = call(CMD_ENTROPY_GET);
+	EXPECT_EQ(first.status, platform::STATUS_OK);
+	EXPECT_EQ(first.payload.size(), platform::ENTROPY_RESPONSE_SIZE);
+	const rpc::Frame second = call(CMD_ENTROPY_GET);
+	EXPECT_EQ(second.payload.size(), platform::ENTROPY_RESPONSE_SIZE);
+	EXPECT_NE(first.payload, second.payload);
+	EXPECT_NE(call(CMD_ENTROPY_GET, {}, NEIGHBOUR).payload, first.payload);
+
+	// The same seed replays the same stream.
+	manager = std::make_unique<platform::Manager>(world_);
+	tick_   = 0;
+	EXPECT_EQ(call(CMD_ENTROPY_GET).payload, first.payload);
 }

@@ -204,6 +204,7 @@ TEST_F(OverloadTest, PauseStopsWorldMotionExtendsAndRestoresBelts) {
 TEST_F(OverloadTest, BucketCapacitiesMatchThePlatform) {
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::GLOBAL), 100);
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::SCHEDULE), 2);
+	EXPECT_EQ(platform::capacity_of(platform::Bucket::ENTROPY), 2);
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::NETWORK), 5);
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::LOGGING), 5);
 	EXPECT_EQ(platform::capacity_of(platform::Bucket::RFID), 5);
