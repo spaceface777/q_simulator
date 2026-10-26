@@ -122,14 +122,15 @@ TEST_F(FirmwareImage, CachedCopyIsReusedUnchanged) {
 }
 
 TEST_F(FirmwareImage, MissingCopyIsRecreated) {
-	{
-		firmware::LoadedImage image(COUNTER_IMAGE);
-	}
-	const auto copy = root_ / *copies().begin();
-	std::filesystem::remove(copy);
-	firmware::LoadedImage image(COUNTER_IMAGE);
-	EXPECT_EQ(next(image), 1u);
-	EXPECT_EQ(std::filesystem::file_size(copy), std::filesystem::file_size(COUNTER_IMAGE));
+	// Windows can retain a loaded DLL after close. A rejected image leaves no loader lock.
+	expect_failure(NON_IMAGE, "load library:");
+	const auto cached = copies();
+	ASSERT_EQ(cached.size(), 1u);
+	const auto copy = root_ / *cached.begin();
+	ASSERT_TRUE(std::filesystem::remove(copy));
+	expect_failure(NON_IMAGE, "load library:");
+	EXPECT_EQ(copies(), cached);
+	EXPECT_EQ(std::filesystem::file_size(copy), std::filesystem::file_size(NON_IMAGE));
 }
 
 TEST_F(FirmwareImage, CacheKeepsOnlyRecentImages) {
