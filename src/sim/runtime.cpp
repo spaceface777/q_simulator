@@ -611,9 +611,9 @@ namespace sim {
 						 const quercus_mailbox_t& batch) {
 		for (unsigned index = 0; index < quercus_mailbox_count(&batch); ++index) {
 			unsigned                         size;
-			const uint8_t*                   bytes = quercus_mailbox_read(&batch, index, &size);
-			const platform::IngressAdmission ingress =
-				platform_->account_ingress(instance.id, platform::ModuleTime{source_global_tick, source_local_tick});
+			const uint8_t*                   bytes   = quercus_mailbox_read(&batch, index, &size);
+			const platform::IngressAdmission ingress = platform_->account_ingress(
+				instance.id, platform::ModuleTime{source_global_tick, source_local_tick}, {bytes, size});
 			rpc::Frame frame;
 			reader_.clear();
 			reader_.append(bytes, size);

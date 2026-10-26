@@ -230,7 +230,7 @@ TEST_F(OverloadTest, RecognizedRequestConsumesGlobalAndItsCategoryOnce) {
 	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::LASER), 1u);
 }
 
-TEST_F(OverloadTest, PermissionDeniedScheduleConsumesGlobalButNotSchedule) {
+TEST_F(OverloadTest, PermissionDeniedScheduleStillConsumesItsCategoryAtIngress) {
 	rpc::Frame frame;
 	frame.type    = MT_REQ;
 	frame.cmd     = CMD_SET_FLIGHT_SCHEDULE;
@@ -241,7 +241,83 @@ TEST_F(OverloadTest, PermissionDeniedScheduleConsumesGlobalButNotSchedule) {
 	ASSERT_TRUE(response.has_value());
 	EXPECT_EQ(response->status, platform::STATUS_PERM);
 	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 1u);
-	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::SCHEDULE), 0u);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::SCHEDULE), 1u);
+}
+
+TEST_F(OverloadTest, IngressChargesTheCategorySoQueueingDelaysCannotCauseAViolation) {
+	// Correctly spaced RFID reads reach the platform, then wait in the queue and run together.
+	std::vector<rpc::Frame> queued;
+	for (uint64_t index = 0; index < 6; index++) {
+		rpc::Frame frame;
+		frame.type    = MT_REQ;
+		frame.cmd     = CMD_RFID_CHECK_TAG;
+		frame.call_id = static_cast<uint16_t>(index);
+		const platform::ModuleTime arrival{1 + (index * 300), 1 + (index * 300)};
+		EXPECT_FALSE(manager->account_ingress(module::ModuleId{MODULE}, arrival, rpc::encode(frame)).stop_triggered);
+		queued.push_back(frame);
+	}
+
+	const platform::IngressAdmission admitted{};
+	for (const rpc::Frame& frame : queued) {
+		const std::optional<rpc::Frame> response =
+			manager->handle_request(module::ModuleId{MODULE}, frame, platform::ModuleTime{1501, 1501}, admitted);
+		ASSERT_TRUE(response.has_value());
+		EXPECT_EQ(response->status, platform::STATUS_OK) << "refused call " << frame.call_id;
+	}
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::RFID), 4u);
+	collect();
+	EXPECT_TRUE(collected.empty());
+}
+
+TEST_F(OverloadTest, DispatchChecksTheBucketIncludingLaterArrivals) {
+	const int  limit = platform::capacity_of(platform::Bucket::RFID);
+	rpc::Frame frame;
+	frame.type = MT_REQ;
+	frame.cmd  = CMD_RFID_CHECK_TAG;
+	for (int index = 0; index < limit; index++) {
+		(void)manager->account_ingress(module::ModuleId{MODULE}, platform::ModuleTime{1, 1}, rpc::encode(frame));
+	}
+
+	// The first request was within the limit when it arrived, but Core0 checks the bucket at dispatch.
+	const std::optional<rpc::Frame> response = manager->handle_request(
+		module::ModuleId{MODULE}, frame, platform::ModuleTime{1, 1}, platform::IngressAdmission{});
+	ASSERT_TRUE(response.has_value());
+	EXPECT_EQ(response->status, platform::STATUS_TRY_AGAIN);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::RFID),
+			  static_cast<std::size_t>(limit));
+}
+
+TEST_F(OverloadTest, ACategoryViolationAtIngressCanStopTheApplication) {
+	const int  limit = platform::capacity_of(platform::Bucket::RFID);
+	rpc::Frame frame;
+	frame.type = MT_REQ;
+	frame.cmd  = CMD_RFID_GET_UID;
+	for (int index = 0; index < (limit * 2) - 1; index++) {
+		EXPECT_FALSE(manager->account_ingress(module::ModuleId{MODULE}, platform::ModuleTime{1, 1}, rpc::encode(frame))
+						 .stop_triggered);
+	}
+	EXPECT_TRUE(manager->account_ingress(module::ModuleId{MODULE}, platform::ModuleTime{1, 1}, rpc::encode(frame))
+					.stop_triggered);
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::STOPPED);
+	collect();
+	EXPECT_TRUE(raised("stop"));
+}
+
+TEST_F(OverloadTest, MalformedOrUnknownFlagFramesConsumeOnlyGlobal) {
+	rpc::Frame heartbeat;
+	heartbeat.type  = MT_REQ;
+	heartbeat.cmd   = CMD_HEARTBEAT;
+	heartbeat.flags = 0x02;
+	(void)manager->account_ingress(module::ModuleId{MODULE}, platform::ModuleTime{1, 1}, rpc::encode(heartbeat));
+
+	heartbeat.flags               = RPC_FLAG_NONE;
+	std::vector<uint8_t> trailing = rpc::encode(heartbeat);
+	trailing.push_back(0);
+	(void)manager->account_ingress(module::ModuleId{MODULE}, platform::ModuleTime{1, 1}, trailing);
+
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::GLOBAL), 2u);
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::HEARTBEAT), 0u);
+	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
 }
 
 TEST_F(OverloadTest, RawIngressAloneEscalatesGlobalWarningPauseAndStop) {
@@ -335,7 +411,7 @@ TEST_F(OverloadTest, ARefusedRequestHasNoEffect) {
 	EXPECT_DOUBLE_EQ(world_.module(module::ModuleId{MODULE})->servo_angle().raw(), 0.0);
 }
 
-TEST_F(OverloadTest, ARateRejectedHeartbeatDoesNotActivateOrRefreshLiveness) {
+TEST_F(OverloadTest, ARateRejectedHeartbeatStillActivatesAtIngress) {
 	const int global_limit = platform::capacity_of(platform::Bucket::GLOBAL);
 	for (int index = 0; index < global_limit - 1; index++) {
 		EXPECT_EQ(call(0xFE, 1), platform::STATUS_NO_SYS);
@@ -348,19 +424,16 @@ TEST_F(OverloadTest, ARateRejectedHeartbeatDoesNotActivateOrRefreshLiveness) {
 	const std::optional<rpc::Frame> response =
 		manager->handle_request(module::ModuleId{MODULE}, heartbeat, platform::ModuleTime{1, 1});
 
+	// Liveness is recorded when the heartbeat arrives, before command admission refuses it.
 	ASSERT_TRUE(response.has_value());
 	EXPECT_EQ(response->status, platform::STATUS_TRY_AGAIN);
-	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::ACTIVATING);
-	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::RUNNING);
+	EXPECT_TRUE(manager->is_activated(module::ModuleId{MODULE}));
 	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::HEARTBEAT), 1u);
-
-	const std::vector<module::ModuleId> stopped = manager->check_supervision(platform::ACTIVATION_DEADLINE_TICKS);
-	ASSERT_EQ(stopped.size(), 1u);
-	EXPECT_EQ(stopped.front(), module::ModuleId{MODULE});
-	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+	EXPECT_TRUE(manager->check_supervision(1 + platform::HEARTBEAT_WARNING_TICKS).empty());
 }
 
-TEST_F(OverloadTest, ANonConfirmableRateRejectedHeartbeatDoesNotActivate) {
+TEST_F(OverloadTest, ANonConfirmableRateRejectedHeartbeatStillActivates) {
 	const int global_limit = platform::capacity_of(platform::Bucket::GLOBAL);
 	for (int index = 0; index < global_limit - 1; index++) {
 		EXPECT_EQ(call(0xFE, 1), platform::STATUS_NO_SYS);
@@ -372,11 +445,11 @@ TEST_F(OverloadTest, ANonConfirmableRateRejectedHeartbeatDoesNotActivate) {
 	heartbeat.call_id = 2;
 	heartbeat.flags   = RPC_FLAG_NON_CON;
 	EXPECT_FALSE(manager->handle_request(module::ModuleId{MODULE}, heartbeat, platform::ModuleTime{1, 1}));
-	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::ACTIVATING);
-	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+	EXPECT_EQ(manager->lifecycle(module::ModuleId{MODULE}), platform::Lifecycle::RUNNING);
+	EXPECT_TRUE(manager->is_activated(module::ModuleId{MODULE}));
 }
 
-TEST_F(OverloadTest, ARateRejectedHeartbeatDoesNotClearWarningOrRefreshRunningLiveness) {
+TEST_F(OverloadTest, ARateRejectedHeartbeatClearsTheWarningAndRefreshesLiveness) {
 	call(CMD_HEARTBEAT, 100);
 	manager->check_supervision(100 + platform::HEARTBEAT_WARNING_TICKS + 1);
 	(void)manager->take_diagnostics();
@@ -394,13 +467,36 @@ TEST_F(OverloadTest, ARateRejectedHeartbeatDoesNotClearWarningOrRefreshRunningLi
 	ASSERT_TRUE(response.has_value());
 	EXPECT_EQ(response->status, platform::STATUS_TRY_AGAIN);
 
-	manager->check_supervision(601);
+	EXPECT_TRUE(manager->check_supervision(601).empty());
 	EXPECT_TRUE(manager->take_diagnostics().empty());
+	EXPECT_TRUE(manager->check_supervision(100 + platform::HEARTBEAT_FAILURE_TICKS + 1).empty());
+	EXPECT_EQ(manager->check_supervision(601 + platform::HEARTBEAT_FAILURE_TICKS).size(), 1u);
+}
 
-	const std::vector<module::ModuleId> stopped =
-		manager->check_supervision(100 + platform::HEARTBEAT_FAILURE_TICKS + 1);
-	ASSERT_EQ(stopped.size(), 1u);
-	EXPECT_EQ(stopped.front(), module::ModuleId{MODULE});
+TEST_F(OverloadTest, AQueuedHeartbeatDoesNotRefreshLivenessAtDispatch) {
+	rpc::Frame heartbeat;
+	heartbeat.type = MT_REQ;
+	heartbeat.cmd  = CMD_HEARTBEAT;
+	(void)manager->account_ingress(module::ModuleId{MODULE}, platform::ModuleTime{100, 100}, rpc::encode(heartbeat));
+
+	const std::optional<rpc::Frame> response = manager->handle_request(
+		module::ModuleId{MODULE}, heartbeat, platform::ModuleTime{1000, 1000}, platform::IngressAdmission{});
+	ASSERT_TRUE(response.has_value());
+	EXPECT_EQ(response->status, platform::STATUS_OK);
+	EXPECT_EQ(manager->check_supervision(101 + platform::HEARTBEAT_FAILURE_TICKS).size(), 1u);
+}
+
+TEST_F(OverloadTest, AHeartbeatWithAPayloadSucceedsWithoutActivating) {
+	rpc::Frame heartbeat;
+	heartbeat.type    = MT_REQ;
+	heartbeat.cmd     = CMD_HEARTBEAT;
+	heartbeat.payload = {1};
+	const std::optional<rpc::Frame> response =
+		manager->handle_request(module::ModuleId{MODULE}, heartbeat, platform::ModuleTime{1, 1});
+	ASSERT_TRUE(response.has_value());
+	EXPECT_EQ(response->status, platform::STATUS_OK);
+	EXPECT_FALSE(manager->is_activated(module::ModuleId{MODULE}));
+	EXPECT_EQ(manager->rate_sample_count(module::ModuleId{MODULE}, platform::Bucket::HEARTBEAT), 1u);
 }
 
 TEST_F(OverloadTest, AnApplicationThatNeverHeartbeatsStopsAtItsActivationDeadline) {
