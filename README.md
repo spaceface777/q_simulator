@@ -143,6 +143,9 @@ The simulator stops a module for any of these failures:
 - A hang: a grant that does not return within 5 seconds, for example an endless loop.
   `QSIM_WATCHDOG_MS` changes the limit, and 0 disables the watchdog.
   Time while the whole process is stopped, for example in a debugger, does not count.
+  An application built with `CONFIG_QUERCUS_SIM_CPU_TIME` pays simulated time for its code instead,
+  so its own loops pause at each grant boundary and never reach the watchdog. The watchdog still
+  covers code that is not counted: the Zephyr kernel, the host C library, and blocking host calls.
 
 Every report line names its module:
 

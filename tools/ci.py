@@ -96,7 +96,7 @@ def zephyr():
 def python_tests():
     run(sys.executable, "tools/check_sdk.py")
     run(sys.executable, "-m", "unittest", "discover", "-s", ROOT / "test", "-p", "test_*.py")
-    for pattern in ("test_qbuild.py", "test_zephyr_revision.py"):
+    for pattern in ("test_qbuild.py", "test_zephyr_revision.py", "test_weigh_cpu_time.py"):
         run(sys.executable, "-m", "unittest", "discover", "-s", ROOT / "external/q_sdk/test", "-p", pattern)
 
 

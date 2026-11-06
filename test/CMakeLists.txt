@@ -4,7 +4,7 @@ add_executable(tests
     event/test_events.cpp
     ltl/test_parser.cpp ltl/test_monitor.cpp ltl/test_observation.cpp
     module/test_types.cpp rpc/test_frame.cpp seed/test_seed.cpp
-    sim/test_crash_containment.cpp sim/test_embedded_environment.cpp sim/test_runtime.cpp sim/test_determinism.cpp sim/test_scenarios.cpp sim/test_applet_e2e.cpp sim/test_speed_invariance.cpp
+    sim/test_cpu_time.cpp sim/test_crash_containment.cpp sim/test_embedded_environment.cpp sim/test_runtime.cpp sim/test_determinism.cpp sim/test_scenarios.cpp sim/test_applet_e2e.cpp sim/test_speed_invariance.cpp
     engine/test_task_queue.cpp net/test_network.cpp
     platform/test_overload.cpp platform/test_platform.cpp platform/test_rpc_worker_pool.cpp
     world/test_world.cpp world/test_instruments.cpp world/test_calibration_statistics.cpp world/test_servo_travel.cpp)
