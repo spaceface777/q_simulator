@@ -2,6 +2,7 @@
 #define FIRMWARE_BACKEND_H
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -15,6 +16,12 @@ namespace firmware {
 	struct ImageBinding {
 		module::ModuleId module;
 		std::string      path;
+	};
+
+	// An application that stopped running during an epoch: it crashed, hung, or ended itself.
+	struct ModuleFailure {
+		std::string summary; // One line without host addresses, for traces and stop reasons
+		std::string report;  // The complete report with its stack trace, for the console
 	};
 
 	// One module's prepared work and buffered result for a strict execution epoch.
@@ -33,6 +40,8 @@ namespace firmware {
 		qsim_frame_batch_t outbound_storage{};
 		uint32_t           outbound_used = 0;
 		FrameBatchView     outbound;
+		// Set when the application stopped during this epoch. It then has no output.
+		std::optional<ModuleFailure> failure;
 
 		// Starts another epoch without clearing the bounded byte buffers. The used-byte
 		// counts and view are the authority, so bytes left by an earlier epoch stay hidden.
@@ -47,6 +56,7 @@ namespace firmware {
 			inbound_count = 0;
 			outbound_used = 0;
 			outbound      = {};
+			failure.reset();
 		}
 	};
 

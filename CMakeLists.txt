@@ -118,6 +118,9 @@ set(QSIM_TEST_FIRMWARE_DIR "${CMAKE_SOURCE_DIR}/external/q_applets/out" CACHE PA
 # === Builds ===
 
 add_library(core STATIC
+    src/firmware/crash_report.cpp
+    src/firmware/crash_symbols.cpp
+    src/firmware/crash_watchdog.cpp
     src/firmware/image.cpp
     src/firmware/inprocess_backend.cpp
     src/sim/runtime.cpp
@@ -143,20 +146,24 @@ add_library(core STATIC
 )
 
 if(WIN32)
-    target_sources(core PRIVATE src/firmware/image_windows.cpp)
+    target_sources(core PRIVATE src/firmware/image_windows.cpp src/firmware/crash_windows.cpp)
 else()
-    target_sources(core PRIVATE src/firmware/image_posix.cpp)
+    target_sources(core PRIVATE src/firmware/image_posix.cpp src/firmware/crash_posix.cpp)
 endif()
 
 target_link_libraries(core PUBLIC
     tomlplusplus::tomlplusplus
     ${CMAKE_DL_LIBS}
 )
+target_link_libraries(core PRIVATE backtrace)
 
 target_include_directories(core PUBLIC
     "${QUERCUS_SDK_ROOT}/include")
 
 target_compile_options(core PRIVATE ${COMPILATION_FLAGS})
+# The crash reporter walks frame pointers from the image's fatal hook through these files.
+set_source_files_properties(src/firmware/crash_posix.cpp src/firmware/crash_windows.cpp
+    src/firmware/inprocess_backend.cpp PROPERTIES COMPILE_OPTIONS -fno-omit-frame-pointer)
 
 # The headless scenario runner. Deliberately built here rather than under src/, because that
 # directory pulls in SDL3 and this target must not: a scenario run has nothing to draw, and

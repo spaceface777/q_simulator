@@ -29,7 +29,7 @@ In one process, each loaded copy has its own slot. Separate processes can load t
 The loader compares a cached copy with its source before each load, and replaces a copy that differs.
 A copy which the host loader did not unload keeps its slot until the process ends.
 The cache keeps the eight most recently used images.
-The loader reports failures with the source path and OS diagnostic text. It checks ABI version 10 after loading.
+The loader reports failures with the source path and OS diagnostic text. It checks ABI version 11 after loading.
 The OS loader rejects incompatible architectures before the API can be read.
 
 Each loaded copy owns its globals, Zephyr kernel, scheduler, entropy state, coroutine stacks,
@@ -66,8 +66,9 @@ The runtime owns an explicit environment map from the scenario. Images copy its 
 provide their own `QUERCUS_MODULE_ID`, and never inherit the host environment.
 Trace metadata records the supplied map.
 
-Each image defines ten libc functions: `getenv`, `time`, `gettimeofday`, `clock_gettime`, `exit`, `_exit`,
-`abort`, `setvbuf`, `random`, and `srandom`. These bind within the image.
+Each image defines eleven libc functions: `getenv`, `time`, `gettimeofday`, `clock_gettime`, `exit`, `_exit`,
+`abort`, `__stack_chk_fail`, `setvbuf`, `random`, and `srandom`. On macOS it also defines the `malloc` family,
+which allocates from a malloc zone of the image's own. These bind within the image.
 Clocks return simulated native time. Environment lookups return stable pointers without per-call allocation.
 The private PRNG supplies repeatable entropy on both supported hosts.
 Fatal exits return a firmware outcome to the host, and `setvbuf` cannot change host stream buffering.
@@ -84,5 +85,21 @@ Runtime error paths flush the trace before returning control to the caller.
 NDJSON traces include configuration digests, environment metadata, clocks, RPC traffic, world observations,
 property results, and lifecycle changes. Repeatability checks compare complete bytes without normalization.
 
+## Crash containment
+
+Every call into an image runs under a guard (`src/firmware/crash_posix.cpp`, `crash_windows.cpp`).
+A CPU fault or a C library `abort` in application code arrives as a signal, or on Windows as an exception.
+The handler records the registers and walks the frame-pointer chain without reading invalid memory.
+It then returns control to the guard. A watchdog thread interrupts a grant that runs past its limit the same way.
+An application that ends itself reports its stack through the image's fatal hook instead.
+Either way, the backend returns the failure with the grant rather than throwing.
+The runtime prints the report, applies Core0's safe stop, retires the module, and continues the run.
+
+Reports are symbolized after the guard returns, never in a signal handler, with libbacktrace.
+`cmake/libbacktrace.cmake` builds it from source for all three hosts.
+Summaries and stop reasons contain no host addresses, so equal runs keep equal traces.
+A watchdog stop happens at a wall-clock moment, but always during the same simulated grant.
+
 Images are trusted applications. The loader is an isolation mechanism for globals, not a security boundary.
-A grant cannot preempt non-yielding firmware, and unloading cannot reclaim leaked host allocations.
+A faulted image is abandoned, not unloaded: its code may still be referenced by host state.
+On Linux and Windows, unloading cannot reclaim leaked host allocations.

@@ -43,6 +43,13 @@ namespace sim {
 		std::string                            obligation_at_end;
 	};
 
+	// An application that stopped running: it crashed, hung in one grant, or ended itself.
+	struct ModuleCrash {
+		module::ModuleId module;
+		uint64_t         tick = 0;
+		std::string      summary;
+	};
+
 	// Every module owns a private coroutine image. Only the selected module's grant
 	// advances its native time. The world and platform always use global time.
 	class Runtime {
@@ -94,6 +101,7 @@ namespace sim {
 		engine::Queue                           queue_;
 		uint64_t                                global_tick_ = 0;
 		std::array<uint64_t, MODULE_TABLE_SIZE> module_ticks_{};
+		std::vector<ModuleCrash>                crashes_;
 		int64_t                                 budget_us_ = 0;
 		bool                                    running_   = false;
 
@@ -156,6 +164,7 @@ namespace sim {
 		void start_rpc_work(ModuleRuntime& instance, uint64_t work_id, uint64_t global_tick, uint64_t local_tick);
 		void quiesce_module_for_stop(ModuleRuntime& instance, uint64_t local_tick, std::optional<rpc::Frame> response);
 		void retire_module(module::ModuleId module, uint64_t tick);
+		void application_failed(ModuleRuntime& instance, const firmware::ModuleFailure& failure);
 		void schedule_tick_tasks();
 		void step();
 		void report_pacing(std::chrono::microseconds elapsed, double speed, uint64_t ticks_advanced);
@@ -180,6 +189,9 @@ namespace sim {
 		}
 
 		[[nodiscard]] bool failed() const noexcept;
+
+		// Applications that crashed, hung or ended themselves. Each module stopped; the rest ran on.
+		[[nodiscard]] const std::vector<ModuleCrash>& crashes() const noexcept { return crashes_; }
 
 		[[nodiscard]] bool halted() const noexcept { return halt_on_failure_ && failed(); }
 

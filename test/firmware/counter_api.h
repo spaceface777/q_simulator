@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 /* SDK-independent fixture: the loader reads only the version. The operation table
@@ -22,4 +23,6 @@ typedef struct CounterApi {
 	int (*bind)(const void*);
 	int (*run)(const void*, CounterResult*);
 	int (*destroy)(void);
+	const char* (*current_thread)(void);
+	size_t (*recent_log)(char*, size_t);
 } CounterApi;

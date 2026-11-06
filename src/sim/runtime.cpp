@@ -603,6 +603,9 @@ namespace sim {
 		generation_++;
 		backend_->execute_epoch(grants_);
 
+		for (std::size_t index = 0; index < modules_.size(); index++) {
+			if (grants_[index].failure) application_failed(modules_[index], *grants_[index].failure);
+		}
 		for (ModuleRuntime& instance : modules_) {
 			if (instance.active && instance.retire_after_ack) retire_module(instance.id, global_tick_);
 		}
@@ -629,6 +632,25 @@ namespace sim {
 		// Flush after all task generations of each 100-tick interval. stop() flushes the remainder.
 		if (global_tick_ % TRACE_FLUSH_TICKS == TRACE_FLUSH_TICKS - 1) trace_.flush();
 		global_tick_++;
+	}
+
+	// The application can no longer run. Report it, apply Core0's safe stop to its module, and
+	// simulate the rest of the system without it. Nothing it sent during the failed grant arrives.
+	void Runtime::application_failed(ModuleRuntime& instance, const firmware::ModuleFailure& failure) {
+		std::string source =
+			instance.id.raw() == TOWER_MODULE_ID ? "[ATC]" : "[Pico " + std::to_string(instance.id.raw()) + "]";
+		source.resize(std::string_view{"[Pico 255]"}.size(), ' ');
+		const std::string prefix = source + " [crash] ";
+
+		std::cout.flush();
+		std::istringstream lines(failure.report);
+		for (std::string line; std::getline(lines, line);) std::cerr << prefix << line << '\n';
+		std::cerr.flush();
+
+		crashes_.push_back(ModuleCrash{instance.id, global_tick_, failure.summary});
+		platform_->application_crashed(global_tick_, instance.id, failure.summary);
+		quiesce_module_for_stop(instance, module_ticks_[instance.id.raw()], std::nullopt);
+		retire_module(instance.id, global_tick_);
 	}
 
 	void Runtime::retire_module(module::ModuleId id, uint64_t tick) {

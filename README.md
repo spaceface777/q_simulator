@@ -101,7 +101,7 @@ Run a bundled headless scenario:
 ```
 
 The headless runner returns 0 when every property holds.
-It returns 1 for a failed or incomplete run, and 2 for a configuration error. Use `--trace run.ndjson` to record the run.
+It returns 1 for a failed or incomplete run, or when an application crashed, and 2 for a configuration error. Use `--trace run.ndjson` to record the run.
 Use `--help` for seed, duration, layout, and property-evaluation options.
 For the GUI, copy `settings_example.toml` to `settings.toml` and `layout_example.toml` to `layout.toml`,
 then run `./build/simulation`. An explicit scenario can select its own layout and default firmware.
@@ -128,6 +128,56 @@ all conveyor modules run the router, and module 255 runs `atc_fixed.dll`.
 
 Every simulated module has the same public attestation test key: the bytes `0x00` to `0x1f`.
 `CMD_ATTEST` measures an application by the SHA-256 of its `.dll` file.
+
+## Application crashes
+
+An application that crashes stops only its own module. The simulator prints a report,
+applies Core0's safe stop to that module, and simulates the other modules to the end of the run.
+
+The simulator stops a module for any of these failures:
+
+- A CPU fault: an invalid memory access, an illegal or trap instruction, a stack overflow, or integer division by zero.
+  Images trap on integer division by zero because the RP2350 does.
+- A Zephyr fatal error: `k_panic`, `k_oops`, or a failed `__ASSERT`.
+- `exit`, `_exit`, `abort`, a failed `assert`, or a failed stack-protector or `_FORTIFY_SOURCE` check.
+- A hang: a grant that does not return within 5 seconds, for example an endless loop.
+  `QSIM_WATCHDOG_MS` changes the limit, and 0 disables the watchdog.
+  Time while the whole process is stopped, for example in a debugger, does not count.
+
+Every report line names its module:
+
+```text
+[Pico 1]   [crash] Module 1 crashed: segmentation fault (SIGSEGV) reading address 0x0, a NULL pointer
+[Pico 1]   [crash]   application: external/q_applets/out/crash_test.dll
+[Pico 1]   [crash]   thread:      main
+[Pico 1]   [crash]   time:        global tick 2450, module uptime 00:00:02.102
+[Pico 1]   [crash] Stack trace:
+[Pico 1]   [crash]    0: 0x10463ac28        in do_crash                 at /path/to/crash_test/src/main.c:59
+[Pico 1]   [crash]    1: 0x10463a83c        in main                     at /path/to/crash_test/src/main.c:195
+[Pico 1]   [crash]    2: 0x10464018c        in bg_thread_main           at /path/to/zephyr/kernel/init.c:354
+[Pico 1]   [crash] Last log output, not yet sent when the module stopped:
+[Pico 1]   [crash]   [00:00:02.001,000] [  0 main] crash_test: about to crash in 100 ms
+[Pico 1]   [crash] Module 1 is stopped. The simulation continues with the other modules.
+```
+
+The stack trace starts where the application failed. Inlined calls have their own lines, and recursion is
+shown once with a count. Source lines come from the image's DWARF debug information. On macOS, `qbuild`
+writes it to `<application>.dll.dSYM` beside the image. The last log lines are text that the application
+logged but had not yet sent, because the log backend sends a batch at most once per second.
+
+The GUI crosses out the module and continues. The headless runner completes the scenario and evaluates
+its properties. It then prints `CRASHED` for each crashed module and returns 1.
+Traces record `module_stopped` with the reason `crashed: ...`. The reason contains no host addresses,
+so equal runs still produce equal traces.
+
+Applications run inside the simulator process, so containment has limits:
+
+- An application can damage memory that it shares with the simulator. If the simulator later fails outside
+  application code, it says that an earlier application crash may be the cause.
+- On macOS each image allocates from a malloc zone of its own, so a heap overrun stays inside it.
+  On Linux and Windows images share the simulator's heap.
+- On Windows, a stack overflow still ends the simulator, because Windows reports it on the exhausted stack.
+- An application stopped inside a C library call that holds a lock, for example `malloc`, can leave the lock held.
 
 ## Tests
 
@@ -189,17 +239,21 @@ The current pin contains the native simulator patchset rebased onto Zephyr 4.5.0
 Simulator images use the host C library. Pico builds use the toolchain Picolibc.
 The image defines simulated clock functions, private `getenv`, private `random`/`srandom`,
 and process-exit functions that return a fatal firmware outcome to the host.
+See [Application crashes](#application-crashes) for how the simulator handles them.
 
 - Host `rand`/`srand` state is shared. Execution order makes runs repeatable on one host,
   but one module's calls change another module's sequence.
-- Host allocation has no Pico-sized heap limit. Allocations that firmware never frees can survive image unloading.
+- Host allocation has no Pico-sized heap limit. On Linux and Windows, allocations that firmware never frees
+  can survive image unloading. On macOS, unloading releases the image's private malloc zone.
+- Each Zephyr thread runs on an 8 MiB host stack, whatever stack size the application declares.
+  A stack overflow that would corrupt memory on a module goes unnoticed unless it exhausts that stack.
 - Host `errno` belongs to the executing host thread and is shared by images.
   Firmware logs can contain different errno numbers on different hosts.
   RPC statuses always use Zephyr/Picolibc numbering, including ENOSYS 88 and ETIMEDOUT 116.
 - Math and floating-point formatting can differ between operating systems.
   Float-heavy traces can differ across hosts while remaining repeatable on one host.
 - Firmware `printf` output shares stdout and follows module execution order.
-- Firmware is trusted code. A busy loop that never yields hangs the simulator; grants cannot be preempted.
+- Firmware is trusted code. A busy loop that never yields stops its module when the watchdog expires.
 - Module reboot and Rosetta images are unsupported. Windows uses 32-bit images. macOS and Linux use 64-bit images.
 
 [Architecture](docs/ARCHITECTURE.md) and [protocol](docs/PROTOCOL.md) describe the execution boundary.

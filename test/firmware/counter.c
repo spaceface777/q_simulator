@@ -1,7 +1,7 @@
 #include "counter_api.h"
 
 #ifndef COUNTER_ABI_VERSION
-#define COUNTER_ABI_VERSION 10
+#define COUNTER_ABI_VERSION 11
 #endif
 
 static uint64_t counter;
@@ -29,7 +29,7 @@ __attribute__((visibility("default"))) const CounterApi* qsim_image_api(void) {
 #ifdef COUNTER_NULL_API
 	return 0;
 #else
-	static const CounterApi api = {COUNTER_ABI_VERSION, bind_counter, run_counter, destroy_counter};
+	static const CounterApi api = {COUNTER_ABI_VERSION, bind_counter, run_counter, destroy_counter, 0, 0};
 	return &api;
 #endif
 }

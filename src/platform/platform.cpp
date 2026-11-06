@@ -580,7 +580,7 @@ namespace platform {
 	}
 
 	void Manager::stop_application(uint64_t tick, module::ModuleId id, std::string reason, Bucket cause,
-								   bool heartbeat_failure) {
+								   bool heartbeat_failure, bool diagnose) {
 		Runtime* runtime_ptr = find(id);
 		if (runtime_ptr == nullptr || runtime_ptr->lifecycle == Lifecycle::STOPPED) {
 			return;
@@ -595,6 +595,7 @@ namespace platform {
 		runtime.heartbeat_warned           = false;
 		runtime.heartbeat_failed           = heartbeat_failure;
 		runtime.rate_stopped               = !heartbeat_failure;
+		runtime.crashed                    = false;
 		runtime.paused_until_global_tick   = 0;
 		runtime.pause_resume_pending       = false;
 		runtime.belt_restore_valid         = false;
@@ -622,7 +623,16 @@ namespace platform {
 			physical->set_right_laser_enabled(false);
 		}
 
-		diagnostics_.push_back(Diagnostic{tick, id, cause, "stop", 0, 0});
+		if (diagnose) diagnostics_.push_back(Diagnostic{tick, id, cause, "stop", 0, 0});
+	}
+
+	void Manager::application_crashed(uint64_t tick, module::ModuleId id, std::string reason) {
+		Runtime* runtime = find(id);
+		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED) return;
+		// The runtime prints the crash report. A bucket "stop" diagnostic would misname the cause.
+		stop_application(tick, id, "crashed: " + reason, Bucket::GLOBAL, false, false);
+		runtime->rate_stopped = false;
+		runtime->crashed      = true;
 	}
 
 	std::vector<module::ModuleId> Manager::check_supervision(uint64_t tick) {
@@ -631,7 +641,7 @@ namespace platform {
 			Runtime& runtime = *find(id);
 
 			if (runtime.lifecycle == Lifecycle::STOPPED) {
-				if (!runtime.heartbeat_failed && !runtime.rate_stopped) {
+				if (!runtime.heartbeat_failed && !runtime.rate_stopped && !runtime.crashed) {
 					throw std::runtime_error("Module " + std::to_string(id.raw()) +
 											 " was stopped: " + runtime.stop_reason);
 				}

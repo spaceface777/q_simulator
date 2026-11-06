@@ -1,11 +1,13 @@
 # Firmware image protocol
 
-`quercus/sim_instance.h` defines native ABI version 10.
-An image exports one function, `qsim_image_api()`, which returns an ABI version and three function pointers:
+`quercus/sim_instance.h` defines native ABI version 11.
+An image exports one function, `qsim_image_api()`, which returns an ABI version and five function pointers:
 
-- `bind(config)` validates and copies the module ID, seed, and explicit environment snapshot.
+- `bind(config)` validates and copies the module ID, seed, explicit environment snapshot, and fatal hook.
 - `run(grant, result)` executes an absolute native-time window with a bounded input batch.
 - `destroy()` stops the runner and releases image-owned resources.
+- `current_thread()` names the running Zephyr thread, for crash reports. It can be NULL.
+- `recent_log(buffer, capacity)` copies the newest log text not yet sent, for crash reports. It can be NULL.
 
 Each loaded copy holds one module instance. There are no instance tokens or host allocation arenas.
 The host checks the ABI version after loading the image. The OS loader checks architecture compatibility.
@@ -36,7 +38,15 @@ With no input and a next wake time beyond the window, the host can skip executio
 
 Image API status codes report invalid arguments, resource limits, or transport failures.
 A native fatal outcome reports firmware termination without terminating the simulator.
-Non-yielding firmware cannot be preempted. Destroy failures are reported to the caller or stderr during cleanup.
+`exit`, `_exit`, `abort`, a stack-protector failure, and a Zephyr fatal error such as `k_panic` produce one.
+Before the image unwinds, it calls the configuration's `on_fatal` hook on the application's stack.
+The host records that stack for its report. It then stops the module and continues with the other modules.
+
+The host also stops a module whose grant faults or does not return within the watchdog limit.
+It abandons that grant mid-execution and keeps the library loaded, but never runs the image again.
+After a fatal outcome or a contained fault, the host may call only `current_thread` and `recent_log`.
+`recent_log` locks the image's interrupts permanently and sends nothing.
+Destroy failures are reported to the caller or stderr during cleanup.
 
 ## RPC frames
 

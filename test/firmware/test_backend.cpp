@@ -77,20 +77,22 @@ TEST(FirmwareBackend, RejectsZeroLengthWithoutPublishingOldOutput) {
 	EXPECT_EQ(grant.outbound.size(), 0u);
 }
 
-TEST(FirmwareBackend, FailureNamesModuleOperationOutcomeAndDiagnostic) {
+TEST(FirmwareBackend, FatalOutcomeStopsTheModuleInsteadOfTheEpoch) {
 	Inputs inputs;
 	test_os::set_environment("TEST_APP_EXIT_AFTER", "1");
 	firmware::InProcessBackend backend(std::span(&binding, 1), 41);
 	firmware::ExecutionGrant   grant;
 	prepare(grant);
 	backend.execute_epoch(std::span(&grant, 1));
+	EXPECT_FALSE(grant.failure);
 	prepare(grant);
-	try {
-		backend.execute_epoch(std::span(&grant, 1));
-		FAIL() << "Expected firmware failure";
-	} catch (const std::runtime_error& error) {
-		const std::string message = error.what();
-		for (const char* text : {"Module 1", "run", "outcome", "scripted exit"})
-			EXPECT_NE(message.find(text), std::string::npos) << message;
-	}
+	ASSERT_NO_THROW(backend.execute_epoch(std::span(&grant, 1)));
+	ASSERT_TRUE(grant.failure);
+	EXPECT_EQ(grant.failure->summary, "scripted exit");
+	for (const char* text : {"Module 1", "scripted exit", "is stopped"})
+		EXPECT_NE(grant.failure->report.find(text), std::string::npos) << grant.failure->report;
+	EXPECT_EQ(grant.outbound.size(), 0u);
+	// The application has stopped. Granting it again is a caller error.
+	prepare(grant);
+	EXPECT_THROW(backend.execute_epoch(std::span(&grant, 1)), std::runtime_error);
 }

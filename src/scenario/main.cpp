@@ -267,7 +267,8 @@ int main(int argc, char const* argv[]) {
 	}
 
 	const std::size_t                      unclear = runtime.properties_unresolved();
-	const bool                             failed  = runtime.failed() || timed_out || unclear > 0;
+	const std::vector<sim::ModuleCrash>    crashes = runtime.crashes();
+	const bool                             failed  = runtime.failed() || timed_out || unclear > 0 || !crashes.empty();
 	const std::size_t                      total   = runtime.properties_total();
 	const std::size_t                      broken  = runtime.properties_failed();
 	const uint64_t                         ticks   = runtime.tick();
@@ -327,8 +328,20 @@ int main(int argc, char const* argv[]) {
 		}
 	}
 
+	// A crashed application stopped only its own module and the run went on, so the properties
+	// above describe the rest of the system. The crash itself still fails the run.
+	for (const sim::ModuleCrash& crash : crashes) {
+		std::cerr << "CRASHED module " << static_cast<unsigned>(crash.module.raw()) << " at " << timestamp(crash.tick)
+				  << ": " << crash.summary << std::endl;
+	}
+
 	if (failed) {
-		if (timed_out) {
+		if (!crashes.empty()) {
+			std::cerr << crashes.size() << " application" << (crashes.size() == 1 ? "" : "s")
+					  << " stopped running during the scenario";
+			if (broken > 0) std::cerr << ", and " << broken << " of " << total << " properties failed";
+			std::cerr << std::endl;
+		} else if (timed_out) {
 			if (options.timeout) {
 				std::cerr << "The run timed out with " << runtime.properties_pending() << " of " << total
 						  << " properties still pending after " << ticks << " ticks" << std::endl;

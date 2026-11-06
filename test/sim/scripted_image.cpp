@@ -1,4 +1,5 @@
 #include "../../src/rpc/frame.h"
+#include <algorithm>
 #include <array>
 #include <climits>
 #include <cstdlib>
@@ -38,13 +39,39 @@ namespace test_app {
 			return bytes;
 		}
 
+		// Failures for the crash-containment tests. Each happens inside this named function, so a
+		// test can find it in the stack trace.
+		enum Crash : unsigned { NONE, SEGV, ABORT, TRAP, HANG, ENDED };
+
+		int* volatile nowhere = nullptr;
+
+		__attribute__((noinline)) void scripted_crash_site(unsigned crash, void (*on_fatal)(void*, const char*),
+														   void*    context) {
+			switch (crash) {
+			case SEGV:  *nowhere = 1; break;
+			case ABORT: std::abort();
+			case TRAP:  __builtin_trap();
+			case HANG:  {
+				volatile unsigned spin = 0;
+				for (;;) spin = spin + 1;
+			}
+			case ENDED:
+				if (on_fatal) on_fatal(context, "exit(3)");
+				break;
+			default: break;
+			}
+		}
+
 		struct State {
 			unsigned id, ticks, heartbeat_every, heartbeat_until, subscribe, exit_after, query_tick, ingress, burst;
-			bool     startup_rpc, startup_sent, startup_done, heartbeat_sent, reply, never_activate;
-			unsigned mutant;
-			uint16_t call_id;
-			uint64_t now;
-			qsim_outcome_t                                  outcome;
+			unsigned crash, crash_after;
+			void (*on_fatal)(void*, const char*);
+			void*          on_fatal_context;
+			bool           startup_rpc, startup_sent, startup_done, heartbeat_sent, reply, never_activate;
+			unsigned       mutant;
+			uint16_t       call_id;
+			uint64_t       now;
+			qsim_outcome_t outcome;
 			std::array<uint8_t, QSIM_MAX_BATCH_BYTES>       bytes;
 			std::array<qsim_frame_t, QSIM_MAX_GRANT_FRAMES> frames;
 			uint32_t                                        count, used;
@@ -56,20 +83,30 @@ namespace test_app {
 			static inline State state{};
 
 			static qsim_status_t bind(const qsim_image_config_t* config) {
-				state.id              = config->module_id;
-				state.call_id         = 0x8000;
-				state.heartbeat_every = option("HEARTBEAT_EVERY", state.id, 50);
-				state.heartbeat_until = option("HEARTBEAT_UNTIL", state.id, UINT_MAX);
-				state.subscribe       = option("SUBSCRIBE", state.id, 0);
-				state.exit_after      = option("EXIT_AFTER", state.id, 0);
-				state.query_tick      = option("QUERY_TICK", state.id, UINT_MAX);
-				state.ingress         = option("INGRESS_PROBE", state.id, 0);
-				state.burst           = option("RATE_BURST", state.id, 0);
-				state.startup_rpc     = option("STARTUP_RPC", state.id, 0);
-				state.startup_done    = !state.startup_rpc;
-				state.never_activate  = option("NEVER_ACTIVATE", state.id, 0);
-				state.reply           = option("REPLY_TO_MESSAGE", state.id, 0) && state.id == 1;
-				const char* mutant    = std::getenv("TEST_APP_MUTANT");
+				state.id               = config->module_id;
+				state.call_id          = 0x8000;
+				state.heartbeat_every  = option("HEARTBEAT_EVERY", state.id, 50);
+				state.heartbeat_until  = option("HEARTBEAT_UNTIL", state.id, UINT_MAX);
+				state.subscribe        = option("SUBSCRIBE", state.id, 0);
+				state.exit_after       = option("EXIT_AFTER", state.id, 0);
+				state.crash_after      = option("CRASH_AFTER", state.id, 0);
+				state.on_fatal         = config->on_fatal;
+				state.on_fatal_context = config->on_fatal_context;
+				if (const char* crash = std::getenv(("TEST_APP_CRASH_" + std::to_string(state.id)).c_str())) {
+					if (!std::strcmp(crash, "segv")) state.crash = SEGV;
+					if (!std::strcmp(crash, "abort")) state.crash = ABORT;
+					if (!std::strcmp(crash, "trap")) state.crash = TRAP;
+					if (!std::strcmp(crash, "hang")) state.crash = HANG;
+					if (!std::strcmp(crash, "ended")) state.crash = ENDED;
+				}
+				state.query_tick     = option("QUERY_TICK", state.id, UINT_MAX);
+				state.ingress        = option("INGRESS_PROBE", state.id, 0);
+				state.burst          = option("RATE_BURST", state.id, 0);
+				state.startup_rpc    = option("STARTUP_RPC", state.id, 0);
+				state.startup_done   = !state.startup_rpc;
+				state.never_activate = option("NEVER_ACTIVATE", state.id, 0);
+				state.reply          = option("REPLY_TO_MESSAGE", state.id, 0) && state.id == 1;
+				const char* mutant   = std::getenv("TEST_APP_MUTANT");
 				if (mutant) {
 					if (!std::strcmp(mutant, "reverse_leg")) state.mutant = 1;
 					if (!std::strcmp(mutant, "wrong_laser")) state.mutant = 2;
@@ -107,6 +144,11 @@ namespace test_app {
 				}
 				if (state.exit_after && state.ticks >= state.exit_after) {
 					*result = {QSIM_OUTCOME_NATIVE_FATAL, UINT64_MAX, nullptr, 0, "scripted exit"};
+					return QSIM_STATUS_OK;
+				}
+				if (state.crash && state.crash_after && state.ticks >= state.crash_after) {
+					scripted_crash_site(state.crash, state.on_fatal, state.on_fatal_context);
+					*result = {QSIM_OUTCOME_NATIVE_FATAL, UINT64_MAX, nullptr, 0, "exit(3)"};
 					return QSIM_STATUS_OK;
 				}
 				bool message = false;
@@ -162,12 +204,21 @@ namespace test_app {
 			}
 
 			static qsim_status_t destroy() { return QSIM_STATUS_OK; }
+
+			static const char* current_thread() { return "scripted thread"; }
+
+			static size_t recent_log(char* buffer, size_t capacity) {
+				static constexpr char text[] = "[00:00:00.004,000] <inf> scripted: last words\n";
+				const size_t          length = std::min(capacity, sizeof(text) - 1);
+				std::memcpy(buffer, text, length);
+				return length;
+			}
 		};
 	} // namespace
 } // namespace test_app
 
 extern "C" __attribute__((visibility("default"))) const qsim_image_api_t* qsim_image_api() {
-	static const qsim_image_api_t api{QSIM_IMAGE_ABI_VERSION, test_app::App::bind, test_app::App::run,
-									  test_app::App::destroy};
+	static const qsim_image_api_t api{QSIM_IMAGE_ABI_VERSION, test_app::App::bind,           test_app::App::run,
+									  test_app::App::destroy, test_app::App::current_thread, test_app::App::recent_log};
 	return &api;
 }

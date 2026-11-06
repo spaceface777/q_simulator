@@ -189,6 +189,7 @@ namespace platform {
 		bool        heartbeat_warned           = false;
 		bool        heartbeat_failed           = false;
 		bool        rate_stopped               = false;
+		bool        crashed                    = false;
 		std::string stop_reason;
 
 		// Edge detection state. Events report transitions, so the platform remembers what the
@@ -283,8 +284,9 @@ namespace platform {
 
 		void pause_application(module::ModuleId id, uint64_t tick);
 
+		// Diagnoses the stop as "stop" unless `diagnose` is false.
 		void stop_application(uint64_t tick, module::ModuleId id, std::string reason, Bucket cause,
-							  bool heartbeat_failure);
+							  bool heartbeat_failure, bool diagnose = true);
 
 	public:
 		explicit Manager(world::State& world, module::Changes* changes = nullptr);
@@ -335,6 +337,11 @@ namespace platform {
 		[[nodiscard]] uint32_t subscriptions(module::ModuleId id) const;
 
 		[[nodiscard]] Lifecycle lifecycle(module::ModuleId id) const;
+
+		// Stops an application whose code can no longer run: it crashed, hung in one grant, or ended
+		// itself. Core0's safe stop applies as for any stop. The reason contains no host addresses,
+		// so traces of the same run stay identical.
+		void application_crashed(uint64_t tick, module::ModuleId id, std::string reason);
 
 		[[nodiscard]] const std::string& stop_reason(module::ModuleId id) const;
 

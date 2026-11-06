@@ -692,7 +692,7 @@ TEST_F(RuntimeTest, HardwareEventsIncludeConfiguredDelayAndNextTickHandoff) {
 	EXPECT_TRUE(saw_rfid_at_56) << "35 ms RFID latency plus the 1 ms handoff must total 36 ms";
 }
 
-TEST_F(RuntimeTest, FailsTheRunWhenAnApplicationExits) {
+TEST_F(RuntimeTest, StopsOnlyTheModulesWhoseApplicationsExit) {
 	test_os::set_environment("TEST_APP_EXIT_AFTER", "5");
 	const auto                   path = fs::temp_directory_path() / "quercus-failed-grant.ndjson";
 	const test_util::FileCleanup cleanup_path{path};
@@ -701,15 +701,20 @@ TEST_F(RuntimeTest, FailsTheRunWhenAnApplicationExits) {
 	runtime.trace_to(path.string(), {});
 	ASSERT_NO_THROW(runtime.start());
 
-	// Carrying on would produce a run the inputs no longer describe, so the run ends instead.
-	EXPECT_THROW(run_for(runtime, std::chrono::milliseconds(160)), std::runtime_error);
+	// Each application that ends stops its own module. The run itself continues.
+	::testing::internal::CaptureStderr();
+	EXPECT_NO_THROW(run_for(runtime, std::chrono::milliseconds(160)));
+	(void)::testing::internal::GetCapturedStderr();
+	EXPECT_EQ(runtime.crashes().size(), 2u);
+	EXPECT_GE(runtime.tick(), 150u);
+	runtime.stop();
+
 	std::ifstream      input(path);
 	std::ostringstream bytes;
 	bytes << input.rdbuf();
 	EXPECT_NE(bytes.str().find("\"type\":\"rpc_request\""), std::string::npos);
-	EXPECT_EQ(bytes.str().find("\"type\":\"run_complete\""), std::string::npos);
-
-	runtime.stop();
+	EXPECT_NE(bytes.str().find("\"reason\":\"crashed: scripted exit\""), std::string::npos);
+	EXPECT_NE(bytes.str().find("\"type\":\"run_complete\""), std::string::npos);
 }
 
 TEST_F(RuntimeTest, WaitsForEveryApplicationBeforeCompletingATick) {

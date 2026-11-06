@@ -1,6 +1,7 @@
 #include "image.h"
 
 #include "../seed/seed.h"
+#include "crash_symbols.h"
 #include "image_os.h"
 
 #include <algorithm>
@@ -117,6 +118,29 @@ namespace firmware {
 			}
 		}
 
+		// macOS keeps DWARF in a dSYM bundle beside the image. A copy needs one under its own name,
+		// <copy>.dSYM/Contents/Resources/DWARF/<copy name>, where crash symbolization looks for it.
+		void store_debug_symbols(const std::filesystem::path& copy, const std::filesystem::path& source) {
+			const auto      bundle = std::filesystem::path(source).concat(".dSYM") / "Contents" / "Resources" / "DWARF";
+			std::error_code error;
+			if (!std::filesystem::is_directory(bundle, error)) return;
+			std::filesystem::path symbols;
+			for (const auto& entry : std::filesystem::directory_iterator(bundle, error))
+				if (entry.is_regular_file(error)) symbols = entry.path();
+			if (symbols.empty()) return;
+			const auto target_directory =
+				std::filesystem::path(copy).concat(".dSYM") / "Contents" / "Resources" / "DWARF";
+			const auto target = target_directory / copy.filename();
+			if (std::filesystem::exists(target, error)) return;
+			std::filesystem::create_directories(target_directory, error);
+			if (error) return;
+			try {
+				store(target, symbols);
+			} catch (const std::exception&) {
+				// Symbols are optional. A report without source lines still names functions.
+			}
+		}
+
 		unsigned acquire_slot(const std::string& digest) {
 			auto&                       state = slots();
 			std::lock_guard<std::mutex> lock(state.mutex);
@@ -151,7 +175,9 @@ namespace firmware {
 				const auto first = directory / "0.dll";
 				store(copy_, std::filesystem::exists(first) ? first : source);
 			}
-			handle_    = os::open(copy_);
+			store_debug_symbols(copy_, source);
+			handle_ = os::open(copy_);
+			crash::images_changed();
 			auto entry = os::entry(handle_);
 			api_       = entry();
 			if (!api_) throw std::runtime_error("qsim_image_api returned null");
@@ -172,7 +198,7 @@ namespace firmware {
 
 	void LoadedImage::cleanup() noexcept {
 		if (handle_) {
-			os::close(handle_);
+			if (!abandoned_) os::close(handle_);
 			handle_ = nullptr;
 		}
 		if (!digest_.empty()) {
