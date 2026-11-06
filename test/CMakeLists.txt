@@ -43,7 +43,7 @@ target_compile_definitions(tests PRIVATE SCRIPTED_IMAGE="$<TARGET_FILE:scripted_
     QSIM_TEST_FIRMWARE_DIR="${QSIM_TEST_FIRMWARE_DIR}" QSIM_TEST_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/out")
 add_dependencies(tests scripted_image)
 
-option(QSIM_TEST_EMBEDDED_TRACE "Compare two tub_copier images with the legacy futex/pthread trace" OFF)
+option(QSIM_TEST_EMBEDDED_TRACE "Check the complete trace of two tub_copier images against a fixed digest" OFF)
 if(QSIM_TEST_EMBEDDED_TRACE)
     target_sources(tests PRIVATE sim/test_embedded_trace.cpp)
 endif()

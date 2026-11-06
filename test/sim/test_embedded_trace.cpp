@@ -34,11 +34,15 @@ TEST(Runtime, EmbeddedCoroutineMatchesLegacyFutexPthreadTrace) {
 		schedule.tubs.push_back(tub);
 	}
 	const auto path = std::filesystem::temp_directory_path() / ("qsim-trace-" + std::to_string(getpid()) + ".ndjson");
-	// Complete trace from review/ltl: futex/pthread lockstep, tick_batch=1,
-	// module-built Picolibc, thread names enabled, and boot banner disabled.
-	// Explicit environment input adds an empty object to run_start. Removing only that
-	// field reproduces the legacy digest above; firmware and scheduling bytes are unchanged.
-	constexpr auto expected = "8c9eb160295fc5f64f68393a4a7b6f67499ded1e4ed65de613324a112784d7e5";
+	// The embedded coroutine runtime first reproduced, byte for byte, the complete trace from
+	// review/ltl: futex/pthread lockstep, tick_batch=1, module-built Picolibc, thread names enabled,
+	// and boot banner disabled (8c9eb160...; explicit environment input adds an empty object to
+	// run_start). Intended behaviour changes have since changed the trace, so the digest now pins
+	// the current one:
+	// - Core0's RFID bucket of 5/s, counted in fixed one-second windows.
+	// - tub_copier reading the whole tag at once, every 250 ms, with retries.
+	// A change to tub_copier, the RPC limits or the scheduling changes this digest.
+	constexpr auto expected = "33b0659eec5494a4d34115c32af2701358d145cff8499279aef0e6b79cbc43e6";
 	for (int restart = 0; restart < 2; ++restart) {
 		sim::Runtime runtime(42, *test_applets::bindings("tub_copier"));
 		runtime.load(schedule);
