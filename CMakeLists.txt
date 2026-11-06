@@ -86,6 +86,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
+include(cmake/libbacktrace.cmake)
+
 # === Options ===
 
 option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
