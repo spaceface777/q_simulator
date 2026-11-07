@@ -28,16 +28,14 @@ set(_backtrace_config "#define HAVE_ATOMIC_FUNCTIONS 1
 ")
 
 if(WIN32)
-    list(APPEND _backtrace_sources pecoff.c read.c alloc.c)
+    list(APPEND _backtrace_sources pecoff.c)
     string(APPEND _backtrace_config "#define HAVE_WINDOWS_H 1
 #define HAVE_TLHELP32_H 1
 #define HAVE_DECL__PGMPTR 1
 #define HAVE_DECL_GETPAGESIZE 0
 #define BACKTRACE_ELF_SIZE unused
 ")
-    set(_backtrace_uses_malloc 1)
 else()
-    list(APPEND _backtrace_sources mmapio.c mmap.c)
     string(APPEND _backtrace_config "#define HAVE_DLFCN_H 1
 #define HAVE_FCNTL 1
 #define HAVE_LSTAT 1
@@ -61,12 +59,11 @@ else()
 #define BACKTRACE_ELF_SIZE ${_backtrace_bits}
 ")
     endif()
-    set(_backtrace_uses_malloc 0)
 endif()
 
 file(GENERATE OUTPUT "${_backtrace_generated}/config.h" CONTENT "${_backtrace_config}")
 file(GENERATE OUTPUT "${_backtrace_generated}/backtrace-supported.h" CONTENT "#define BACKTRACE_SUPPORTED 1
-#define BACKTRACE_USES_MALLOC ${_backtrace_uses_malloc}
+#define BACKTRACE_USES_MALLOC 1
 #define BACKTRACE_SUPPORTS_THREADS 1
 #define BACKTRACE_SUPPORTS_DATA 1
 ")
@@ -135,11 +132,32 @@ if(APPLE)
     list(APPEND _backtrace_sources "${_backtrace_generated}/macho.c")
 endif()
 
+# A Windows state also adds each DLL loaded later, from a loader callback that it registers and
+# never removes. Its memory is freed with the state (see below), so compile a copy of pecoff.c
+# that does not register it: the symbolizer makes a new state after images were loaded.
+if(WIN32)
+    file(READ "${_backtrace_source}/pecoff.c" _backtrace_pecoff)
+    set(_register "      if (register_func)\n")
+    string(FIND "${_backtrace_pecoff}" "${_register}" _at)
+    if(_at EQUAL -1)
+        message(FATAL_ERROR "libbacktrace pecoff.c changed; update the DLL notification patch in ${CMAKE_CURRENT_LIST_FILE}")
+    endif()
+    string(REPLACE "${_register}" "      if (register_func && 0)\n" _backtrace_pecoff "${_backtrace_pecoff}")
+    file(GENERATE OUTPUT "${_backtrace_generated}/pecoff.c" CONTENT "${_backtrace_pecoff}")
+    list(REMOVE_ITEM _backtrace_sources "${_backtrace_source}/pecoff.c")
+    list(APPEND _backtrace_sources "${_backtrace_generated}/pecoff.c")
+endif()
+
+# Third-party code: keep its warnings out of the build log.
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+    set_source_files_properties(${_backtrace_sources} PROPERTIES COMPILE_OPTIONS -w)
+endif()
+
+# libbacktrace cannot free a state. This file replaces alloc.c, mmap.c, read.c and mmapio.c: it
+# provides every allocation and file view, and frees all of them when the symbolizer replaces a state.
+list(APPEND _backtrace_sources "${PROJECT_SOURCE_DIR}/src/firmware/crash_backtrace_memory.c")
+
 add_library(backtrace STATIC ${_backtrace_sources})
 target_include_directories(backtrace PRIVATE "${_backtrace_generated}" "${_backtrace_source}" PUBLIC "${_backtrace_source}")
 target_compile_definitions(backtrace PRIVATE _GNU_SOURCE)
-set_target_properties(backtrace PROPERTIES C_STANDARD 99 POSITION_INDEPENDENT_CODE ON)
-if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-    # Third-party code: keep its warnings out of the build log.
-    target_compile_options(backtrace PRIVATE -w)
-endif()
+set_target_properties(backtrace PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON)

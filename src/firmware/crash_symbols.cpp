@@ -12,25 +12,32 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <dlfcn.h>
 #endif
 
+// crash_backtrace_memory.c: frees everything that libbacktrace allocated.
+extern "C" void qsim_backtrace_free_all(void);
+
 namespace firmware::crash {
 	namespace {
 		std::atomic<uint64_t> loaded_generation{0};
+		std::mutex            symbolizer; // libbacktrace's memory is not thread-safe
 
 		void ignore_error(void*, const char*, int) {}
 
-		// libbacktrace reads the list of loaded objects once per state and cannot free a state.
-		// A new state after images were loaded costs memory once per crash report, which is rare.
+		// libbacktrace reads the list of loaded objects once per state, so images loaded later
+		// need a new state. It cannot free a state itself: freeing all of its memory replaces the
+		// previous one.
 		backtrace_state* debug_state() {
 			static backtrace_state* state      = nullptr;
 			static uint64_t         generation = 0;
 			const uint64_t          current    = loaded_generation.load(std::memory_order_acquire);
 			if (state == nullptr || generation != current) {
+				qsim_backtrace_free_all();
 				state      = backtrace_create_state(nullptr, 0, ignore_error, nullptr);
 				generation = current;
 			}
@@ -132,7 +139,8 @@ namespace firmware::crash {
 	}
 
 	std::vector<SymbolizedFrame> symbolize(const Capture& capture, const std::vector<ImageName>& images) {
-		backtrace_state* state = debug_state();
+		const std::lock_guard lock(symbolizer);
+		backtrace_state*      state = debug_state();
 
 		std::map<std::string, std::string> names;
 		for (const ImageName& image : images) names.emplace(canonical(image.loaded_path), image.display);
