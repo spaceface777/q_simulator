@@ -223,8 +223,9 @@ namespace firmware::crash {
 	}
 
 	std::string report(const Capture& capture, const ReportContext& context) {
-		const std::vector<SymbolizedFrame> frames = symbolize(capture, context.images);
-		std::size_t                        first  = 0;
+		const Symbolization                 symbols = symbolize(capture, context.images);
+		const std::vector<SymbolizedFrame>& frames  = symbols.frames;
+		std::size_t                         first   = 0;
 		while (first < frames.size() && delivery_frame(frames[first])) first++;
 		if (first == frames.size()) first = 0;
 
@@ -253,6 +254,7 @@ namespace firmware::crash {
 			<< uptime(context.module_time_us) << '\n';
 
 		std::set<std::string> without_lines, with_lines;
+		bool                  unsymbolized = false;
 		out << "Stack trace:\n";
 		unsigned   number = 0;
 		const auto same   = [](const SymbolizedFrame& a, const SymbolizedFrame& b) {
@@ -281,6 +283,7 @@ namespace firmware::crash {
 				else out << " (line unknown: the compiler merged this call with another)";
 				if (frame.in_application) with_lines.insert(frame.object);
 			} else if (!frame.object.empty()) {
+				unsymbolized = true;
 				out << " (" << frame.object << '+' << hex(frame.object_offset) << ')';
 				if (frame.in_application) without_lines.insert(frame.object);
 			} else {
@@ -290,8 +293,10 @@ namespace firmware::crash {
 			if (repeats) out << "       ... the frame above repeats " << repeats << " more times\n";
 		}
 		if (frames.empty()) out << "  (no frames could be recorded)\n";
+		if (!symbols.problem.empty() && unsymbolized)
+			out << "  No source lines: the debug information could not be read (" << symbols.problem << ").\n";
 		for (const std::string& object : without_lines) {
-			if (with_lines.contains(object)) continue;
+			if (with_lines.contains(object) || !symbols.problem.empty()) continue;
 			out << "  No source lines for " << object << ": its debug information was not found.";
 #ifdef __APPLE__
 			out << " Rebuild it with qbuild, which writes " << object << ".dSYM beside it.";

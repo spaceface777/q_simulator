@@ -27,7 +27,18 @@ namespace firmware::crash {
 		std::atomic<uint64_t> loaded_generation{0};
 		std::mutex            symbolizer; // libbacktrace's memory is not thread-safe
 
-		void ignore_error(void*, const char*, int) {}
+		// The first error that libbacktrace reported during this report, and whether its state
+		// must be rebuilt: a state that failed to read the loaded objects never tries again.
+		// Guarded by `symbolizer`.
+		std::string problem;
+		bool        state_failed = false;
+
+		void record_error(void*, const char* message, int number) {
+			// -1: an object has no debug information. The report names those objects itself.
+			if (number == -1 || !problem.empty()) return;
+			problem = message ? message : "unknown error";
+			if (number > 0) problem += std::string(": ") + std::strerror(number);
+		}
 
 		// libbacktrace reads the list of loaded objects once per state, so images loaded later
 		// need a new state. It cannot free a state itself: freeing all of its memory replaces the
@@ -36,10 +47,11 @@ namespace firmware::crash {
 			static backtrace_state* state      = nullptr;
 			static uint64_t         generation = 0;
 			const uint64_t          current    = loaded_generation.load(std::memory_order_acquire);
-			if (state == nullptr || generation != current) {
+			if (state == nullptr || generation != current || state_failed) {
 				qsim_backtrace_free_all();
-				state      = backtrace_create_state(nullptr, 0, ignore_error, nullptr);
-				generation = current;
+				state        = backtrace_create_state(nullptr, 0, record_error, nullptr);
+				generation   = current;
+				state_failed = false;
 			}
 			return state;
 		}
@@ -129,7 +141,7 @@ namespace firmware::crash {
 
 		Symbol symbol_at(backtrace_state* state, uintptr_t address) {
 			Symbol symbol;
-			if (state) backtrace_syminfo(state, address, on_symbol, ignore_error, &symbol);
+			if (state) backtrace_syminfo(state, address, on_symbol, record_error, &symbol);
 			return symbol;
 		}
 	} // namespace
@@ -138,9 +150,11 @@ namespace firmware::crash {
 		loaded_generation.fetch_add(1, std::memory_order_acq_rel);
 	}
 
-	std::vector<SymbolizedFrame> symbolize(const Capture& capture, const std::vector<ImageName>& images) {
+	Symbolization symbolize(const Capture& capture, const std::vector<ImageName>& images) {
 		const std::lock_guard lock(symbolizer);
-		backtrace_state*      state = debug_state();
+		problem.clear();
+		backtrace_state* state = debug_state();
+		if (state == nullptr && problem.empty()) problem = "cannot create the libbacktrace state";
 
 		std::map<std::string, std::string> names;
 		for (const ImageName& image : images) names.emplace(canonical(image.loaded_path), image.display);
@@ -185,7 +199,7 @@ namespace firmware::crash {
 			}
 
 			Lines lines;
-			if (state) backtrace_pcinfo(state, lookup, on_line, ignore_error, &lines);
+			if (state) backtrace_pcinfo(state, lookup, on_line, record_error, &lines);
 			if (lines.frames.empty()) {
 				SymbolizedFrame frame;
 				frame.function = symbol_at(state, lookup).name;
@@ -205,7 +219,8 @@ namespace firmware::crash {
 				result.push_back(std::move(frame));
 			}
 		}
-		return result;
+		state_failed = !problem.empty();
+		return {std::move(result), problem};
 	}
 
 } // namespace firmware::crash

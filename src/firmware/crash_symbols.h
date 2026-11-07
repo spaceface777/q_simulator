@@ -21,8 +21,13 @@ namespace firmware::crash {
 		std::size_t omitted_before     = 0; // Frames of a deep stack left out just before this one
 	};
 
-	// One entry per physical frame, plus one per inlined call. Never call from a signal handler.
-	[[nodiscard]] std::vector<SymbolizedFrame> symbolize(const Capture& capture, const std::vector<ImageName>& images);
+	struct Symbolization {
+		std::vector<SymbolizedFrame> frames; // One per physical frame, plus one per inlined call
+		std::string problem; // Why debug information could not be read, for example "malloc: Out of memory"
+	};
+
+	// Never call from a signal handler.
+	[[nodiscard]] Symbolization symbolize(const Capture& capture, const std::vector<ImageName>& images);
 
 	// Tells the symbolizer that libraries were loaded, so that it rereads the loaded objects.
 	void images_changed() noexcept;
