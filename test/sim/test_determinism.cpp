@@ -11,6 +11,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unistd.h>
 
 #include "../../src/module/module.h"
 #include "../../src/settings.h"

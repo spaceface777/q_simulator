@@ -13,6 +13,7 @@
 #endif
 #include <sstream>
 #include <string>
+#include <unistd.h>
 
 #include "../../src/event/events.h"
 #include "../../src/ltl/parser.h"

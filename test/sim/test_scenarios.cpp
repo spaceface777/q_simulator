@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <toml++/toml.hpp>
+#include <unistd.h>
 #include <vector>
 
 #include "../../src/event/events.h"
