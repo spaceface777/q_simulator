@@ -1,0 +1,107 @@
+{
+  "name": "quercus-windows-toolchain",
+  "version": "20261104.1",
+  "date": "2026-11-04T00:00:00Z",
+  "hosts": {
+    "arm64": { "machine": "0xaa64", "description": "Windows on Arm (AArch64)" },
+    "x86_64": { "machine": "0x8664", "description": "Windows x64 (AMD64)" }
+  },
+  "target": "i686-w64-mingw32",
+  "components": [
+    {
+      "name": "llvm-mingw",
+      "version": "20261104",
+      "homepage": "https://github.com/mstorsjo/llvm-mingw",
+      "license": "Apache-2.0 WITH LLVM-exception (LLVM); ZPL-2.1 and public domain (mingw-w64); MIT (winpthreads); see LICENSE.TXT",
+      "license_files": ["LICENSE.TXT"],
+      "notes": "Clang, LLD, the LLVM binutils, mingw-w64 with UCRT, libc++, libunwind and compiler-rt for i686, x86_64, armv7 and aarch64 targets. Also provides GNU Make 4.4.1 as bin/mingw32-make.exe, built from source by the same release (license in share/make/COPYING.txt).",
+      "archives": {
+        "arm64": {
+          "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-aarch64.zip",
+          "sha256": "7d7f8387a8706639b0b47a629d6e23f8b3ef9acce67e9832b8cd4c5bb2816eab",
+          "strip": 1
+        },
+        "x86_64": {
+          "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-x86_64.zip",
+          "sha256": "552191b5754c49a5a20723276a6fc56541ea1922c4c50b7b669022333fc1b40f",
+          "strip": 1
+        }
+      },
+      "map": [["", ""]]
+    },
+    {
+      "name": "CMake",
+      "version": "4.4.5",
+      "homepage": "https://cmake.org",
+      "license": "BSD-3-Clause, with bundled third-party licenses",
+      "license_files": ["doc/cmake/LICENSE.rst"],
+      "archives": {
+        "arm64": {
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-arm64.zip",
+          "sha256": "b0b54ebdd3e7b9f5ad733d865541d6e0a3b774182e4318b26890221432835359",
+          "strip": 1
+        },
+        "x86_64": {
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-windows-x86_64.zip",
+          "sha256": "326c826486d46a23cf9d5a1c9ee3a567d427bdd02c4a34071937a2a675cff004",
+          "strip": 1
+        }
+      },
+      "map": [["bin/", "bin/"], ["doc/", "doc/"], ["man/", "man/"], ["share/", "share/"]]
+    },
+    {
+      "name": "Ninja",
+      "version": "1.13.2",
+      "homepage": "https://ninja-build.org",
+      "license": "Apache-2.0",
+      "license_files": ["share/doc/ninja/COPYING"],
+      "archives": {
+        "arm64": {
+          "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-winarm64.zip",
+          "sha256": "e52f0bdef9dfb1003229dbd6508a508c4073fd017247002adc66e5e806cb0391",
+          "strip": 0
+        },
+        "x86_64": {
+          "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip",
+          "sha256": "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65",
+          "strip": 0
+        }
+      },
+      "files": [
+        {
+          "url": "https://raw.githubusercontent.com/ninja-build/ninja/v1.13.2/COPYING",
+          "sha256": "eb7e9ab9690124c5c9f42bdc81383d886a3dede26345b6ed15bbad7caf81f7ea",
+          "path": "share/doc/ninja/COPYING"
+        }
+      ],
+      "map": [["ninja.exe", "bin/ninja.exe"]]
+    },
+    {
+      "name": "ccache",
+      "version": "4.14.2",
+      "homepage": "https://ccache.dev",
+      "license": "GPL-3.0-or-later, with bundled third-party licenses",
+      "license_files": ["share/doc/ccache/LICENSE.md"],
+      "archives": {
+        "arm64": {
+          "url": "https://github.com/ccache/ccache/releases/download/v4.14.2/ccache-4.14.2-windows-aarch64.zip",
+          "sha256": "47ea5a0ed661bea53962d8fb8ee9a1769092d979a6f7c73d3081499b3305b2ab",
+          "strip": 1
+        },
+        "x86_64": {
+          "url": "https://github.com/ccache/ccache/releases/download/v4.14.2/ccache-4.14.2-windows-x86_64.zip",
+          "sha256": "6993ce645e53192cec592ee23186200b574ac4c59097ecde8d9cfd681b47ae84",
+          "strip": 1
+        }
+      },
+      "map": [["ccache.exe", "bin/ccache.exe"], ["", "share/doc/ccache/"]]
+    }
+  ],
+  "copies": [
+    {
+      "from": "bin/mingw32-make.exe",
+      "to": "bin/make.exe",
+      "reason": "GNU Make under its usual name, for Makefiles and the CMake 'Unix Makefiles' generator."
+    }
+  ]
+}
