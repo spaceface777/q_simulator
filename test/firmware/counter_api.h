@@ -25,4 +25,5 @@ typedef struct CounterApi {
 	int (*destroy)(void);
 	const char* (*current_thread)(void);
 	size_t (*recent_log)(char*, size_t);
+	void (*release)(void);
 } CounterApi;

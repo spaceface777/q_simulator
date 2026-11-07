@@ -157,7 +157,7 @@ TEST_F(FirmwareImage, NonImageReportsLoaderError) {
 }
 
 TEST_F(FirmwareImage, WrongVersionNamesActualAndExpectedVersions) {
-	expect_repeated_failure(WRONG_ABI_IMAGE, "ABI version 9; expected 11");
+	expect_repeated_failure(WRONG_ABI_IMAGE, "ABI version 9; expected " + std::to_string(firmware::IMAGE_ABI_VERSION));
 }
 
 TEST_F(FirmwareImage, MissingEntryReportsSymbolError) {

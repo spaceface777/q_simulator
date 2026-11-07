@@ -6,7 +6,7 @@
 
 namespace firmware {
 
-	inline constexpr uint32_t IMAGE_ABI_VERSION = 11;
+	inline constexpr uint32_t IMAGE_ABI_VERSION = 12;
 
 	// The loader needs only the entry point and its version. The backend owns API calls.
 	class LoadedImage {

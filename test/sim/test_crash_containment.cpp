@@ -75,6 +75,22 @@ namespace {
 		EXPECT_NO_THROW(backend.retire(module::ModuleId{1}));
 		return failure;
 	}
+
+	// How the host took the image apart after it failed: "destroy" or "release" calls.
+	std::string teardown_after(const char* crash) {
+		const auto path = std::filesystem::temp_directory_path() / ("qsim-teardown-" + std::to_string(getpid()));
+		const test_util::FileCleanup cleanup{path};
+		test_os::set_environment("TEST_APP_TEARDOWN_RECORD", path.string().c_str());
+		{
+			ScriptedCrash scripted(crash);
+			EXPECT_TRUE(scripted_failure());
+		}
+		test_os::unset_environment("TEST_APP_TEARDOWN_RECORD");
+		std::ifstream     input(path);
+		std::stringstream calls;
+		calls << input.rdbuf();
+		return calls.str();
+	}
 } // namespace
 
 TEST(CrashContainment, ReportsAFaultInTheModulesContextAndKeepsTheProcess) {
@@ -130,6 +146,15 @@ TEST(CrashContainment, ReportsWhereAnApplicationEndedItself) {
 	EXPECT_TRUE(contains(failure->report, "Module 1 exited: the application called exit(3)"));
 	// The hook records the application's own stack. The simulator's frames are left out.
 	EXPECT_TRUE(contains(first_frame(failure->report), "scripted_crash_site")) << failure->report;
+}
+
+// A faulted image's code never runs again, so it is not destroyed. Its stacks are released.
+TEST(CrashContainment, ReleasesAFaultedImageInsteadOfDestroyingIt) {
+	EXPECT_EQ(teardown_after("segv"), "release\n");
+}
+
+TEST(CrashContainment, DestroysAnApplicationThatEndedItself) {
+	EXPECT_EQ(teardown_after("ended"), "destroy\n");
 }
 
 TEST(CrashContainment, AGuardedCallThatReturnsIsNotAFailure) {

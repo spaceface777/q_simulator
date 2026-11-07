@@ -203,7 +203,17 @@ namespace test_app {
 				return accepted ? QSIM_STATUS_OK : QSIM_STATUS_IO_ERROR;
 			}
 
-			static qsim_status_t destroy() { return QSIM_STATUS_OK; }
+			static void teardown(const char* call) {
+				if (const char* path = std::getenv("TEST_APP_TEARDOWN_RECORD"))
+					std::ofstream(path, std::ios::app) << call << '\n';
+			}
+
+			static qsim_status_t destroy() {
+				teardown("destroy");
+				return QSIM_STATUS_OK;
+			}
+
+			static void release() { teardown("release"); }
 
 			static const char* current_thread() { return "scripted thread"; }
 
@@ -219,6 +229,7 @@ namespace test_app {
 
 extern "C" __attribute__((visibility("default"))) const qsim_image_api_t* qsim_image_api() {
 	static const qsim_image_api_t api{QSIM_IMAGE_ABI_VERSION, test_app::App::bind,           test_app::App::run,
-									  test_app::App::destroy, test_app::App::current_thread, test_app::App::recent_log};
+									  test_app::App::destroy, test_app::App::current_thread, test_app::App::recent_log,
+									  test_app::App::release};
 	return &api;
 }

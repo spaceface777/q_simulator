@@ -66,6 +66,22 @@ namespace firmware {
 				call.length = call.api->recent_log(call.buffer, call.capacity);
 			}
 		};
+
+		struct ReleaseCall {
+			const qsim_image_api_t* api;
+
+			static void invoke(void* self) { static_cast<ReleaseCall*>(self)->api->release(); }
+		};
+
+		// An abandoned image keeps its library loaded, but its stacks can go: release runs none
+		// of the application's code. On a 32-bit host, each abandoned image would otherwise keep
+		// 8 MiB of address space for every Zephyr thread.
+		void release(const qsim_image_api_t* api) {
+			if (!api->release) return;
+			ReleaseCall    call{api};
+			crash::Capture ignored;
+			(void)crash::run_guarded(&ReleaseCall::invoke, &call, ignored);
+		}
 	} // namespace
 
 	InProcessBackend::InProcessBackend(std::span<const ImageBinding> bindings, uint64_t seed,
@@ -153,6 +169,7 @@ namespace firmware {
 		if (image.abandoned) {
 			image.image.abandon();
 			image.bound = false;
+			release(image.api);
 		}
 		return ModuleFailure{crash::summary(capture), crash::report(capture, context)};
 	}
@@ -225,6 +242,7 @@ namespace firmware {
 			crash::Capture capture;
 			if (!crash::run_guarded(&DestroyCall::invoke, &call, capture)) {
 				image->image.abandon();
+				release(image->api);
 				std::cerr << "Module " << static_cast<unsigned>(module.raw())
 						  << " firmware destroy failed: " << crash::summary(capture)
 						  << ". Its library stays loaded until the simulator exits." << std::endl;
