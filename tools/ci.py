@@ -4,8 +4,10 @@
 import argparse
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
+import sysconfig
 import sys
 import threading
 import time
@@ -112,10 +114,15 @@ def binary(name):
 
 
 def configure():
+    # Format with the pinned clang-format from pip, not a newer one that a toolchain such as
+    # LLVM-MinGW puts earlier on PATH: versions disagree on the formatting.
+    scripts = sysconfig.get_path("scripts")
+    clang_format = shutil.which("clang-format", path=scripts)
+    pinned = [f"-DCLANG_FORMAT={clang_format}"] if clang_format else []
     run("cmake", "-S", ".", "-B", BUILD, "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release", "-DTESTING_CONSOLE_BUILD=OFF",
         "-DBUILD_TESTING=ON", "-DQSIM_TEST_EMBEDDED_TRACE=ON",
-        f"-DPython3_EXECUTABLE={sys.executable}", log="configure.log")
+        f"-DPython3_EXECUTABLE={sys.executable}", *pinned, log="configure.log")
 
 
 def smoke():
