@@ -142,15 +142,19 @@ jobs:
         timeout-minutes: 5
         run: python tools/ci.py smoke
 
-      - name: Run full suite including slow tests
-        timeout-minutes: 22
-        env:
-          RUN_SLOW_TESTS: '1'
+      - name: Run basic test suite
+        timeout-minutes: 5
         run: python tools/ci.py test
 
       - name: Run ten shuffled repetitions
-        timeout-minutes: 12
+        timeout-minutes: 15
         run: python tools/ci.py repeat
+
+      - name: Run full suite including slow tests
+        timeout-minutes: 20
+        env:
+          RUN_SLOW_TESTS: '1'
+        run: python tools/ci.py test
 
       - name: Upload reports and diagnostics
         if: always()
