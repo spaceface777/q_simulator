@@ -17,9 +17,10 @@ set(COMPILATION_FLAGS -Wall -Wextra -Werror)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
 
 # Opt in to the checked build while chasing a bug, rather than paying for it on every run.
-option(ENABLE_DEBUG_CONTAINERS "Enable libstdc++ debug containers" OFF)
+# libstdc++ (GCC) and libc++ (Clang, also on Windows with LLVM-MinGW) each read their own macro.
+option(ENABLE_DEBUG_CONTAINERS "Enable the C++ library's debug containers and checks" OFF)
 if(ENABLE_DEBUG_CONTAINERS)
-    list(APPEND COMPILATION_FLAGS -D_GLIBCXX_DEBUG)
+    list(APPEND COMPILATION_FLAGS -D_GLIBCXX_DEBUG -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG)
 endif()
 
 option(ENABLE_SANITIZERS "Enable the address and undefined behaviour sanitizers" OFF)
