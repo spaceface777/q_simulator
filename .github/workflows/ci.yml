@@ -13,8 +13,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-toolchain:
+    name: Assemble the Windows toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Restore pinned toolchain downloads
+        uses: actions/cache@v4
+        with:
+          path: windows-toolchain-cache
+          key: windows-toolchain-${{ hashFiles('tools/windows_sdk/components.json') }}
+
+      - name: Assemble the arm64 and x86_64 toolchain ZIPs
+        run: python3 tools/windows_sdk/assemble.py --cache windows-toolchain-cache --output dist/windows-toolchain
+
+      - name: Upload the toolchain ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-toolchain
+          retention-days: 14
+          compression-level: 0
+          path: |
+            dist/windows-toolchain/*.zip
+            dist/windows-toolchain/*.zip.sha256
+
   simulator:
     name: Build and test (${{ matrix.os }})
+    needs: windows-toolchain
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
@@ -91,9 +120,9 @@ jobs:
           echo "CXX=clang++" >> "$GITHUB_ENV"
 
       # Firmware and simulator must both be i686. Windows Arm runs these under emulation.
-      # Use the same UCRT/POSIX/DWARF toolchain documented in the SDK.
+      # windows-2022 keeps testing the UCRT/POSIX/DWARF GCC toolchain documented in the SDK.
       - name: Install Windows MinGW toolchain
-        if: runner.os == 'Windows'
+        if: matrix.os == 'windows-2022'
         run: |
           $release = '16.2.0posix-14.0.0-ucrt-r2'
           $archive = 'winlibs-i686-posix-dwarf-gcc-16.2.0-mingw-w64ucrt-14.0.0-r2.zip'
@@ -112,6 +141,42 @@ jobs:
           python -c "import sysconfig; print(sysconfig.get_path('scripts'))" >> $env:GITHUB_PATH
           "CC=$bin/gcc.exe" >> $env:GITHUB_ENV
           "CXX=$bin/g++.exe" >> $env:GITHUB_ENV
+
+      # The other Windows runners use the LLVM-MinGW toolchain ZIP for their own architecture:
+      # its compiler runs natively on Windows on Arm, and only the built programs are emulated.
+      - name: Download the Windows toolchain
+        if: runner.os == 'Windows' && matrix.os != 'windows-2022'
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-toolchain
+          path: ${{ runner.temp }}/windows-toolchain
+
+      - name: Install and check the Windows LLVM-MinGW toolchain
+        if: runner.os == 'Windows' && matrix.os != 'windows-2022'
+        run: |
+          $hostArch = if ($env:RUNNER_ARCH -eq 'ARM64') { 'arm64' } else { 'x86_64' }
+          $zip = Get-ChildItem "$env:RUNNER_TEMP/windows-toolchain/*-$hostArch.zip" | Select-Object -First 1
+          $expected = (Get-Content "$($zip.FullName).sha256").Split(' ')[0]
+          if ((Get-FileHash $zip.FullName -Algorithm SHA256).Hash -ne $expected) {
+            throw 'Toolchain ZIP checksum mismatch'
+          }
+          # The toolchain must work from any folder: check it in one whose name has a space,
+          # then again after moving it to the folder without spaces that Zephyr requires.
+          $first = Join-Path $env:RUNNER_TEMP 'tool chain'
+          Expand-Archive $zip.FullName -DestinationPath $first
+          $extracted = (Get-ChildItem $first -Directory | Select-Object -First 1).FullName
+          & "$extracted/bin/cmake.exe" -P "$extracted/selftest/run.cmake"
+          if ($LASTEXITCODE) { throw 'Toolchain self-test failed' }
+          $root = Join-Path $env:RUNNER_TEMP 'llvm-mingw'
+          Move-Item $extracted $root
+          & "$root/bin/cmake.exe" -P "$root/selftest/run.cmake"
+          if ($LASTEXITCODE) { throw 'Toolchain self-test failed after moving the toolchain' }
+          # The toolchain's CMake 4 and Ninja come before the Python-installed ones.
+          "$root/i686-w64-mingw32/bin" >> $env:GITHUB_PATH
+          "$root/bin" >> $env:GITHUB_PATH
+          "CC=i686-w64-mingw32-clang" >> $env:GITHUB_ENV
+          "CXX=i686-w64-mingw32-clang++" >> $env:GITHUB_ENV
+          "ZEPHYR_TOOLCHAIN_VARIANT=host/llvm" >> $env:GITHUB_ENV
 
       - name: Restore pinned Zephyr workspace
         uses: actions/cache@v4

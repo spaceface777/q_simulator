@@ -41,25 +41,33 @@ export ZEPHYR_TOOLCHAIN_VARIANT=host
 
 `qbuild sim` builds 64-bit native_sim images on macOS and Linux.
 It writes `out/<application>.dll` in the application repository.
-On Windows, it builds 32-bit images with an i686 MinGW-w64 compiler.
+On Windows, it builds 32-bit images with an i686 MinGW-w64 toolchain.
 The extension is `.dll` on every host. The simulator and its images must use the same architecture.
 
 ### Windows
 
-Use i686 MinGW-w64 with POSIX threads, CMake, Ninja, Python, and clang-format.
-The tested compiler is GCC 16.2.0 with UCRT and DWARF exceptions.
-The 32-bit executable and its images run under WOW64 on AMD64 Windows.
+Windows builds are 32-bit (i686). The executable and its images run under WOW64 on AMD64 Windows,
+and under x86 emulation on Windows on Arm. Two toolchains are supported. Build the simulator and its
+images with the same one: their C++ libraries and runtimes are not interchangeable.
 
-Add the MinGW `bin` directory and the Zephyr Python environment to `PATH`.
-Keep that MinGW directory on `PATH` when you run the simulator.
-It supplies the C++, thread, and compiler runtime DLLs.
-Use the SDK's recorded Zephyr revision.
+- **LLVM-MinGW** (recommended): `tools/windows_sdk/assemble.py` builds a portable ZIP for x64 and for
+  ARM64 hosts, with Clang 23, LLD, CMake, Ninja, ccache and GNU Make. Its compiler runs natively on
+  Windows on Arm. See [docs/WINDOWS_TOOLCHAIN.md](docs/WINDOWS_TOOLCHAIN.md).
+  Run its `env.cmd` and set `ZEPHYR_TOOLCHAIN_VARIANT=host/llvm`.
+- **MinGW GCC**: GCC 16.2.0 from WinLibs, with POSIX threads, UCRT and DWARF exceptions.
+  Add its `bin` directory to `PATH` and set `ZEPHYR_TOOLCHAIN_VARIANT=host`.
+
+Also install Python and clang-format, and add the Zephyr Python environment to `PATH`.
+Keep the runtime DLLs on `PATH` when you run the simulator: LLVM-MinGW's `i686-w64-mingw32\bin`
+directory, or the WinLibs `bin` directory.
+Use the SDK's recorded Zephyr revision, and paths without spaces for Zephyr, the toolchain and builds.
 
 From the repository root, build firmware and the headless simulator in Command Prompt:
 
 ```bat
+call C:\llvm-mingw\env.cmd
 set ZEPHYR_BASE=C:\path\to\workspace\zephyr
-set ZEPHYR_TOOLCHAIN_VARIANT=host
+set ZEPHYR_TOOLCHAIN_VARIANT=host/llvm
 pushd external\q_applets
 python q_sdk\qbuild sim
 popd
@@ -219,8 +227,11 @@ Its matrix includes these 16 runner labels:
 - `macos-15-intel`, `macos-26-intel`
 - `macos-14`, `macos-15`, `macos-26`, `xcode-27`
 
-Linux and macOS use native host binaries. All Windows runners use the SDK-compatible 32-bit MinGW toolchain.
-The Windows Arm runners run these binaries under emulation.
+Linux and macOS use native host binaries. Windows runners build 32-bit binaries.
+`windows-2022` uses MinGW GCC from WinLibs. The other Windows runners use the LLVM-MinGW toolchain
+ZIP for their architecture, which a first job assembles from the pinned downloads.
+Each of them first runs the toolchain self-test, from a folder whose name has a space and again after moving it.
+The Windows Arm runners compile natively and run the built binaries under emulation.
 
 Each job builds all applets and simulator probes with the SDK-recorded Zephyr revision.
 It checks SDK consistency, Python build tests, and C++ formatting.
@@ -230,7 +241,7 @@ It runs the full suite with slow tests and ten shuffled repetitions.
 Missing firmware fails the job. Each test run has a wall-clock timeout.
 
 Jobs upload diagnostics, JUnit reports, scenario traces, simulator binaries, and firmware images.
-Artifacts remain available for 14 days. Windows binaries also require the MinGW runtime DLLs on `PATH`.
+Artifacts remain available for 14 days. Windows binaries also require their toolchain's runtime DLLs on `PATH`.
 The workflow caches the Zephyr workspace separately for each host OS and architecture.
 Ubuntu 22.04 jobs install GCC 14 from the Ubuntu Toolchain PPA.
 The workflow checks out the public GitLab submodules recursively. It requires no repository secrets.
