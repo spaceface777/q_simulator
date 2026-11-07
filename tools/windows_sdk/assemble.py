@@ -619,6 +619,8 @@ def main() -> None:
         help="also write the source code of the GPL programs to OUTPUT/sources",
     )
     args = parser.parse_args()
+    # The GNU ld build runs in its own directory, with the builder toolchain on PATH.
+    args.cache, args.output = args.cache.resolve(), args.output.resolve()
     manifest = json.loads((HERE / "components.json").read_text(encoding="utf-8"))
     hosts = args.host or ["arm64", "x86_64"]
     if args.download_only:
