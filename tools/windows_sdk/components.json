@@ -1,6 +1,6 @@
 {
   "name": "quercus-windows-toolchain",
-  "version": "20261104.1",
+  "version": "20261104.2",
   "date": "2026-11-04T00:00:00Z",
   "hosts": {
     "arm64": { "machine": "0xaa64", "description": "Windows on Arm (AArch64)" },
@@ -103,5 +103,93 @@
       "to": "bin/make.exe",
       "reason": "GNU Make under its usual name, for example as the CMake 'MinGW Makefiles' generator's make program."
     }
-  ]
+  ],
+  "binutils": {
+    "name": "GNU Binutils",
+    "version": "2.47",
+    "homepage": "https://www.gnu.org/software/binutils/",
+    "license": "GPL-3.0-or-later (ld, BFD, libsframe, libctf); LGPL-2.0-or-later (libiberty); Zlib (zlib)",
+    "license_files": [
+      "share/doc/binutils/COPYING3",
+      "share/doc/binutils/COPYING.LIB",
+      "share/doc/binutils/COPYING3.LIB",
+      "share/doc/binutils/zlib-LICENSE"
+    ],
+    "notes": "GNU ld only, built from source by assemble.py with LLVM-MinGW for each host and installed as bin/i686-w64-mingw32-ld.bfd.exe. Clang links with it when given -fuse-ld=bfd. LLVM-MinGW's own i686-w64-mingw32-ld is LLD. The release is signed with the binutils maintainer's key 3A24BC1E8FB409FA9F14371813FCEF89DD9E3C4F.",
+    "source": {
+      "url": "https://sourceware.org/pub/binutils/releases/binutils-2.47.tar.xz",
+      "sha256": "154ab23b60070e8f27013c22977f1129425d67d1e8acd6e13010e617811e4cff",
+      "strip": 1
+    },
+    "configure": [
+      "--target=i686-w64-mingw32",
+      "--prefix=/toolchain",
+      "--with-sysroot=/toolchain",
+      "--with-lib-path==/i686-w64-mingw32/lib",
+      "--disable-nls",
+      "--disable-werror",
+      "--disable-gdb",
+      "--disable-gdbserver",
+      "--disable-sim",
+      "--disable-gprof",
+      "--disable-gprofng",
+      "--disable-plugins",
+      "--disable-shared",
+      "--enable-static",
+      "--disable-multilib",
+      "--without-zstd",
+      "--without-debuginfod",
+      "--without-msgpack"
+    ],
+    "make_targets": [
+      "all-ld"
+    ],
+    "install": {
+      "ld/ld-new.exe": "bin/i686-w64-mingw32-ld.bfd.exe"
+    },
+    "license_sources": {
+      "COPYING3": "share/doc/binutils/COPYING3",
+      "COPYING.LIB": "share/doc/binutils/COPYING.LIB",
+      "COPYING3.LIB": "share/doc/binutils/COPYING3.LIB",
+      "zlib/LICENSE": "share/doc/binutils/zlib-LICENSE"
+    }
+  },
+  "builders": {
+    "description": "LLVM-MinGW for the build machine, which cross-compiles GNU Binutils for both Windows hosts.",
+    "linux-x86_64": {
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-ubuntu-22.04-x86_64.tar.xz",
+      "sha256": "919380403de87dca3c581c2053230cd298af5e891286628ba0613b7fed370926",
+      "strip": 1
+    },
+    "linux-aarch64": {
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-ubuntu-22.04-aarch64.tar.xz",
+      "sha256": "595e95bdffabfc62559fe26e30bdfbccf277cbaed4902793555015ee47306b94",
+      "strip": 1
+    },
+    "macos": {
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-macos-universal.tar.xz",
+      "sha256": "66cbd5178c4a71b0d473e68ede172f8eb7d15d023e67f39201d0a69e21f6bf3c",
+      "strip": 1
+    }
+  },
+  "sources": {
+    "description": "Source code of the GPL programs in the toolchain, written by --sources for redistribution next to the ZIPs.",
+    "files": [
+      {
+        "component": "GNU Binutils 2.47",
+        "url": "https://sourceware.org/pub/binutils/releases/binutils-2.47.tar.xz",
+        "sha256": "154ab23b60070e8f27013c22977f1129425d67d1e8acd6e13010e617811e4cff"
+      },
+      {
+        "component": "GNU Make 4.4.1 (as built by LLVM-MinGW 20261104)",
+        "url": "https://mirrors.kernel.org/gnu/make/make-4.4.1.tar.gz",
+        "sha256": "dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3"
+      },
+      {
+        "component": "ccache 4.14.2",
+        "url": "https://github.com/ccache/ccache/releases/download/v4.14.2/ccache-4.14.2.tar.xz",
+        "sha256": "0feb2707d9cb48885abb950e5d629e85f57fa79a2439cbbdfa681d6c3dc5f0dc"
+      }
+    ]
+  }
 }

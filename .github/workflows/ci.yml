@@ -26,10 +26,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: windows-toolchain-cache
-          key: windows-toolchain-${{ hashFiles('tools/windows_sdk/components.json') }}
+          # The cache also holds GNU ld, which assemble.py builds from source.
+          key: windows-toolchain-${{ hashFiles('tools/windows_sdk/components.json', 'tools/windows_sdk/assemble.py') }}
 
       - name: Assemble the arm64 and x86_64 toolchain ZIPs
-        run: python3 tools/windows_sdk/assemble.py --cache windows-toolchain-cache --output dist/windows-toolchain
+        run: >-
+          python3 tools/windows_sdk/assemble.py --cache windows-toolchain-cache
+          --output dist/windows-toolchain --sources
 
       - name: Upload the toolchain ZIPs
         uses: actions/upload-artifact@v4
@@ -40,6 +43,14 @@ jobs:
           path: |
             dist/windows-toolchain/*.zip
             dist/windows-toolchain/*.zip.sha256
+
+      - name: Upload the source of the toolchain's GPL programs
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-toolchain-sources
+          retention-days: 14
+          compression-level: 0
+          path: dist/windows-toolchain/sources/
 
   simulator:
     name: Build and test (${{ matrix.os }})

@@ -51,8 +51,9 @@ and under x86 emulation on Windows on Arm. Two toolchains are supported. Build t
 images with the same one: their C++ libraries and runtimes are not interchangeable.
 
 - **LLVM-MinGW** (recommended): `tools/windows_sdk/assemble.py` builds a portable ZIP for x64 and for
-  ARM64 hosts, with Clang 23, LLD, CMake, Ninja, ccache and GNU Make. Its compiler runs natively on
-  Windows on Arm. See [docs/WINDOWS_TOOLCHAIN.md](docs/WINDOWS_TOOLCHAIN.md).
+  ARM64 hosts, with Clang 23, LLD, GNU ld, CMake, Ninja, ccache and GNU Make. It builds GNU ld from
+  source. Its compiler and linkers run natively on Windows on Arm. The simulator links with LLD and
+  images with GNU ld. See [docs/WINDOWS_TOOLCHAIN.md](docs/WINDOWS_TOOLCHAIN.md).
   Run its `env.cmd` and set `ZEPHYR_TOOLCHAIN_VARIANT=host/llvm`.
 - **MinGW GCC**: GCC 16.2.0 from WinLibs, with POSIX threads, UCRT and DWARF exceptions.
   Add its `bin` directory to `PATH` and set `ZEPHYR_TOOLCHAIN_VARIANT=host`.

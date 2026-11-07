@@ -2,8 +2,12 @@
 """Assemble the portable Windows toolchain ZIPs from pinned upstream releases.
 
 One ZIP is produced per Windows host architecture (arm64 and x86_64). Each holds a
-single relocatable root with LLVM-MinGW, CMake, Ninja, ccache and GNU Make sharing
-bin/, include/, lib/ and share/, and builds i686 (32-bit x86) Windows programs.
+single relocatable root with LLVM-MinGW, GNU ld, CMake, Ninja, ccache and GNU Make
+sharing bin/, include/, lib/ and share/, and builds i686 (32-bit x86) Windows programs.
+
+GNU ld has no trustworthy prebuilt release for these hosts, so this script builds it
+from the GNU Binutils source with LLVM-MinGW for the build machine (Linux or macOS).
+The result is cached, so a cache filled on Linux or macOS also assembles on Windows.
 
 Every download is verified against the SHA-256 recorded in components.json. Once the
 downloads are cached, --offline assembles without network access. Merging fails if
@@ -18,12 +22,14 @@ from __future__ import annotations
 import argparse
 import datetime
 import hashlib
-import io
 import json
 import os
+import platform
+import posixpath
 import shutil
 import struct
-import sys
+import subprocess
+import tarfile
 import tempfile
 import urllib.request
 import zipfile
@@ -176,6 +182,168 @@ def add_component(tree: Tree, component: dict, host: str, cache: Path, offline: 
         tree.add(extra["path"], data, component["name"])
         count += 1
     return {"url": archive["url"], "sha256": archive["sha256"], "files": count}
+
+
+# --- GNU ld -------------------------------------------------------------------------
+
+
+def extract_tar(archive: Path, destination: Path, strip: int) -> None:
+    """Extract a release tarball below destination, without its first strip path parts."""
+    with tarfile.open(archive) as tar:
+        members = []
+        for member in tar.getmembers():
+            parts = safe_relative(member.name.rstrip("/")).parts
+            if len(parts) <= strip:
+                continue
+            member.name = "/".join(parts[strip:])
+            if member.issym():
+                target = posixpath.normpath(
+                    posixpath.join(posixpath.dirname(member.name), member.linkname)
+                )
+                if member.linkname.startswith("/") or target == ".." or target.startswith("../"):
+                    die(
+                        f"{archive.name}: link {member.name} -> {member.linkname} leaves the archive"
+                    )
+            elif member.islnk():
+                member.linkname = "/".join(safe_relative(member.linkname).parts[strip:])
+            elif not (member.isfile() or member.isdir()):
+                die(f"{archive.name}: {member.name} is not a file, directory or link")
+            members.append(member)
+        if hasattr(tarfile, "data_filter"):
+            # The checks above replace the filter, which would refuse the executable modes.
+            tar.extractall(destination, members, filter="fully_trusted")
+        else:
+            tar.extractall(destination, members)
+
+
+def builder_platform() -> str:
+    system, machine = platform.system(), platform.machine().lower()
+    if system == "Darwin":
+        return "macos"
+    if system == "Linux" and machine in ("x86_64", "amd64"):
+        return "linux-x86_64"
+    if system == "Linux" and machine in ("aarch64", "arm64"):
+        return "linux-aarch64"
+    die(
+        f"building GNU ld needs Linux (x86_64 or aarch64) or macOS, not {system} {machine}. "
+        "Assemble once there, then reuse its --cache"
+    )
+    raise AssertionError
+
+
+def builder_toolchain(manifest: dict, cache: Path, offline: bool) -> Path:
+    """Return the bin directory of LLVM-MinGW for this build machine."""
+    builder = manifest["builders"][builder_platform()]
+    archive = fetch(builder["url"], builder["sha256"], cache, offline)
+    root = cache / "builders" / builder["sha256"][:16]
+    done = root / ".extracted"
+    if not done.is_file():
+        if root.exists():
+            shutil.rmtree(root)
+        root.mkdir(parents=True)
+        print(f"extracting {archive.name}", flush=True)
+        extract_tar(archive, root, builder.get("strip", 0))
+        done.write_text(builder["sha256"] + "\n")
+    return root / "bin"
+
+
+def binutils_key(manifest: dict, host: str) -> str:
+    """Identify a GNU ld build by everything that goes into it."""
+    recipe = {
+        "binutils": manifest["binutils"],
+        "builders": {
+            key: value["sha256"]
+            for key, value in manifest["builders"].items()
+            if isinstance(value, dict)
+        },
+        "host": host,
+        "flags": BINUTILS_FLAGS,
+        "version": 1,
+    }
+    return hashlib.sha256(json.dumps(recipe, sort_keys=True).encode()).hexdigest()[:16]
+
+
+# Compiler and linker options for GNU ld. The prefix maps keep the temporary source and
+# build paths out of the program, and -s drops the symbol table, so builds are identical.
+BINUTILS_FLAGS = {
+    "CFLAGS": "-O2 -ffile-prefix-map={source}=binutils -ffile-prefix-map={build}=build",
+    "LDFLAGS": "-static -s",
+}
+
+
+def build_binutils(manifest: dict, host: str, cache: Path, offline: bool) -> dict[str, bytes]:
+    """Return the GNU ld files for host, building them unless they are cached."""
+    spec = manifest["binutils"]
+    result = cache / "builds" / f"binutils-{binutils_key(manifest, host)}-{host}"
+    wanted = {**spec["install"], **spec["license_sources"]}
+    if all((result / name).is_file() for name in wanted.values()):
+        return {name: (result / name).read_bytes() for name in wanted.values()}
+    source_archive = fetch(spec["source"]["url"], spec["source"]["sha256"], cache, offline)
+    llvm = builder_toolchain(manifest, cache, offline)
+    triple = {"arm64": "aarch64", "x86_64": "x86_64"}[host] + "-w64-mingw32"
+    work = cache / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=work) as temp:
+        source, build = Path(temp) / "src", Path(temp) / "build"
+        source.mkdir()
+        build.mkdir()
+        print(f"building GNU Binutils {spec['version']} ld for {host}", flush=True)
+        extract_tar(source_archive, source, spec["source"].get("strip", 0))
+        flags = {
+            name: value.format(source=source, build=build) for name, value in BINUTILS_FLAGS.items()
+        }
+        env = {
+            "PATH": f"{llvm}{os.pathsep}{os.environ.get('PATH', '')}",
+            "HOME": os.environ.get("HOME", temp),
+            "LC_ALL": "C",
+            "TZ": "UTC",
+            "SOURCE_DATE_EPOCH": "0",
+        }
+        build_machine = subprocess.run(
+            ["sh", str(source / "config.guess")],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        ).stdout.strip()
+        configure = [
+            "sh", str(source / "configure"), f"--build={build_machine}", f"--host={triple}",
+            *spec["configure"],
+            f"CC={triple}-clang", f"CXX={triple}-clang++", "AR=llvm-ar", "RANLIB=llvm-ranlib",
+            "STRIP=llvm-strip", f"CFLAGS={flags['CFLAGS']}", f"CXXFLAGS={flags['CFLAGS']}",
+            f"LDFLAGS={flags['LDFLAGS']}", "MAKEINFO=true",
+        ]  # fmt: skip
+        jobs = str(os.cpu_count() or 2)
+        make = ["make", f"-j{jobs}", *spec["make_targets"], "MAKEINFO=true"]
+        for step, command in (("configure", configure), ("make", make)):
+            log = build / f"{step}.log"
+            with log.open("w") as stream:
+                status = subprocess.run(
+                    command, cwd=build, env=env, stdout=stream, stderr=subprocess.STDOUT
+                )
+            if status.returncode != 0:
+                tail = "".join(log.read_text(errors="replace").splitlines(True)[-40:])
+                die(f"GNU Binutils {step} failed for {host}:\n{tail}")
+        staged = Path(temp) / "result"
+        for built, name in spec["install"].items():
+            (staged / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(build / built, staged / name)
+        for license_file, name in spec["license_sources"].items():
+            (staged / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source / license_file, staged / name)
+        result.parent.mkdir(parents=True, exist_ok=True)
+        if result.exists():
+            shutil.rmtree(result)
+        os.replace(staged, result)
+    return {name: (result / name).read_bytes() for name in wanted.values()}
+
+
+def add_binutils(tree: Tree, manifest: dict, host: str, cache: Path, offline: bool) -> dict:
+    spec = manifest["binutils"]
+    files = build_binutils(manifest, host, cache, offline)
+    for name, data in sorted(files.items()):
+        tree.add(name, data, spec["name"])
+    return {"url": spec["source"]["url"], "sha256": spec["source"]["sha256"], "files": len(files)}
 
 
 # --- PE inspection ------------------------------------------------------------------
@@ -381,6 +549,13 @@ def assemble(manifest: dict, host: str, cache: Path, output: Path, offline: bool
         info = add_component(tree, component, host, cache, offline)
         described.append({**component, **info})
         print(f"  {component['name']} {component['version']}: {info['files']} files", flush=True)
+    info = add_binutils(tree, manifest, host, cache, offline)
+    described.append({**manifest["binutils"], **info})
+    print(
+        f"  {manifest['binutils']['name']} {manifest['binutils']['version']}: "
+        f"{info['files']} files",
+        flush=True,
+    )
     for copy in manifest.get("copies", []):
         source = copy["from"].casefold()
         if source not in tree.owners:
@@ -400,7 +575,15 @@ def assemble(manifest: dict, host: str, cache: Path, output: Path, offline: bool
         "components": [
             {
                 key: component[key]
-                for key in ("name", "version", "homepage", "license", "license_files", "url", "sha256")
+                for key in (
+                    "name",
+                    "version",
+                    "homepage",
+                    "license",
+                    "license_files",
+                    "url",
+                    "sha256",
+                )
             }
             for component in described
         ],
@@ -430,6 +613,11 @@ def main() -> None:
     parser.add_argument(
         "--download-only", action="store_true", help="fill the cache and verify it, then stop"
     )
+    parser.add_argument(
+        "--sources",
+        action="store_true",
+        help="also write the source code of the GPL programs to OUTPUT/sources",
+    )
     args = parser.parse_args()
     manifest = json.loads((HERE / "components.json").read_text(encoding="utf-8"))
     hosts = args.host or ["arm64", "x86_64"]
@@ -440,8 +628,22 @@ def main() -> None:
                 fetch(archive["url"], archive["sha256"], args.cache, args.offline)
             for extra in component.get("files", []):
                 fetch(extra["url"], extra["sha256"], args.cache, args.offline)
+        source = manifest["binutils"]["source"]
+        fetch(source["url"], source["sha256"], args.cache, args.offline)
+        if platform.system() in ("Linux", "Darwin"):
+            builder = manifest["builders"][builder_platform()]
+            fetch(builder["url"], builder["sha256"], args.cache, args.offline)
+        for entry in manifest["sources"]["files"]:
+            fetch(entry["url"], entry["sha256"], args.cache, args.offline)
         return
     args.output.mkdir(parents=True, exist_ok=True)
+    if args.sources:
+        sources = args.output / "sources"
+        sources.mkdir(exist_ok=True)
+        for entry in manifest["sources"]["files"]:
+            path = fetch(entry["url"], entry["sha256"], args.cache, args.offline)
+            shutil.copyfile(path, sources / path.name)
+            print(f"source of {entry['component']}: sources/{path.name}", flush=True)
     for host in hosts:
         print(f"assembling the {host} toolchain", flush=True)
         assemble(manifest, host, args.cache, args.output, args.offline)

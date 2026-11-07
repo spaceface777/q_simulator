@@ -83,7 +83,8 @@ foreach(tool "cmake;--version" "ninja;--version" "ccache;--version" "make;--vers
     "mingw32-make;--version" "i686-w64-mingw32-clang;--version" "ld.lld;--version")
   run(COMMAND ${tool})
 endforeach()
-message(STATUS "PASS: cmake, ninja, ccache, make, mingw32-make, clang and ld.lld start")
+run(COMMAND i686-w64-mingw32-ld.bfd --version EXPECT "^GNU ld")
+message(STATUS "PASS: cmake, ninja, ccache, make, mingw32-make, clang, ld.lld and GNU ld start")
 
 # 2. C and C++ programs are i686 and run (under emulation on Arm64).
 run(COMMAND i686-w64-mingw32-clang -O2 "${src}/hello.c" -o hello_c.exe)
@@ -113,7 +114,34 @@ endforeach()
 run(COMMAND "${WORK}/shared/hello.exe" EXPECT "thread and exception work")
 message(STATUS "PASS: C++ program runs with the shared libc++ and libunwind")
 
-# 3. CMake builds with Ninja and with both GNU Make names, through ccache.
+# 3. Clang links with GNU ld: relocatable links, linker scripts and C++ exceptions.
+run(COMMAND clang --target=${QTC_TARGET} --print-prog-name=ld.bfd)
+file(TO_CMAKE_PATH "${output}" found)
+string(STRIP "${found}" found)
+# Clang prints the program without its .exe suffix.
+string(REGEX REPLACE "\\.exe$" "" found "${found}")
+string(TOLOWER "${found}" found_folded)
+string(TOLOWER "${bin}/${QTC_TARGET}-ld.bfd" expected_folded)
+if(NOT found_folded STREQUAL expected_folded)
+  message(FATAL_ERROR "FAILED: clang finds ld.bfd at '${found}', not in ${bin}")
+endif()
+# Clang's MinGW driver adds start files and libraries even to a relocatable link.
+run(COMMAND i686-w64-mingw32-clang -fuse-ld=bfd -r -nostdlib greeting.o -o greeting_r.o)
+file(READ "${WORK}/greeting_r.o" magic LIMIT 2 HEX)
+if(NOT magic STREQUAL "4c01")
+  message(FATAL_ERROR "FAILED: the relocatable link did not write an i386 COFF object (${magic})")
+endif()
+run(COMMAND i686-w64-mingw32-clang++ -g -O2 -fuse-ld=bfd "${src}/hello.cpp" greeting_r.o -static
+  "-Wl,-T,${src}/unwind.ld" -o hello_bfd.exe)
+expect_machine("${WORK}/hello_bfd.exe" "014c")
+run(COMMAND llvm-objdump -h hello_bfd.exe)
+if(NOT output MATCHES "\\.eh_fram " OR NOT output MATCHES "\\.debug_info ")
+  message(FATAL_ERROR "FAILED: GNU ld did not keep .eh_fram and .debug_info:\n${output}")
+endif()
+run(COMMAND "${WORK}/hello_bfd.exe" EXPECT "C and C\\+\\+ linking, thread and exception work")
+message(STATUS "PASS: GNU ld links relocatable objects and a C++ program with a linker script")
+
+# 4. CMake builds with Ninja and with both GNU Make names, through ccache.
 foreach(generator "Ninja;ninja" "MinGW Makefiles;mingw32-make" "MinGW Makefiles;make")
   list(GET generator 0 name)
   list(GET generator 1 program)
