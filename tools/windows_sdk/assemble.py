@@ -277,7 +277,13 @@ def verify_programs(tree: Tree, host_machine: int) -> dict:
 # --- generated files ----------------------------------------------------------------
 
 
+REQUIRED_FILES = ("env.cmd", "env.ps1", "selftest/run.cmake", "selftest/project/CMakeLists.txt")
+
+
 def add_generated(tree: Tree, manifest: dict, host: str, components: list[dict]) -> None:
+    missing = [name for name in REQUIRED_FILES if not (FILES / name).is_file()]
+    if missing:
+        die(f"files missing from {FILES}: {', '.join(missing)}")
     for source in sorted(FILES.rglob("*")):
         if source.is_file():
             data = source.read_bytes()

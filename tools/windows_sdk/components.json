@@ -101,7 +101,7 @@
     {
       "from": "bin/mingw32-make.exe",
       "to": "bin/make.exe",
-      "reason": "GNU Make under its usual name, for Makefiles and the CMake 'Unix Makefiles' generator."
+      "reason": "GNU Make under its usual name, for example as the CMake 'MinGW Makefiles' generator's make program."
     }
   ]
 }

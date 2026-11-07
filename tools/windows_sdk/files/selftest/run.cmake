@@ -1,0 +1,141 @@
+# Check an extracted toolchain: cmake -P selftest/run.cmake [-DWORK=<scratch directory>]
+#
+# Runs with only the toolchain's bin directory and the Windows system directories on
+# PATH, so a missing file or an outside dependency makes it fail. Needs no network.
+
+cmake_minimum_required(VERSION 3.20)
+get_filename_component(root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+include("${CMAKE_CURRENT_LIST_DIR}/host.cmake")
+set(bin "${root}/bin")
+set(src "${CMAKE_CURRENT_LIST_DIR}")
+if(NOT DEFINED WORK)
+  string(RANDOM LENGTH 8 suffix)
+  set(WORK "$ENV{TEMP}/toolchain-selftest-${suffix}")
+endif()
+file(REMOVE_RECURSE "${WORK}")
+file(MAKE_DIRECTORY "${WORK}")
+message(STATUS "Toolchain: ${root}")
+message(STATUS "Scratch directory: ${WORK}")
+
+set(ENV{PATH} "${bin};$ENV{SystemRoot}/System32;$ENV{SystemRoot}")
+set(ENV{CC} "i686-w64-mingw32-clang")
+set(ENV{CXX} "i686-w64-mingw32-clang++")
+set(ENV{CMAKE_C_COMPILER_LAUNCHER} "ccache")
+set(ENV{CMAKE_CXX_COMPILER_LAUNCHER} "ccache")
+set(ENV{CCACHE_DIR} "${WORK}/ccache")
+set(ENV{CCACHE_BASEDIR} "${WORK}")
+set(ENV{CCACHE_NOHASHDIR} "true")
+unset(ENV{CMAKE_GENERATOR})
+unset(ENV{CFLAGS})
+unset(ENV{CXXFLAGS})
+unset(ENV{LDFLAGS})
+
+# Read the machine field of a PE file as four lowercase hex digits.
+function(pe_machine file out)
+  file(READ "${file}" header LIMIT 4096 HEX)
+  string(SUBSTRING "${header}" 0 4 mz)
+  if(NOT mz STREQUAL "4d5a")
+    message(FATAL_ERROR "${file} is not a PE file")
+  endif()
+  string(SUBSTRING "${header}" 120 8 lfanew)
+  string(REGEX REPLACE "(..)(..)(..)(..)" "\\4\\3\\2\\1" lfanew "${lfanew}")
+  math(EXPR offset "(0x${lfanew} + 4) * 2")
+  string(SUBSTRING "${header}" ${offset} 4 machine)
+  string(REGEX REPLACE "(..)(..)" "\\2\\1" machine "${machine}")
+  set(${out} "${machine}" PARENT_SCOPE)
+endfunction()
+
+function(run)
+  cmake_parse_arguments(RUN "" "WORKING_DIRECTORY;EXPECT" "COMMAND" ${ARGN})
+  if(NOT RUN_WORKING_DIRECTORY)
+    set(RUN_WORKING_DIRECTORY "${WORK}")
+  endif()
+  execute_process(COMMAND ${RUN_COMMAND}
+    WORKING_DIRECTORY "${RUN_WORKING_DIRECTORY}"
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE output)
+  if(NOT result EQUAL 0)
+    string(REPLACE ";" " " command "${RUN_COMMAND}")
+    message(FATAL_ERROR "FAILED (${result}): ${command}\n${output}")
+  endif()
+  if(RUN_EXPECT AND NOT output MATCHES "${RUN_EXPECT}")
+    string(REPLACE ";" " " command "${RUN_COMMAND}")
+    message(FATAL_ERROR "FAILED: ${command} did not print '${RUN_EXPECT}':\n${output}")
+  endif()
+  set(output "${output}" PARENT_SCOPE)
+endfunction()
+
+function(expect_machine file machine)
+  pe_machine("${file}" actual)
+  if(NOT actual STREQUAL machine)
+    message(FATAL_ERROR "FAILED: ${file} has machine ${actual}, expected ${machine}")
+  endif()
+endfunction()
+
+# 1. Every program in bin/ is native to this host.
+file(GLOB programs "${bin}/*.exe" "${bin}/*.dll")
+list(LENGTH programs count)
+foreach(program IN LISTS programs)
+  expect_machine("${program}" "${QTC_HOST_MACHINE}")
+endforeach()
+message(STATUS "PASS: ${count} programs in bin/ are native ${QTC_HOST} (machine ${QTC_HOST_MACHINE})")
+
+foreach(tool "cmake;--version" "ninja;--version" "ccache;--version" "make;--version"
+    "mingw32-make;--version" "i686-w64-mingw32-clang;--version" "ld.lld;--version")
+  run(COMMAND ${tool})
+endforeach()
+message(STATUS "PASS: cmake, ninja, ccache, make, mingw32-make, clang and ld.lld start")
+
+# 2. C and C++ programs are i686 and run (under emulation on Arm64).
+run(COMMAND i686-w64-mingw32-clang -O2 "${src}/hello.c" -o hello_c.exe)
+expect_machine("${WORK}/hello_c.exe" "014c")
+run(COMMAND "${WORK}/hello_c.exe" EXPECT "hello from C, 32-bit pointers")
+message(STATUS "PASS: C program is i686 and runs")
+
+run(COMMAND i686-w64-mingw32-clang -O2 -c "${src}/greeting.c" -o greeting.o)
+run(COMMAND i686-w64-mingw32-ar rcs libgreeting.a greeting.o)
+run(COMMAND i686-w64-mingw32-clang++ -O2 "${src}/hello.cpp" -L. -lgreeting -static
+  -o hello_static.exe)
+expect_machine("${WORK}/hello_static.exe" "014c")
+run(COMMAND "${WORK}/hello_static.exe" EXPECT "C and C\\+\\+ linking, thread and exception work")
+message(STATUS "PASS: static C++ program links a C library and runs")
+
+file(MAKE_DIRECTORY "${WORK}/shared")
+run(COMMAND i686-w64-mingw32-clang++ -O2 "${src}/hello.cpp" greeting.o -o shared/hello.exe)
+run(COMMAND llvm-objdump -p shared/hello.exe)
+string(REGEX MATCHALL "DLL Name: [^\r\n]+" dlls "${output}")
+foreach(dll libc++.dll libunwind.dll)
+  string(FIND "${dlls}" "${dll}" found)
+  if(found LESS 0)
+    message(FATAL_ERROR "FAILED: the shared C++ program does not import ${dll}: ${dlls}")
+  endif()
+  file(COPY "${root}/${QTC_TARGET}/bin/${dll}" DESTINATION "${WORK}/shared")
+endforeach()
+run(COMMAND "${WORK}/shared/hello.exe" EXPECT "thread and exception work")
+message(STATUS "PASS: C++ program runs with the shared libc++ and libunwind")
+
+# 3. CMake builds with Ninja and with both GNU Make names, through ccache.
+foreach(generator "Ninja;ninja" "MinGW Makefiles;mingw32-make" "MinGW Makefiles;make")
+  list(GET generator 0 name)
+  list(GET generator 1 program)
+  set(build "${WORK}/build-${program}")
+  run(COMMAND "${bin}/cmake" -S "${src}/project" -B "${build}" -G "${name}"
+    "-DCMAKE_MAKE_PROGRAM=${program}" -DCMAKE_BUILD_TYPE=Release)
+  run(COMMAND "${bin}/cmake" --build "${build}")
+  expect_machine("${build}/selftest.exe" "014c")
+  run(COMMAND "${build}/selftest.exe" EXPECT "thread and exception work")
+  message(STATUS "PASS: CMake ${name} build with ${program}")
+endforeach()
+
+run(COMMAND ccache --zero-stats)
+run(COMMAND "${bin}/cmake" -S "${src}/project" -B "${WORK}/build-again" -G Ninja
+  -DCMAKE_BUILD_TYPE=Release)
+run(COMMAND "${bin}/cmake" --build "${WORK}/build-again")
+run(COMMAND ccache --print-stats)
+string(REGEX MATCH "(^|\n)direct_cache_hit\t([0-9]+)" hit "${output}")
+if(NOT CMAKE_MATCH_2 OR CMAKE_MATCH_2 LESS 2)
+  message(FATAL_ERROR "FAILED: a rebuild in a new directory did not hit ccache:\n${output}")
+endif()
+message(STATUS "PASS: ccache served ${CMAKE_MATCH_2} compilations of a fresh build directory")
+
+file(REMOVE_RECURSE "${WORK}")
+message(STATUS "All toolchain checks passed")
