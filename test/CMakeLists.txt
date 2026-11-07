@@ -42,7 +42,8 @@ target_include_directories(scripted_image PRIVATE "${QUERCUS_SDK_ROOT}/include")
 target_compile_options(scripted_image PRIVATE ${COMPILATION_FLAGS} -fno-omit-frame-pointer -fno-optimize-sibling-calls)
 qsim_debug_symbols(scripted_image)
 target_compile_definitions(tests PRIVATE SCRIPTED_IMAGE="$<TARGET_FILE:scripted_image>"
-    QSIM_TEST_FIRMWARE_DIR="${QSIM_TEST_FIRMWARE_DIR}" QSIM_TEST_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/out")
+    QSIM_TEST_FIRMWARE_DIR="${QSIM_TEST_FIRMWARE_DIR}" QSIM_TEST_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/out"
+    QSIM_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}/test")
 add_dependencies(tests scripted_image)
 
 option(QSIM_TEST_EMBEDDED_TRACE "Check the complete trace of two tub_copier images against a fixed digest" OFF)

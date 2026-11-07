@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <unistd.h>
@@ -32,6 +33,60 @@ namespace {
 		for (std::string line; std::getline(lines, line);)
 			if (contains(line, "   0: ")) return line;
 		return {};
+	}
+
+	// The numbered lines of a report's stack trace.
+	std::vector<std::string> frames(const std::string& report) {
+		static const std::regex  numbered(R"(^(\[Pico \d+\] +\[crash\])? +\d+: )");
+		std::vector<std::string> found;
+		std::istringstream       lines(report);
+		for (std::string line; std::getline(lines, line);) {
+			if (!line.empty() && line.back() == '\r') line.pop_back();
+			if (std::regex_search(line, numbered)) found.push_back(line);
+		}
+		return found;
+	}
+
+	// The first frame in the named function, or an empty string.
+	std::string frame_in(const std::string& report, const std::string& function) {
+		for (const std::string& frame : frames(report))
+			if (contains(frame, "in " + function + " ")) return frame;
+		return {};
+	}
+
+	// The source line of a frame in directory/file, for example 41 for "at .../crash_probe/main.c:41",
+	// or 0. Windows paths use either separator.
+	int line_in(const std::string& frame, const std::string& directory, const std::string& file) {
+		for (const char separator : {'/', '\\'}) {
+			const std::string tail = directory + separator + file + ':';
+			const std::size_t at   = frame.rfind(tail);
+			if (at == std::string::npos || !contains(frame.substr(0, at), " at ")) continue;
+			const std::string digits = frame.substr(at + tail.size());
+			if (!digits.empty() && digits.find_first_not_of("0123456789") == std::string::npos)
+				return std::stoi(digits);
+		}
+		return 0;
+	}
+
+	// The 1-based number of the first line of a file that contains the text, or 0.
+	int source_line(const std::filesystem::path& path, const std::string& text) {
+		std::ifstream input(path);
+		int           number = 0;
+		for (std::string line; std::getline(input, line);) {
+			number++;
+			if (contains(line, text)) return number;
+		}
+		return 0;
+	}
+
+	// The scripted image's crash site must be named with its file and the line that failed.
+	void expect_crash_site(const std::string& report, const std::string& statement) {
+		std::string site;
+		for (const std::string& frame : frames(report))
+			if (site.empty() && contains(frame, "scripted_crash_site")) site = frame;
+		const int expected = source_line(QSIM_TEST_SOURCE_DIR "/sim/scripted_image.cpp", statement);
+		ASSERT_GT(expected, 0) << statement;
+		EXPECT_EQ(line_in(site, "sim", "scripted_image.cpp"), expected) << report;
 	}
 
 	struct ScriptedCrash {
@@ -103,6 +158,9 @@ TEST(CrashContainment, ReportsAFaultInTheModulesContextAndKeepsTheProcess) {
 	EXPECT_TRUE(contains(failure->report, "thread:      scripted thread"));
 	EXPECT_TRUE(contains(failure->report, "Stack trace:"));
 	EXPECT_TRUE(contains(first_frame(failure->report), "scripted_crash_site")) << failure->report;
+	expect_crash_site(failure->report, "*nowhere = 1");
+	// The simulator's own frames below the image are named too.
+	EXPECT_TRUE(contains(failure->report, "inprocess_backend.cpp:")) << failure->report;
 	EXPECT_TRUE(contains(failure->report, "last words"));
 	EXPECT_TRUE(contains(failure->report, "Module 1 is stopped. The simulation continues"));
 	// The trace and stop reason must be equal between runs, so the summary names no address.
@@ -114,7 +172,7 @@ TEST(CrashContainment, ContainsAbortFromTheHostCLibrary) {
 	const auto    failure = scripted_failure();
 	ASSERT_TRUE(failure);
 	EXPECT_TRUE(contains(failure->summary, "SIGABRT"));
-	EXPECT_TRUE(contains(failure->report, "scripted_crash_site"));
+	expect_crash_site(failure->report, "std::abort()");
 }
 
 TEST(CrashContainment, ContainsATrapInstruction) {
@@ -123,6 +181,7 @@ TEST(CrashContainment, ContainsATrapInstruction) {
 	ASSERT_TRUE(failure);
 	EXPECT_TRUE(contains(failure->summary, "trap instruction"));
 	EXPECT_TRUE(contains(first_frame(failure->report), "scripted_crash_site")) << failure->report;
+	expect_crash_site(failure->report, "__builtin_trap()");
 }
 
 TEST(CrashContainment, StopsAGrantThatNeverReturns) {
@@ -135,6 +194,7 @@ TEST(CrashContainment, StopsAGrantThatNeverReturns) {
 	EXPECT_TRUE(contains(failure->report, "Module 1 hung"));
 	// The endless loop is where the trace starts.
 	EXPECT_TRUE(contains(first_frame(failure->report), "scripted_crash_site")) << failure->report;
+	expect_crash_site(failure->report, "for (;;) spin");
 	EXPECT_LT(std::chrono::steady_clock::now() - started, std::chrono::seconds(10));
 }
 
@@ -146,6 +206,7 @@ TEST(CrashContainment, ReportsWhereAnApplicationEndedItself) {
 	EXPECT_TRUE(contains(failure->report, "Module 1 exited: the application called exit(3)"));
 	// The hook records the application's own stack. The simulator's frames are left out.
 	EXPECT_TRUE(contains(first_frame(failure->report), "scripted_crash_site")) << failure->report;
+	expect_crash_site(failure->report, "on_fatal(context");
 }
 
 // A faulted image's code never runs again, so it is not destroyed. Its stacks are released.
@@ -286,6 +347,22 @@ TEST_P(CrashProbe, ReportsTheFailureAndKeepsTheOtherModuleRunning) {
 	EXPECT_TRUE(contains(console, "crash_probe_fault")) << console;
 	EXPECT_TRUE(contains(console, "thread:      main")) << console;
 	EXPECT_TRUE(contains(console, std::string("failing with ") + probe.mode)) << console;
+
+	// Every frame names its source file and line, down to the coroutine entry, which is assembly.
+	// crash_probe_fault stops at the statement that failed: the line after its mode's test.
+	const std::filesystem::path source = QSIM_TEST_SOURCE_DIR "/fixtures/crash_probe/main.c";
+	const int                   failed = source_line(source, std::string("strcmp(mode, \"") + probe.mode + "\")") + 1;
+	ASSERT_GT(failed, 1) << probe.mode;
+	EXPECT_EQ(line_in(frame_in(console, "crash_probe_fault"), "crash_probe", "main.c"), failed) << console;
+	EXPECT_GT(line_in(frame_in(console, "main"), "crash_probe", "main.c"), 0) << console;
+	const std::vector<std::string> trace = frames(console);
+	EXPECT_GE(trace.size(), 5u) << console;
+	for (const std::string& frame : trace) {
+		if (!contains(frame, "nsi_coro_trampoline") && !contains(frame, "nsi_coro.S")) {
+			EXPECT_TRUE(contains(frame, " at ")) << frame << '\n' << console;
+		}
+	}
+	EXPECT_FALSE(contains(console, "No source lines")) << console;
 
 	// Core0's safe stop turned module 1's LED off. Module 2 still runs its application.
 	EXPECT_EQ(runtime.world().module(module::ModuleId{1})->led_color().raw(), 0u);
