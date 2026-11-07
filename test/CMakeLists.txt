@@ -17,6 +17,7 @@ target_link_libraries(tests PRIVATE gtest core)
 target_compile_definitions(core PRIVATE TESTING)
 target_compile_definitions(tests PRIVATE TESTING REPO_ROOT="${CMAKE_SOURCE_DIR}")
 target_compile_options(tests PRIVATE ${COMPILATION_FLAGS})
+qsim_debug_symbols(tests)
 add_test(NAME tests COMMAND tests)
 
 foreach(image counter wrong_abi missing_entry null_api)
@@ -39,6 +40,7 @@ set_target_properties(scripted_image PROPERTIES PREFIX "" SUFFIX ".dll" CXX_VISI
 target_include_directories(scripted_image PRIVATE "${QUERCUS_SDK_ROOT}/include")
 # Frame pointers let the crash tests check the stack trace on every host.
 target_compile_options(scripted_image PRIVATE ${COMPILATION_FLAGS} -fno-omit-frame-pointer -fno-optimize-sibling-calls)
+qsim_debug_symbols(scripted_image)
 target_compile_definitions(tests PRIVATE SCRIPTED_IMAGE="$<TARGET_FILE:scripted_image>"
     QSIM_TEST_FIRMWARE_DIR="${QSIM_TEST_FIRMWARE_DIR}" QSIM_TEST_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/out")
 add_dependencies(tests scripted_image)

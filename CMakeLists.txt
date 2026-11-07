@@ -34,6 +34,25 @@ foreach(config RELEASE RELWITHDEBINFO MINSIZEREL)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_${config} ${ENABLE_LTO})
 endforeach()
 
+# Crash reports name source lines from DWARF. macOS leaves it in the object files, and libbacktrace
+# reads only a dSYM bundle beside the binary, so write one. Clang's LTO objects are kept for
+# dsymutil: the linker otherwise deletes them, with their debug information.
+if(APPLE)
+    find_program(DSYMUTIL dsymutil REQUIRED)
+endif()
+function(qsim_debug_symbols target)
+    if(APPLE)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(_lto "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${target}.dir/lto")
+            target_link_options(${target} PRIVATE "LINKER:-object_path_lto,${_lto}")
+        endif()
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E rm -rf "$<TARGET_FILE:${target}>.dSYM"
+            COMMAND "${DSYMUTIL}" "$<TARGET_FILE:${target}>" -o "$<TARGET_FILE:${target}>.dSYM"
+            VERBATIM)
+    endif()
+endfunction()
+
 set(PGO OFF CACHE STRING "PGO mode: OFF, TRAIN or USE")
 set(profile_dir "${CMAKE_BINARY_DIR}/pgo")
 if(PGO STREQUAL "TRAIN")
@@ -181,6 +200,7 @@ if(WIN32)
 endif()
 
 target_link_libraries(simulation-scenario PRIVATE core)
+qsim_debug_symbols(simulation-scenario)
 
 target_compile_options(simulation-scenario PRIVATE ${COMPILATION_FLAGS})
 

@@ -31,6 +31,7 @@ if(WIN32)
 endif()
 
 target_compile_options(simulation PRIVATE ${COMPILATION_FLAGS})
+qsim_debug_symbols(simulation)
 
 target_link_libraries(simulation PRIVATE 
     core 
