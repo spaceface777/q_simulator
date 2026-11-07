@@ -34,11 +34,9 @@ foreach(config RELEASE RELWITHDEBINFO MINSIZEREL)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_${config} ${ENABLE_LTO})
 endforeach()
 
-# Crash reports name source lines from DWARF. macOS leaves it in the object files, and libbacktrace
-# reads only a dSYM bundle beside the binary, so write one. Clang's LTO objects are kept for
-# dsymutil: the linker otherwise deletes them, with their debug information.
 if(APPLE)
     find_program(DSYMUTIL dsymutil REQUIRED)
+    find_program(DWARFDUMP dwarfdump REQUIRED)
 endif()
 function(qsim_debug_symbols target)
     if(APPLE)
@@ -47,8 +45,8 @@ function(qsim_debug_symbols target)
             target_link_options(${target} PRIVATE "LINKER:-object_path_lto,${_lto}")
         endif()
         add_custom_command(TARGET ${target} POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E rm -rf "$<TARGET_FILE:${target}>.dSYM"
-            COMMAND "${DSYMUTIL}" "$<TARGET_FILE:${target}>" -o "$<TARGET_FILE:${target}>.dSYM"
+            COMMAND sh -c "[ \"$(\"$2\" --uuid \"$1\" | cut -d' ' -f2)\" = \"$(\"$2\" --uuid \"$1.dSYM\" 2>/dev/null | cut -d' ' -f2)\" ] || { rm -rf \"$1.dSYM\" && \"$0\" \"$1\" -o \"$1.dSYM\"; }"
+                "${DSYMUTIL}" "$<TARGET_FILE:${target}>" "${DWARFDUMP}"
             VERBATIM)
     endif()
 endfunction()
@@ -93,6 +91,8 @@ if(BUILD_TESTING)
         GIT_REPOSITORY https://github.com/google/googletest.git
         GIT_TAG        v1.17.0
         GIT_SHALLOW    TRUE
+        # Only the sources: test/CMakeLists.txt compiles gtest into the tests.
+        SOURCE_SUBDIR  none
     )
     FetchContent_MakeAvailable(googletest)
 endif()
@@ -136,7 +136,7 @@ set(QSIM_TEST_FIRMWARE_DIR "${CMAKE_SOURCE_DIR}/external/q_applets/out" CACHE PA
 
 # === Builds ===
 
-add_library(core STATIC
+add_library(core OBJECT
     src/firmware/crash_report.cpp
     src/firmware/crash_symbols.cpp
     src/firmware/crash_watchdog.cpp
@@ -174,7 +174,8 @@ target_link_libraries(core PUBLIC
     tomlplusplus::tomlplusplus
     ${CMAKE_DL_LIBS}
 )
-target_link_libraries(core PRIVATE backtrace)
+target_sources(core PRIVATE ${QSIM_BACKTRACE_SOURCES})
+target_include_directories(core PRIVATE "${QSIM_BACKTRACE_INCLUDE}")
 
 target_include_directories(core PUBLIC
     "${QUERCUS_SDK_ROOT}/include")

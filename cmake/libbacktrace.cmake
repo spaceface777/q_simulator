@@ -157,7 +157,7 @@ endif()
 # provides every allocation and file view, and frees all of them when the symbolizer replaces a state.
 list(APPEND _backtrace_sources "${PROJECT_SOURCE_DIR}/src/firmware/crash_backtrace_memory.c")
 
-add_library(backtrace STATIC ${_backtrace_sources})
-target_include_directories(backtrace PRIVATE "${_backtrace_generated}" "${_backtrace_source}" PUBLIC "${_backtrace_source}")
-target_compile_definitions(backtrace PRIVATE _GNU_SOURCE)
-set_target_properties(backtrace PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON)
+set_source_files_properties(${_backtrace_sources} PROPERTIES
+    INCLUDE_DIRECTORIES "${_backtrace_generated};${_backtrace_source}" COMPILE_DEFINITIONS _GNU_SOURCE)
+set(QSIM_BACKTRACE_SOURCES ${_backtrace_sources})
+set(QSIM_BACKTRACE_INCLUDE "${_backtrace_source}")
