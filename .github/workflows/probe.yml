@@ -29,6 +29,7 @@ jobs:
             mkdir -p "$root/src/external/q_applets/out" "$root/build"
             cp -r tree/. "$root/src/"
             cp bin/fake_child "$root/build/fake_child"
+            mkdir -p "$root/build-lto" && cp bin/fake_child-lto "$root/build-lto/fake_child"
             cp "bin/hardware_test-$cpu.exe" "$root/src/external/q_applets/out/hardware_test.exe"
           done
           chmod +x bin/*
@@ -57,6 +58,21 @@ jobs:
           cd /tmp/qsim/src 2>/dev/null || cd "$(cd "$GITHUB_WORKSPACE" && pwd | cut -c1-2)/tmp/qsim/src"
           sed 's|^application_path = .*|application_path = "/tmp/qsim/src/external/q_applets/out/hardware_test.exe"|' settings_example.toml > settings.toml
           "$GITHUB_WORKSPACE/bin/simulation-scenario.exe" -s settings.toml --trace trace.ndjson scenarios/hardware_test.toml 2>&1 | tail -6 || true
+          grep -c . trace.ndjson
+          tail -n +2 trace.ndjson > body.ndjson; head -1 trace.ndjson | cut -c1-600
+          if command -v sha256sum >/dev/null; then sha256sum body.ndjson; else shasum -a 256 body.ndjson; fi
+          if command -v sha256sum >/dev/null; then sha256sum trace.ndjson; else shasum -a 256 trace.ndjson; fi
+      - name: LTO simulator unit tests
+        if: always()
+        timeout-minutes: 15
+        run: bin/tests-lto.exe --gtest_brief=1 2>&1 | tail -150
+      - name: LTO hardware_test scenario with child process
+        if: always()
+        timeout-minutes: 5
+        run: |
+          cd /tmp/qsim/src 2>/dev/null || cd "$(cd "$GITHUB_WORKSPACE" && pwd | cut -c1-2)/tmp/qsim/src"
+          sed 's|^application_path = .*|application_path = "/tmp/qsim/src/external/q_applets/out/hardware_test.exe"|' settings_example.toml > settings.toml
+          "$GITHUB_WORKSPACE/bin/simulation-scenario-lto.exe" -s settings.toml --trace trace.ndjson scenarios/hardware_test.toml 2>&1 | tail -6 || true
           grep -c . trace.ndjson
           tail -n +2 trace.ndjson > body.ndjson; head -1 trace.ndjson | cut -c1-600
           if command -v sha256sum >/dev/null; then sha256sum body.ndjson; else shasum -a 256 body.ndjson; fi
