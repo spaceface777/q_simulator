@@ -1,0 +1,92 @@
+# Temporary probe: runs prebuilt Cosmopolitan Libc executables (built on a Mac) on each runner.
+name: Cosmopolitan probe
+on:
+  push:
+    branches: [cosmo-probe]
+jobs:
+  probe:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - name: Let Linux start Cosmopolitan programs
+        if: runner.os == 'Linux'
+        run: for f in /proc/sys/fs/binfmt_misc/*; do ! grep -qs '^magic 4d5a' "$f" || echo -1 | sudo tee "$f"; done
+      - name: Place the files where the test binaries expect them
+        run: |
+          case "$(uname -m)" in aarch64|arm64) cpu=aarch64 ;; *) cpu=x86_64 ;; esac
+          [ "$RUNNER_OS" != Windows ] || cpu=x86_64
+          roots=/tmp/qsim
+          [ "$RUNNER_OS" != Windows ] || roots="/c/tmp/qsim /d/tmp/qsim"
+          for root in $roots; do
+            mkdir -p "$root/src/external/q_applets/out" "$root/build"
+            cp -r tree/. "$root/src/"
+            cp bin/fake_child "$root/build/fake_child"
+            cp "bin/hardware_test-$cpu.exe" "$root/src/external/q_applets/out/hardware_test.exe"
+          done
+          chmod +x bin/*
+          echo "CPU=$cpu" >> "$GITHUB_ENV"
+          uname -a
+      - name: S3 crash guard and watchdog
+        if: always()
+        timeout-minutes: 3
+        run: bin/guard.exe
+      - name: S1 applet starts (expects "QSIM_CTRL_FD not set", status 2)
+        if: always()
+        timeout-minutes: 3
+        run: |
+          status=0
+          "bin/hardware_test-$CPU.exe" --stop_at=1 || status=$?
+          echo "status $status"
+          [ $status = 2 ]
+      - name: S2 simulator unit tests
+        if: always()
+        timeout-minutes: 15
+        run: bin/tests.exe --gtest_brief=1 2>&1 | tail -150
+      - name: S1+S2 hardware_test scenario with child process
+        if: always()
+        timeout-minutes: 5
+        run: |
+          cd /tmp/qsim/src 2>/dev/null || cd /d/tmp/qsim/src
+          sed 's|^application_path = .*|application_path = "/tmp/qsim/src/external/q_applets/out/hardware_test.exe"|' settings_example.toml > settings.toml
+          "$GITHUB_WORKSPACE/bin/simulation-scenario.exe" -s settings.toml --trace trace.ndjson scenarios/hardware_test.toml 2>&1 | tail -30
+          if command -v sha256sum >/dev/null; then sha256sum trace.ndjson; else shasum -a 256 trace.ndjson; fi
+      - name: S5 get a native SDL3 (Windows)
+        if: always() && runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R libsdl-org/SDL --pattern 'SDL3-3*-win32-x64.zip' --dir sdl
+          cd sdl && unzip -q -o SDL3-*.zip && ls -la
+      - name: S5 build a native SDL3 (Linux)
+        if: always() && runner.os == 'Linux'
+        run: |
+          git clone -q --depth 1 -b release-3.2.x https://github.com/libsdl-org/SDL.git sdl-src
+          cmake -S sdl-src -B sdl -DCMAKE_BUILD_TYPE=Release -DSDL_X11=OFF -DSDL_WAYLAND=OFF -DSDL_AUDIO=OFF \
+            -DSDL_CAMERA=OFF -DSDL_JOYSTICK=OFF -DSDL_HAPTIC=OFF -DSDL_SENSOR=OFF -DSDL_GPU=OFF -DSDL_TEST_LIBRARY=OFF \
+            -DSDL_UNIX_CONSOLE_BUILD=ON > sdl.log 2>&1 || { tail -30 sdl.log; exit 1; }
+          cmake --build sdl -j4 >> sdl.log 2>&1 || { tail -30 sdl.log; exit 1; }
+          ls -la sdl/libSDL3.so*
+      - name: S5 SDL3 through cosmo_dlopen
+        if: always()
+        timeout-minutes: 5
+        run: |
+          case "$RUNNER_OS" in
+            Windows) library="$(cygpath -m "$PWD/sdl/SDL3.dll")" ;;
+            Linux) library="$PWD/sdl/libSDL3.so"; export SDL_VIDEODRIVER=dummy ;;
+            *) library=/nonexistent/libSDL3.dylib ;;
+          esac
+          status=0
+          bin/sdlprobe.exe "$library" || status=$?
+          echo "status $status with the default video driver"
+          if [ $status != 0 ] && [ "$RUNNER_OS" = Windows ]; then
+            SDL_VIDEODRIVER=dummy bin/sdlprobe.exe "$library"
+          fi
+          [ "$RUNNER_OS" = macOS ] || [ $status = 0 ]

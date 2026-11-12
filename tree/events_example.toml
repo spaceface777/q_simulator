@@ -1,0 +1,60 @@
+# ===== Events =====
+# Defines what happens in the simulated world during a run.
+#
+# This file is read by the simulation and never by an application. A tub arriving is a change
+# to the world, not a message; an application finds out about it the same way it does on the
+# physical system, by reading the tag when the tub reaches a reader.
+#
+# There are no plane events. On the physical system the flight board is owned by the tower
+# application, which publishes it to the other modules itself. To have flight data in a run,
+# give module 255 a tower application in layout.toml.
+
+# === Tubs ===
+# Tubs have the following attributes:
+# - time: The time at which the tub arrives in seconds.
+# - id: The tub id.
+# - module: The physical module on which the tub appears.
+# - position: Where on that module the tub appears. Optional, and one of "entry" (also
+#       spelled "rfid"), "center", "left_laser", "right_laser". Defaults to "entry", which is
+#       where a tub enters the system. Naming a laser puts a tub straight into that beam, which
+#       is the only way to reach the branches of an application that react to a blocked beam:
+#       a stopped belt refuses a tub handed over from a neighbour, so an application that does
+#       not drive a belt cannot be given one any other way.
+# - removed: The time in seconds the tub is taken back out of the world. Optional, and must be
+#       after the time it arrives. What an application does when a beam clears or when a tag
+#       leaves the reader is as much a part of its behaviour as what it does when the tub
+#       arrives, and none of it is reachable if a tub that is placed can never leave.
+# - uid: The tag's seven-byte UID, as one big-endian integer or exactly seven bytes.
+# - payload: Up to 32 four-byte pages. Each page may be one big-endian integer or exactly four bytes. Omitted
+#       trailing pages are filled with deterministic random data derived from the run seed.
+
+[tub.1]
+time = 0.0
+id = 1
+module = 1
+uid = 0x01000000000000
+payload = [0x01000c00, 0x01000000]
+
+[tub.2]
+time = 15.0
+id = 2
+module = 1
+uid = [0x02, 0, 0, 0, 0, 0, 0]
+payload = [0x01000a00]
+
+[tub.3]
+time = 30.0
+id = 4
+module = 3
+uid = 0x04000000000000
+payload = [[0x03, 0x01, 0x04, 0x01], [1, 0, 0, 0]]
+
+# To run this input as a finite test, add a scenario table and put the temporal properties in the
+# named sibling file. The duration is quoted and uses the same exact unit syntax as property scopes:
+#
+# [scenario]
+# duration = "45s"
+# properties = "events_example.spec"
+#
+# See docs/temporal-properties.md for the LTLf language. The removed [assert.*] format is not
+# accepted by simulation-scenario.

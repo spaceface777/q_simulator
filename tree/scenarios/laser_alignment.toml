@@ -1,0 +1,32 @@
+# ===== Scenario: laser_alignment =====
+# Exercises alignment, RFID brightness, misalignment, and the 30-second recovery state without a GUI.
+#
+# Run it with:
+#   ./build/simulation-scenario scenarios/laser_alignment.toml
+
+[scenario]
+layout = "../layouts/one_module.toml"
+binary = "../external/q_applets/out/laser_alignment.exe"
+duration = "60s"
+properties = "laser_alignment.spec"
+
+# A tag arrives at the reader and later leaves. Because this applet never drives a belt, it stays
+# under the reader and cleanly isolates the RFID-controlled brightness behavior.
+[tub.tag_arrives]
+time = 4.0
+id = 1
+module = 1
+removed = 13.0
+uid = 0x01000000000000
+payload = [0xDEADBEEF]
+
+# A second tub directly blocks the left beam, making the misaligned branch reachable without belt
+# motion. It then leaves early enough to observe yellow recovery and the return to green.
+[tub.blocks_the_left_beam]
+time = 7.0
+id = 2
+module = 1
+position = "left_laser"
+removed = 10.0
+uid = 0x02000000000000
+payload = []
