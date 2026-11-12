@@ -58,7 +58,8 @@ jobs:
           sed 's|^application_path = .*|application_path = "/tmp/qsim/src/external/q_applets/out/hardware_test.exe"|' settings_example.toml > settings.toml
           "$GITHUB_WORKSPACE/bin/simulation-scenario.exe" -s settings.toml --trace trace.ndjson scenarios/hardware_test.toml 2>&1 | tail -6 || true
           grep -c . trace.ndjson
-          grep -v '"type":"run_' trace.ndjson | head -3 | cut -c1-400
+          tail -n +2 trace.ndjson > body.ndjson; head -1 trace.ndjson | cut -c1-600
+          if command -v sha256sum >/dev/null; then sha256sum body.ndjson; else shasum -a 256 body.ndjson; fi
           if command -v sha256sum >/dev/null; then sha256sum trace.ndjson; else shasum -a 256 trace.ndjson; fi
       - name: S5 get a native SDL3 (Windows)
         if: always() && runner.os == 'Windows'
