@@ -1174,6 +1174,9 @@ TEST_F(RuntimeTest, ControlledApplicationMutantsFailTheirIntendedProperties) {
 		const auto results = runtime.property_results();
 		ASSERT_EQ(results.size(), 1u);
 		EXPECT_EQ(results[0].verdict, mutant.expected) << mutant.mode;
+		EXPECT_EQ(runtime.properties_failed(), mutant.expected == ltl::Verdict::FALSE ? 1u : 0u) << mutant.mode;
+		EXPECT_EQ(runtime.properties_unresolved(), mutant.expected == ltl::Verdict::UNRESOLVED ? 1u : 0u)
+			<< mutant.mode;
 		EXPECT_NE(results[0].verdict, ltl::Verdict::TRUE) << mutant.mode << " went undetected";
 		ASSERT_TRUE(results[0].decisive_tick.has_value()) << mutant.mode;
 		if (mutant.should_fail_early) EXPECT_LT(*results[0].decisive_tick, 8u) << mutant.mode;
