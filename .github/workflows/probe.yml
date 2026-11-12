@@ -24,7 +24,7 @@ jobs:
           case "$(uname -m)" in aarch64|arm64) cpu=aarch64 ;; *) cpu=x86_64 ;; esac
           [ "$RUNNER_OS" != Windows ] || cpu=x86_64
           roots=/tmp/qsim
-          [ "$RUNNER_OS" != Windows ] || roots="/c/tmp/qsim /d/tmp/qsim"
+          [ "$RUNNER_OS" != Windows ] || roots="/c/tmp/qsim $(pwd | cut -c1-2)/tmp/qsim"
           for root in $roots; do
             mkdir -p "$root/src/external/q_applets/out" "$root/build"
             cp -r tree/. "$root/src/"
@@ -54,9 +54,11 @@ jobs:
         if: always()
         timeout-minutes: 5
         run: |
-          cd /tmp/qsim/src 2>/dev/null || cd /d/tmp/qsim/src
+          cd /tmp/qsim/src 2>/dev/null || cd "$(cd "$GITHUB_WORKSPACE" && pwd | cut -c1-2)/tmp/qsim/src"
           sed 's|^application_path = .*|application_path = "/tmp/qsim/src/external/q_applets/out/hardware_test.exe"|' settings_example.toml > settings.toml
-          "$GITHUB_WORKSPACE/bin/simulation-scenario.exe" -s settings.toml --trace trace.ndjson scenarios/hardware_test.toml 2>&1 | tail -30
+          "$GITHUB_WORKSPACE/bin/simulation-scenario.exe" -s settings.toml --trace trace.ndjson scenarios/hardware_test.toml 2>&1 | tail -6 || true
+          grep -c . trace.ndjson
+          grep -v '"type":"run_' trace.ndjson | head -3 | cut -c1-400
           if command -v sha256sum >/dev/null; then sha256sum trace.ndjson; else shasum -a 256 trace.ndjson; fi
       - name: S5 get a native SDL3 (Windows)
         if: always() && runner.os == 'Windows'
@@ -86,6 +88,7 @@ jobs:
           status=0
           bin/sdlprobe.exe "$library" || status=$?
           echo "status $status with the default video driver"
+          [ $status = 0 ] || [ "$RUNNER_OS" != Linux ] || { cc --version | head -1; ldd --version | head -1; bin/sdlprobe.exe --strace "$library" 2>&1 | tail -25 | cut -c1-250; ls -la ${TMPDIR:-/tmp}/.cosmo/ 2>&1; } || true
           if [ $status != 0 ] && [ "$RUNNER_OS" = Windows ]; then
             SDL_VIDEODRIVER=dummy bin/sdlprobe.exe "$library"
           fi
