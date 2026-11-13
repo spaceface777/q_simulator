@@ -55,6 +55,9 @@ A layout can set a default `firmware` path and override it for each module.
 Firmware paths are relative to the layout.
 The world build embeds the layout and one copy of the selected firmware for each active module.
 It writes the executable and a separate `world.exe.dbg` file.
+The world embeds the SHA-256 digest of each firmware object for the attestation RPCs.
+All simulated modules use the public test key with bytes `0x00` through `0x1f`.
+Rebuild firmware objects from P2 through P4 before you use them in a P5 world.
 
 ## Run a scenario
 
@@ -78,6 +81,9 @@ It also returns 1 when the simulation cannot finish and 2 when its input is inva
 Each scenario supplies `[scenario].duration`.
 If the run needs assertions, set `properties` to an LTLf file relative to the scenario.
 Put timed events in the scenario file. See [the tub arrivals example](scenarios/tub_arrivals.toml).
+Set firmware variables in `[scenario.environment]`.
+Firmware reads those variables and its own `QUERCUS_MODULE_ID` through `getenv`.
+The simulator keeps the shell environment separate.
 
 | Layout under `layouts/` | Compatible scenarios under `scenarios/` |
 | --- | --- |

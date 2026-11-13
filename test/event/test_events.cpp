@@ -205,6 +205,18 @@ TEST_F(EventsTest, RequiresValidPropertyConfiguration) {
 	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
+TEST_F(EventsTest, ReadsExplicitFirmwareEnvironment) {
+	write("[scenario]\nduration = \"3s\"\n[scenario.environment]\nQSIM_STUB_REFUSE = \"6:30000\"\n");
+	const auto schedule = events::parse_scenario(path);
+	ASSERT_EQ(schedule.environment.size(), 1u);
+	EXPECT_EQ(schedule.environment.at("QSIM_STUB_REFUSE"), "6:30000");
+
+	write("[scenario]\nduration = \"3s\"\n[scenario.environment]\nQSIM_STUB_REFUSE = 6\n");
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
+	write("[scenario]\nduration = \"3s\"\n[scenario.environment]\nQUERCUS_MODULE_ID = \"7\"\n");
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
+}
+
 TEST_F(EventsTest, RejectsMissingFileAndRemovedAssertionFormat) {
 	EXPECT_THROW((void)events::parse_scenario(path.string() + ".missing"), std::exception);
 	write("[assert.old]\ncheck = \"arrived_at\"\n");
