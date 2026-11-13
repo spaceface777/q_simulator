@@ -1,6 +1,8 @@
 # === Layout ===
 # The layout of the modules used for the simulation.
 
+firmware = "../external/q_applets/out/module_movement.o"
+
 [module.1]
 active = true # Whether this module should be started.
 neighbors = [0, 0, 2] # Module id of neighbors in order of left, middle, right.

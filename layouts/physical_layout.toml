@@ -1,5 +1,7 @@
 # === Layout ===
 
+firmware = "../external/q_applets/out/module_movement.o"
+
 [module.1]
 active = true
 type = "check-in"
@@ -124,4 +126,4 @@ angle = 270
 active = true
 type = "tower"
 neighbors = [0, 0, 0]
-binary = "external/q_applets/out/atc_fixture.exe"
+firmware = "../external/q_applets/out/atc_fixed.o"
