@@ -1,5 +1,7 @@
 # Cosmopolitan P2 builds
 
+These build and benchmark instructions describe the `cosmopolitan-p2` branch.
+
 ## Prerequisites
 
 Use the project cosmocc release `2026.11.12-20` and a west workspace with Zephyr v4.5.0.

@@ -24,126 +24,73 @@ simulation/
 └── settings_example.toml    # Example run settings
 ```
 
-## Requirements
+## Build a world
 
-**Installation**
-
-- Ubuntu 24 or later, or Debian 13 or later
-- CMake 3.12 or later
-- Ninja
-- A C++23 compiler
-- SDL3 development files for the GUI
-- West, Zephyr, and the native simulator toolchain for the applications
-- Internet access for the first CMake configuration
-
-**Usage**
-
-- Ubuntu 24 or later, or Debian 13 or later
-- The `native_sim` application files used by the selected layout
-
-## Installation
-
-This setup is already present on the course VM.
-
-1. Clone this repository with its submodules.
-
-```sh
-git clone --recurse-submodules <repository-url>
-cd simulation
-```
-
-2. If the repository already exists, initialize the pinned submodules.
+Initialize the SDK and applet submodules.
 
 ```sh
 git submodule update --init --recursive
 ```
 
-3. Install the build packages.
+Use the toolchain and Zephyr checkout in the [P2 prerequisites](docs/COSMOPOLITAN_P2.md#prerequisites).
+Build the firmware objects.
 
 ```sh
-sudo apt-get install lcov build-essential git make pkg-config cmake ninja-build gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev libusb-1.0-0-dev
+(cd external/q_applets && ./q_sdk/qbuild sim)
 ```
 
-4. Build the pinned applications for Zephyr `native_sim`.
+Configure and build the simulator with Cosmopolitan.
 
 ```sh
-cd external/q_applets
-./q_sdk/qbuild sim
-cd ../..
+cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/cosmocc.cmake
+cmake --build build
 ```
 
-5. Copy the example input files.
+Build a world from a layout.
 
 ```sh
-cp events_example.toml events.toml
-cp settings_example.toml settings.toml
-cp layout_example.toml layout.toml
+python3 build/qsim build layouts/hardware_test.toml -o world.exe
 ```
 
-6. Set `application_path` in `settings.toml`. You can also set `binary` for one module in `layout.toml`.
+A layout can set a default `firmware` path and override it for each module.
+Firmware paths are relative to the layout.
+The world build embeds the layout and one copy of the selected firmware for each active module.
+It writes the executable and a separate `world.exe.dbg` file.
 
-7. Configure the build.
+## Run a scenario
+
+Pass the scenario and settings to the world executable.
 
 ```sh
-cmake -B build -S . -G Ninja
+./world.exe scenarios/hardware_test_blocked_beam.toml --settings settings_example.toml
 ```
 
-## Usage
+On macOS, use `sh ./world.exe` if the system does not start APE files directly.
+A world can run compatible scenarios in separate invocations.
+If the layout or firmware changes, build the world again.
+The current build runs headlessly.
 
-#### Running
+The scenario runner returns 0 when all properties hold and 1 when a property fails or remains undecided.
+It also returns 1 when the simulation cannot finish and 2 when its input is invalid.
 
-Build and start the interactive simulator with a self-contained scenario.
+## Tests
+
+Run the simulator unit tests.
 
 ```sh
-cmake --build build -j
-./build/simulation scenarios/laser_alignment.toml
+ctest --test-dir build --output-on-failure
 ```
 
-The scenario's `[scenario]` table may set `layout` and `binary`; relative paths start from the scenario file's folder. It starts one application process for each active module. The GUI shows the world state and lets you pause the run, set its speed, and change the scale. Close the GUI to stop the run and all child processes.
-
-Without a scenario argument, the simulator retains the original behavior and reads `settings.toml`, `layout.toml`, and `events.toml`. In `simulation-scenario`, `--layout` and `--binary` still work and override values from the scenario.
-
-The simulator pins itself and all application processes to one CPU to avoid cross-core wakeup and cache-coherence overhead in the short lockstep tick. Use `taskset -c N` when starting it to choose that CPU explicitly; otherwise it uses the CPU on which it starts.
-
-Use `--no-gui` for a run without a window. Use `--timeout <sec>` to stop after a simulated-time limit. Use `--tick-batch <n>` to grant up to `n` child ticks per barrier. The default batch is 1.
-
-A larger tick batch trades timing accuracy for speed. With a batch of N, the simulator cannot observe or answer an application action until the batch boundary, so N ms becomes the smallest effective response step. A batch of 10 runs about seven times faster than a batch of 1. The result varies with the CPU, layout, scenario, and application.
-
-Run a finite scenario and its LTLf properties with the headless runner.
+On Linux, configure a separate build directory without the toolchain file to use the host compiler.
+After the firmware build, run the linked-world tests.
 
 ```sh
-./build/simulation-scenario scenarios/hardware_test.toml
+python3 test/sim/test_worlds.py build/qsim
 ```
 
-A complete scenario header looks like this:
-
-```toml
-[scenario]
-layout = "../layouts/one_module.toml"
-binary = "../external/q_applets/out/laser_alignment.exe"
-duration = "60s"
-properties = "laser_alignment.spec"
-```
-
-The `layout`, `binary`, and `properties` paths are relative to the scenario file. `layout` and `binary` are optional for compatibility with existing scenarios; when absent, the commands use `layout.toml` and `application_path` from `settings.toml`.
-
-Use `./build/simulation --help` and `./build/simulation-scenario --help` for all options. The scenario runner returns 0 when all properties hold, 1 when a property fails or the run cannot finish, and 2 when its input is invalid.
-
-The installable VS Code extension in `editors/vscode-ltlf` provides syntax highlighting and live parser and type-check diagnostics for `.spec` files. See its README for installation and rebuild instructions.
-
-#### Testing
-
-Build and run the normal test suite.
-
-```sh
-cmake --build build -j && ./build/tests
-```
-
-Build the pinned applets first, and set `RUN_SLOW_TESTS=1`, to run the full real-application scenario and speed-invariance tests.
-
-```sh
-RUN_SLOW_TESTS=1 ./build/tests
-```
+The tests build one world per layout and compare traces from two runs of each scenario.
+The two RFID diagnostics retain one undecided property each with the historical applet revision.
+The tests require those exact verdicts.
 
 #### Test coverage
 

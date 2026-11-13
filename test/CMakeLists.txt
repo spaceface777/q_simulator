@@ -39,4 +39,8 @@ target_compile_definitions(tests PRIVATE REPO_ROOT="${CMAKE_SOURCE_DIR}")
 
 target_compile_options(tests PRIVATE ${COMPILATION_FLAGS})
 
-add_test(NAME tests COMMAND tests)
+if(QUERCUS_COSMOPOLITAN AND CMAKE_HOST_APPLE)
+    add_test(NAME tests COMMAND sh $<TARGET_FILE:tests>)
+else()
+    add_test(NAME tests COMMAND tests)
+endif()
