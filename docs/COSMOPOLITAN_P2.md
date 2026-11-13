@@ -53,3 +53,8 @@ cmake --build build-cosmo
 ```
 
 For a Linux host-toolchain build, omit `-DCMAKE_TOOLCHAIN_FILE` and use a separate build directory.
+
+## GitLab CI
+
+The current GitLab job calls `qbuild sim`. That step requires the pinned cosmocc archive and patched Zephyr checkout.
+P9 will provision these dependencies in GitLab CI.
