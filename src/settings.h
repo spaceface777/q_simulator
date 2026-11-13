@@ -34,13 +34,9 @@ namespace settings {
 
 		// The role advertised in the network map, without the leading 't'. The tower looks for "gate".
 		std::string type = "default";
-
-		// The application to run for this module. Empty means the global application_path.
-		std::string binary;
 	};
 
-	void parse_settings(fs::path settings, fs::path layout,
-						std::optional<fs::path> application_path_override = std::nullopt);
+	void parse_settings(fs::path settings, std::string_view layout);
 
 	// Only returns generic types that are also in TOML. Throws if the setting is not found.
 	template <typename T> [[nodiscard]] T get_setting(std::string_view setting);
@@ -55,9 +51,6 @@ namespace settings {
 
 	// Ascending. Includes inactive module entries from layout.toml.
 	[[nodiscard]] std::vector<module::ModuleId> get_configured_modules();
-
-	// The module's own binary override when set, otherwise the global application_path.
-	[[nodiscard]] std::string get_module_binary(module::ModuleId id);
 
 	// Throws if the module is not found.
 	[[nodiscard]] ModuleSettings get_module_settings(module::ModuleId id);

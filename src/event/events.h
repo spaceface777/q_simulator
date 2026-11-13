@@ -36,13 +36,6 @@ namespace events {
 		uint64_t duration_tick = 0;
 	};
 
-	// Files a scenario can select for a self-contained run. Relative paths are resolved from the
-	// scenario file, just like the sibling LTLf property file.
-	struct ScenarioFiles {
-		std::optional<fs::path> layout;
-		std::optional<fs::path> binary;
-	};
-
 	struct Schedule {
 		std::vector<TubArrival>              tubs;
 		std::optional<PropertyConfiguration> properties;
@@ -51,8 +44,7 @@ namespace events {
 		[[nodiscard]] uint64_t last_tick() const noexcept;
 	};
 
-	[[nodiscard]] ScenarioFiles parse_scenario_files(const fs::path& file);
-	[[nodiscard]] Schedule      parse_events(const fs::path& file, uint64_t master_seed = 0);
+	[[nodiscard]] Schedule parse_events(const fs::path& file, uint64_t master_seed = 0);
 
 } // namespace events
 

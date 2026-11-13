@@ -11,23 +11,17 @@ namespace fs = std::filesystem;
 
 class SettingsTest : public ::testing::Test {
 protected:
-	fs::path temp_settings_path;
-	fs::path temp_layout_path;
-	fs::path temp_application_path;
+	fs::path    temp_settings_path;
+	std::string layout;
 
 	void SetUp() override {
 		auto                               now = std::chrono::steady_clock::now().time_since_epoch().count();
 		std::mt19937                       rng(static_cast<unsigned int>(now));
 		std::uniform_int_distribution<int> dist(100000, 999999);
 
-		temp_settings_path    = fs::temp_directory_path() / ("test_settings_" + std::to_string(dist(rng)) + ".toml");
-		temp_layout_path      = fs::temp_directory_path() / ("test_layout_" + std::to_string(dist(rng)) + ".toml");
-		temp_application_path = fs::temp_directory_path() / ("zephyr_" + std::to_string(dist(rng)) + ".exe");
+		temp_settings_path = fs::temp_directory_path() / ("test_settings_" + std::to_string(dist(rng)) + ".toml");
 
-		std::ofstream outfile(temp_application_path);
-		outfile << "dummy content";
-
-		write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+		write_settings("seed = 1\n"
 					   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -37,8 +31,6 @@ scale = 1.0
 
 	void TearDown() override {
 		if (fs::exists(temp_settings_path)) fs::remove(temp_settings_path);
-		if (fs::exists(temp_layout_path)) fs::remove(temp_layout_path);
-		if (fs::exists(temp_application_path)) fs::remove(temp_application_path);
 	}
 
 	void write_settings(const std::string& content) {
@@ -46,10 +38,7 @@ scale = 1.0
 		outfile << content;
 	}
 
-	void write_layout(const std::string& content) {
-		std::ofstream outfile(temp_layout_path);
-		outfile << content;
-	}
+	void write_layout(const std::string& content) { layout = content; }
 };
 
 TEST_F(SettingsTest, SetAndGetSettings) {
@@ -65,7 +54,7 @@ TEST_F(SettingsTest, GetNonExistentSettingThrows) {
 }
 
 TEST_F(SettingsTest, ParseValidSettings) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("seed = 1\n"
 				   R"(
 simulation_speed = 1.5
 scale = 2.0
@@ -85,7 +74,7 @@ pos = [1, 1]
 angle = 90
         )");
 
-	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
 
 	EXPECT_DOUBLE_EQ(1.5, settings::get_setting<double>("simulation_speed"));
 	EXPECT_DOUBLE_EQ(2.0, settings::get_setting<double>("scale"));
@@ -117,16 +106,8 @@ angle = 90
 			  std::vector<module::ModuleId>({module::ModuleId{1}, module::ModuleId{2}}));
 }
 
-TEST_F(SettingsTest, ApplicationOverrideIsAppliedBeforeSettingsValidation) {
-	write_settings("application_path = \"/path/that/does/not/exist\"\nseed = 1\n" +
-				   std::string("simulation_speed = 1.0\nscale = 1.0\n"));
-
-	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path, temp_application_path));
-	EXPECT_EQ(settings::get_setting<std::string>("application_path"), temp_application_path.string());
-}
-
 TEST_F(SettingsTest, ParseSettingsAcceptsFiniteHardwarePositionSettings) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("seed = 1\n"
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -138,20 +119,20 @@ rfid_position_mean = 2.0
 rfid_position_sd = 0.25
 )");
 
-	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
 	EXPECT_DOUBLE_EQ(-0.25, settings::get_setting<double>("left_laser_position_mean"));
 	EXPECT_DOUBLE_EQ(0.125, settings::get_setting<double>("right_laser_position_sd"));
 	EXPECT_DOUBLE_EQ(2.0, settings::get_setting<double>("rfid_position_mean"));
 }
 
 TEST_F(SettingsTest, ParseSettingsUsesCanonicalHardwarePositionDefaults) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("seed = 1\n"
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
 )");
 
-	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
 	const world::CalibrationConfig defaults;
 	EXPECT_DOUBLE_EQ(defaults.left_laser_position_mean, settings::get_setting<double>("left_laser_position_mean"));
 	EXPECT_DOUBLE_EQ(defaults.left_laser_position_sd, settings::get_setting<double>("left_laser_position_sd"));
@@ -162,14 +143,14 @@ scale = 1.0
 }
 
 TEST_F(SettingsTest, ParseSettingsUsesHardwareEventDelayDefaults) {
-	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
 	EXPECT_EQ(settings::get_setting<int>("laser_event_extra_delay_ms"), 3);
 	EXPECT_DOUBLE_EQ(settings::get_setting<double>("rfid_event_extra_delay_mean_ms"), 35.0);
 	EXPECT_DOUBLE_EQ(settings::get_setting<double>("rfid_event_extra_delay_sd_ms"), 5.0);
 }
 
 TEST_F(SettingsTest, ParseSettingsAcceptsHardwareEventDelayOverrides) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("seed = 1\n"
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -178,25 +159,25 @@ rfid_event_extra_delay_mean_ms = 42.5
 rfid_event_extra_delay_sd_ms = 1.25
 )");
 
-	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
 	EXPECT_EQ(settings::get_setting<int>("laser_event_extra_delay_ms"), 8);
 	EXPECT_DOUBLE_EQ(settings::get_setting<double>("rfid_event_extra_delay_mean_ms"), 42.5);
 	EXPECT_DOUBLE_EQ(settings::get_setting<double>("rfid_event_extra_delay_sd_ms"), 1.25);
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNegativeHardwareEventDelay) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("seed = 1\n"
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
 rfid_event_extra_delay_sd_ms = -1.0
 )");
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNegativeHardwarePositionStandardDeviation) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("seed = 1\n"
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -208,11 +189,11 @@ rfid_position_mean = 0.5
 rfid_position_sd = 0.1
 )");
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsNonfiniteHardwarePositionSetting) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("seed = 1\n"
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -224,11 +205,11 @@ rfid_position_mean = 0.5
 rfid_position_sd = 0.1
 )");
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsRejectsHardwarePositionsThatOverflowWorldArithmetic) {
-	write_settings("application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	write_settings("seed = 1\n"
 				   R"(
 simulation_speed = 1.0
 scale = 1.0
@@ -240,7 +221,7 @@ rfid_position_mean = 0.6
 rfid_position_sd = 0.1
 )");
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsResetsPreviousModuleState) {
@@ -252,19 +233,19 @@ pos = [1, 1]
 angle = 0
         )");
 
-	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
 	EXPECT_EQ(1, settings::get_modules_active());
 
 	write_layout("");
 
-	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
 	EXPECT_EQ(0, settings::get_modules_active());
 }
 
 TEST_F(SettingsTest, ParseSettingsMissingFile) {
 	TearDown();
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsMissingRouterPath) {
@@ -273,17 +254,17 @@ scale = 1.0
 )";
 
 	write_settings(invalid_toml);
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidScale) {
-	std::string invalid_toml = "application_path = \"" + temp_application_path.string() + "\"\nseed = 1\n" +
+	std::string invalid_toml = "seed = 1\n"
 							   R"(simulation_speed = 1.0
 scale = 10.0
 )";
 
 	write_settings(invalid_toml);
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidModuleAngle) {
@@ -295,7 +276,7 @@ pos = [0, 0]
 angle = 400
 )");
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::out_of_range);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::out_of_range);
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidModuleAngle2) {
@@ -307,7 +288,7 @@ pos = [0, 0]
 angle = 9223372036854775810
 )");
 
-	EXPECT_ANY_THROW(settings::parse_settings(temp_settings_path, temp_layout_path));
+	EXPECT_ANY_THROW(settings::parse_settings(temp_settings_path, layout));
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidModuleBottom) {
@@ -319,7 +300,7 @@ pos = [0, 0]
 angle = 0
 )");
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::out_of_range);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::out_of_range);
 }
 
 TEST_F(SettingsTest, ParseSettingsOneWayConnectionThrows) {
@@ -337,7 +318,7 @@ pos = [1, 4]
 angle = 0
 )");
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
 TEST_F(SettingsTest, ParseSettingsDuplicatePortConnectionThrows) {
@@ -361,5 +342,5 @@ pos = [2, 4]
 angle = 0
 )");
 
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, temp_layout_path), std::invalid_argument);
+	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }

@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Assemble a world from a simulator object and one firmware object per active module."""
+
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import tomllib
+
+
+def images(layout: Path, contents: bytes) -> list[Path]:
+    data = tomllib.loads(contents.decode("utf-8"))
+    modules = data.get("module", {})
+    if not isinstance(modules, dict):
+        raise ValueError("module must be a table")
+    module_ids = {str(i) for i in range(1, 25)} | {"255"}
+    result = []
+    for key, module in sorted(modules.items(), key=lambda entry: int(entry[0])):
+        if key not in module_ids:
+            raise ValueError(f"invalid module ID {key!r}")
+        if not isinstance(module, dict) or not isinstance(module.get("active"), bool):
+            raise ValueError(f"module {key} must set active to true or false")
+        if module["active"]:
+            name = module.get("firmware", data.get("firmware"))
+            if not isinstance(name, str) or not name:
+                raise ValueError(f"module {key} requires a firmware object")
+            image = (layout.parent / name).resolve()
+            if image.suffix != ".o" or not image.is_file():
+                raise ValueError(f"module {key}: firmware object not found: {image}")
+            result.append(image)
+    if not result:
+        raise ValueError("layout has no active modules")
+    return result
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="qsim")
+    command = parser.add_subparsers(dest="command", required=True)
+    build = command.add_parser("build")
+    build.add_argument("layout", type=Path)
+    build.add_argument("-o", "--output", type=Path, default=Path("world.exe"))
+    args = parser.parse_args()
+    try:
+        layout = args.layout.resolve()
+        contents = layout.read_bytes()
+        firmware = images(layout, contents)
+        output = args.output.resolve()
+        debug = output.with_name(output.name + ".dbg")
+        tools = Path(os.getenv("COSMOCC_TOOLCHAIN_PATH", "@COSMOCC_TOOLCHAIN_PATH@")) / "bin"
+        arch = "@CMAKE_SYSTEM_PROCESSOR@"
+        simulator = Path(__file__).resolve().with_name("qsim.o")
+        if os.name == "nt":
+            shell = tools / "bash.exe"
+            objcopy = tools / f"{arch}-linux-cosmo-objcopy.exe"
+        else:
+            shell = "sh"
+            objcopy = tools / f"{arch}-linux-cosmo-objcopy"
+        compiler = tools / f"{arch}-unknown-cosmo-c++"
+        if output in [layout, simulator, *firmware] or debug in [layout, simulator, *firmware]:
+            raise ValueError("output would overwrite an input")
+
+        with tempfile.TemporaryDirectory(dir=output.parent) as directory:
+            scratch = Path(directory)
+            (scratch / "layout.toml").write_bytes(contents)
+            subprocess.run([
+                *([shell] if os.name != "nt" else []), objcopy, "-I", "binary",
+                "-O", {"aarch64": "elf64-littleaarch64", "x86_64": "elf64-x86-64"}[arch],
+                "-B", {"aarch64": "aarch64", "x86_64": "i386:x86-64"}[arch],
+                "--rename-section", ".data=.rodata,alloc,load,readonly,data,contents",
+                "layout.toml", "layout.o",
+            ], cwd=scratch, check=True)
+            world = scratch / "world.exe"
+            subprocess.run([
+                shell, compiler, "-o", world, simulator,
+                scratch / "layout.o", *firmware, "-pthread",
+            ], check=True)
+            symbols = scratch / "world.exe.dbg"
+            if "@CMAKE_HOST_SYSTEM_NAME@" == "Darwin" and arch == "aarch64":
+                subprocess.run([
+                    "sh", tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M",
+                    tools / "ape-m1.c", "-o", world, symbols,
+                ], check=True)
+            os.replace(symbols, debug)
+            os.replace(world, output)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        parser.exit(1, f"qsim: {error}\n")
+
+
+if __name__ == "__main__":
+    main()

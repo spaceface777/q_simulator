@@ -16,7 +16,6 @@ namespace settings {
 
 	static ModuleSettings module_settings[MODULE_TABLE_SIZE];
 	static toml::table    settings_table;
-	static toml::table    layout_table;
 
 	static void reset_state() {
 		for (auto& module_setting : module_settings) {
@@ -24,7 +23,6 @@ namespace settings {
 		}
 
 		settings_table = toml::table{};
-		layout_table   = toml::table{};
 	}
 
 	template <typename T, typename Predicate>
@@ -123,14 +121,6 @@ namespace settings {
 			if (opt_type.has_value()) {
 				util::require(!opt_type.value().empty(), "Empty 'type' attribute in module " + std::to_string(id));
 				module_settings[id].type = opt_type.value();
-			}
-		}
-		{
-			auto opt_binary = table["binary"].value<std::string>();
-			if (opt_binary.has_value()) {
-				util::require(fs::exists(opt_binary.value()),
-							  "No application found at 'binary' of module " + std::to_string(id));
-				module_settings[id].binary = opt_binary.value();
 			}
 		}
 		{
@@ -240,35 +230,17 @@ namespace settings {
 		parse_optional_setting("rfid_position_sd", calibration_defaults.rfid_position_sd, valid_position_sd);
 	}
 
-	void parse_settings(fs::path settings, fs::path layout, std::optional<fs::path> application_path_override) {
+	void parse_settings(fs::path settings, std::string_view layout) {
 		util::require(fs::exists(settings), "No settings file found at " + settings.string());
-		util::require(fs::exists(layout), "No layout file found at " + layout.string());
-
 		reset_state();
-
-		try {
-			settings_table = toml::parse_file(settings.string());
-			layout_table   = toml::parse_file(layout.string());
-		} catch (const toml::parse_error& err) {
-			throw err;
-		}
-
-		// Apply a CLI or scenario binary before validation. An explicit override must be sufficient
-		// even when the application_path stored in settings.toml belongs to another machine.
-		if (application_path_override) {
-			settings_table.insert_or_assign("application_path", application_path_override->string());
-		}
-
-		parse_setting("application_path", "", [](std::string value) {
-			util::require(std::filesystem::exists(value), "No application found at application_path in settings.toml");
-			return true;
-		});
+		settings_table          = toml::parse_file(settings.string());
+		const auto layout_table = toml::parse(layout);
 		parse_setting("simulation_speed", -1.0, [](double value) { return value >= 0; });
 		parse_setting("seed", -1, [](int value) { return value >= 0; });
 		parse_setting("scale", -1.0, [](double value) { return value >= 0.25 && value <= 5; });
 		parse_optional_settings();
 
-		toml::node* module_node = layout_table.get("module");
+		const toml::node* module_node = layout_table.get("module");
 		if (module_node != nullptr && module_node->is_table()) {
 			const toml::table module_table = *module_node->as_table();
 
@@ -320,14 +292,6 @@ namespace settings {
 		return configured;
 	}
 
-	std::string get_module_binary(module::ModuleId id) {
-		const std::string& override_path = module_settings[id.raw()].binary;
-		if (!override_path.empty()) {
-			return override_path;
-		}
-		return get_setting<std::string>("application_path");
-	}
-
 	ModuleSettings get_module_settings(module::ModuleId id) {
 		return module_settings[id.raw()];
 	}
@@ -340,7 +304,6 @@ namespace settings {
 
 	void install_test_defaults() {
 		settings_table = toml::table{};
-		set_setting<std::string>("application_path", "");
 		set_setting("simulation_speed", 1.0);
 		set_setting("seed", 1);
 		set_setting("scale", 1.0);

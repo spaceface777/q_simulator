@@ -62,7 +62,7 @@ if(ENABLE_COVERAGE)
     add_link_options(--coverage)
 endif()
 
-option(TESTING_CONSOLE_BUILD "Enable console-only testing build" OFF)
+
 
 # === Quercus SDK ===
 
@@ -81,13 +81,12 @@ endif()
 # === Builds ===
 
 add_library(core STATIC
-    src/childproc/launcher.cpp
+    src/firmware/inprocess_backend.cpp
+    src/sim/module_clock.cpp
     src/sim/runtime.cpp
     src/sim/pacing.cpp
     src/platform/platform.cpp
     src/platform/rpc_worker_pool.cpp
-    src/childsync/mailbox.cpp
-    src/childsync/barrier.cpp
     src/rpc/frame.cpp
     src/seed/seed.cpp
     src/engine/task_queue.cpp
@@ -114,17 +113,28 @@ target_include_directories(core PUBLIC "${QUERCUS_SDK_ROOT}/include")
 
 target_compile_options(core PRIVATE ${COMPILATION_FLAGS})
 
-# The headless scenario runner. Deliberately built here rather than under src/, because that
-# directory pulls in SDL3 and this target must not: a scenario run has nothing to draw, and
-# needing a window system to check an application's behaviour would put the whole mode out of
-# reach of CI and of anyone on a machine without X11.
-add_executable(simulation-scenario src/scenario/main.cpp)
+if(QUERCUS_COSMOPOLITAN)
+    add_library(world_entry OBJECT src/scenario/main.cpp src/firmware/linked_world.cpp)
+    target_link_libraries(world_entry PRIVATE core)
+    target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS})
+    target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}")
 
-target_link_libraries(simulation-scenario PRIVATE core)
-
-target_compile_options(simulation-scenario PRIVATE ${COMPILATION_FLAGS})
-
-target_compile_definitions(simulation-scenario PRIVATE APP_VERSION="${PROJECT_VERSION}")
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+        set(cosmocc_abi -ffixed-x18 -ffixed-x28 -fsigned-char)
+    else()
+        set(cosmocc_abi -mno-red-zone -mno-tls-direct-seg-refs)
+    endif()
+    # GCC 16 can fail during partitioning for this relocatable LTO link.
+    add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/qsim.o"
+        COMMAND "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-g++"
+            -nostdlib -r -O3 -flto=auto -flto-partition=one -flinker-output=nolto-rel ${cosmocc_abi}
+            -o "${CMAKE_BINARY_DIR}/qsim.o" $<TARGET_OBJECTS:world_entry>
+            -Wl,--whole-archive $<TARGET_FILE:core> -Wl,--no-whole-archive
+        DEPENDS world_entry $<TARGET_OBJECTS:world_entry> core
+        COMMAND_EXPAND_LISTS VERBATIM)
+    add_custom_target(qsim-world ALL DEPENDS "${CMAKE_BINARY_DIR}/qsim.o")
+    configure_file(src/firmware/qsim.py qsim @ONLY)
+endif()
 
 # === Formatting ===
 file(GLOB_RECURSE FORMAT_FILES
@@ -146,10 +156,6 @@ add_custom_target(format-check
     VERBATIM)
 
 # === Subdirectories ===
-
-if(NOT TESTING_CONSOLE_BUILD)
-    add_subdirectory(src)
-endif()
 
 include(CTest)
 enable_testing()

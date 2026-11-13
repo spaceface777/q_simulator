@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -10,8 +12,8 @@
 
 #include "../../src/module/module.h"
 #include "../../src/settings.h"
-#include "../../src/sim/runtime.h"
 #include "../../src/world/world.h"
+#include "scripted_image.h"
 
 namespace fs = std::filesystem;
 
@@ -25,11 +27,12 @@ namespace {
 
 		void SetUp() override {
 			settings::install_test_defaults();
+			world::set_calibration_config({});
+			world::set_calibration_override(world::Calibration::nominal());
 			for (uint8_t id = 1; id < MAX_MODULES; id++) {
 				settings::set_module_settings(module::ModuleId{id}, settings::ModuleSettings{});
 			}
 
-			settings::set_setting<std::string>("application_path", FAKE_CHILD_PATH);
 			settings::set_setting("simulation_speed", 1.0);
 			settings::set_setting("seed", 1);
 			settings::set_setting("network_fixed_delay_ms", 5);
@@ -53,22 +56,23 @@ namespace {
 			second.right  = module::ModuleId{FIRST};
 			settings::set_module_settings(module::ModuleId{SECOND}, second);
 
-			::setenv("FAKE_CHILD_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str(), 1);
-			::unsetenv("FAKE_CHILD_EXIT_AFTER");
-			::unsetenv("FAKE_CHILD_RECORD");
+			::setenv("TEST_APP_SUBSCRIBE", std::to_string(EVENT_RFID_DETECT).c_str(), 1);
+			::unsetenv("TEST_APP_EXIT_AFTER");
+			::unsetenv("TEST_APP_RECORD");
 		}
 
 		void TearDown() override {
+			world::clear_calibration_seed();
 			for (uint8_t id = 1; id < MAX_MODULES; id++) {
 				settings::set_module_settings(module::ModuleId{id}, settings::ModuleSettings{});
 			}
-			::unsetenv("FAKE_CHILD_SUBSCRIBE");
+			::unsetenv("TEST_APP_SUBSCRIBE");
 		}
 
 		// Runs one scenario end to end and returns the trace it produced.
 		std::optional<world::Tub> final_tub_;
 
-		std::string run(uint64_t seed, double speed, int ticks, uint32_t tick_batch = 1) {
+		std::string run(uint64_t seed, double speed, int ticks, uint32_t tick_batch = 16) {
 			const fs::path trace_path = fs::temp_directory_path() /
 										("quercus_trace_" + std::to_string(::getpid()) + "_" + std::to_string(seed) +
 										 "_" + std::to_string(speed) + "_" + std::to_string(tick_batch) + ".ndjson");
@@ -88,7 +92,7 @@ namespace {
 				later.module = module::ModuleId{SECOND};
 				schedule.tubs.push_back(later);
 
-				sim::Runtime runtime(seed, sim::CONNECT_TIMEOUT, sim::ACTIVATION_TIMEOUT, tick_batch);
+				test_app::Runtime runtime(seed);
 				runtime.load(schedule);
 				runtime.trace_to(trace_path.string(), {});
 				runtime.start();
@@ -103,7 +107,12 @@ namespace {
 
 				// Runs to a tick count, since speed changes how much time a frame buys.
 				while (runtime.tick() < static_cast<uint64_t>(ticks)) {
-					runtime.advance(std::chrono::microseconds(16000), speed, std::chrono::seconds(5));
+					const uint64_t remaining  = static_cast<uint64_t>(ticks) - runtime.tick();
+					const int64_t  target_us  = std::min<uint64_t>(tick_batch, remaining) * sim::TICK_DURATION.count();
+					int64_t        elapsed_us = static_cast<int64_t>(std::llround(target_us / speed));
+					while (static_cast<int64_t>(elapsed_us * speed) < target_us) ++elapsed_us;
+					while (elapsed_us && static_cast<int64_t>((elapsed_us - 1) * speed) >= target_us) --elapsed_us;
+					runtime.advance(std::chrono::microseconds(elapsed_us), speed, std::chrono::seconds(5));
 				}
 				// Captured before the runtime goes away: the world belongs to the run, not the process.
 				if (const world::Tub* final_tub = runtime.world().tub(1)) {
@@ -122,12 +131,6 @@ namespace {
 		}
 	};
 
-	// Drops the closing entry, since two runs paced differently stop on different ticks.
-	std::string without_completion(const std::string& trace) {
-		const std::size_t last = trace.find_last_of('\n', trace.size() - 2);
-		return last == std::string::npos ? std::string{} : trace.substr(0, last + 1);
-	}
-
 } // namespace
 
 TEST_F(DeterminismTest, TheSameSeedProducesAByteIdenticalTrace) {
@@ -138,22 +141,21 @@ TEST_F(DeterminismTest, TheSameSeedProducesAByteIdenticalTrace) {
 	EXPECT_EQ(first, second);
 }
 
-TEST_F(DeterminismTest, AnExplicitStrictBatchProducesTheDefaultTrace) {
+TEST_F(DeterminismTest, AdvanceGranularityDoesNotChangeTheCompleteTrace) {
 	EXPECT_EQ(run(42, 1.0, 400), run(42, 1.0, 400, 1));
 }
 
-TEST_F(DeterminismTest, BatchedRunsProduceAByteIdenticalTrace) {
+TEST_F(DeterminismTest, LargerAdvanceCallsProduceAByteIdenticalTrace) {
 	EXPECT_EQ(run(42, 1.0, 400, 3), run(42, 1.0, 400, 3));
 }
 
 TEST_F(DeterminismTest, SpeedChangesPacingAndNotTheRun) {
-	// A faster run overshoots and carries on further, so the slower run's trace must be its prefix.
-	const std::string paced = without_completion(run(42, 1.0, 400));
-	const std::string fast  = without_completion(run(42, 10.0, 400));
+	// Equal endpoints must have equal complete traces, including the completion record.
+	const std::string paced = run(42, 1.0, 400);
+	const std::string fast  = run(42, 10.0, 400);
 
 	ASSERT_FALSE(paced.empty());
-	ASSERT_GE(fast.size(), paced.size());
-	EXPECT_EQ(fast.compare(0, paced.size(), paced), 0);
+	EXPECT_EQ(fast, paced);
 }
 
 TEST_F(DeterminismTest, ADifferentSeedProducesADifferentRun) {
