@@ -8,104 +8,42 @@
 1. [Events](#4-events)
 1. [World](#5-world)
 1. [Applications](#6-applications)
-1. [Shared memory transport](#7-shared-memory-transport)
+1. [Firmware transport](#7-firmware-transport)
 1. [Visualization](#8-visualization)
 1. [Questions or feedback](#9-questions-or-feedback)
 
 ## 1. Project overview
 
-The simulator runs the real Quercus applications against a deterministic model of the airport-baggage modules. Each application is a Zephyr `native_sim` child process. The simulator supplies the platform RPC service that the application uses on the hardware.
+The simulator runs Quercus applications against a deterministic model of the airport-baggage modules.
+A world executable contains the layout and one private Zephyr `native_sim` image for each active module.
+The simulator supplies the platform RPC service that the application uses on hardware.
 
-The GUI shows all modules, tubs, sensors, and actuators. Input files define the module layout, application files, physical settings, network settings, master seed, and timed tub events. A headless runner checks finite scenarios against LTLf properties and returns a process status for CI.
+The layout defines the modules, their connections, and their firmware.
+The scenario defines the duration, timed events, and LTLf properties.
+An optional settings file overrides the runtime defaults.
 
 Simulated time advances in discrete 1 ms ticks. One master seed controls application seeds, physical calibration, start offsets, clock drift, skipped local ticks, network delay, network loss, and generated RFID data. The same inputs and seed produce the same trace.
 
 ## 2. Software architecture overview
 
-The process and component placement is:
+A world executable runs one scenario in one process.
+The runtime selects modules for each global tick and calls their firmware images with absolute time grants.
+Each image advances its own clock and returns its RPC frames to the runtime.
 
-```text
-Simulation run
-|-- Simulation process
-|   |-- Front end (one per run)
-|   |   |-- Interactive main, or
-|   |   `-- Headless scenario runner
-|   |-- Lockstep runtime
-|   |   |-- Deterministic task queue
-|   |   |-- World state
-|   |   |-- Platform manager
-|   |   |   |-- Per-module platform state
-|   |   |   |-- Simulated module network
-|   |   |   `-- Simulated diagnostic network
-|   |   |-- Shared control mapping
-|   |   |-- Child state (one per active module)
-|   |   |   |-- Child process handle
-|   |   |   `-- Shared mailbox mapping
-|   |   |-- Property observer
-|   |   |-- LTLf monitors (one per property)
-|   |   `-- Trace writer
-|   `-- Visualization (interactive runs only)
-`-- native_sim child process (one per active module)
-    |-- Quercus application
-    `-- SDK lockstep adapter
-        |-- View of the shared control mapping
-        `-- View of that child's shared mailbox mapping
-```
-
-The directed relationships are:
-
-```text
-Interactive main -- [constructs and drives] -> Lockstep runtime
-Interactive main -- [updates] -> Visualization
-Headless scenario runner -- [constructs and drives] -> Lockstep runtime
-
-Settings and layout -- [configure] -> Lockstep runtime
-Event schedule -- [loads timed world changes into] -> Lockstep runtime
-LTLf property file -- [loads property declarations into] -> Lockstep runtime
-
-Lockstep runtime -- [schedules ordered tick phases on] -> Deterministic task queue
-Lockstep runtime -- [owns and advances] -> World state
-Lockstep runtime -- [owns and calls] -> Platform manager
-Lockstep runtime -- [launches and supervises] -> native_sim child process
-Lockstep runtime -- [grants ticks through] -> Shared control mapping
-Lockstep runtime -- [writes responses and events to] -> Shared mailbox mapping
-Shared mailbox mapping -- [provides application requests to] -> Lockstep runtime
-
-Platform manager -- [reads and updates hardware state in] -> World state
-Platform manager -- [owns and advances] -> Simulated module network
-Platform manager -- [owns and advances] -> Simulated diagnostic network
-Lockstep runtime -- [dispatches decoded RPC requests to] -> Platform manager
-Platform manager -- [provides RPC responses and events to] -> Lockstep runtime
-
-Lockstep runtime -- [submits world and RPC facts to] -> Property observer
-Property observer -- [builds tick observations for] -> LTLf monitors
-Lockstep runtime -- [progresses and finishes] -> LTLf monitors
-Lockstep runtime -- [writes run metadata and tick records through] -> Trace writer
-
-Visualization -- [reads] -> World state
-Quercus application -- [calls platform RPC through] -> SDK lockstep adapter
-SDK lockstep adapter -- [waits for tick grants on] -> Shared control mapping
-SDK lockstep adapter -- [acknowledges completed grants on] -> Shared control mapping
-SDK lockstep adapter -- [reads responses and events from] -> Shared mailbox mapping
-SDK lockstep adapter -- [writes application requests to] -> Shared mailbox mapping
-```
-
-At each barrier, the runtime selects the active applications and grants their next local tick. Each child reads inbound frames, runs its application code, writes outbound frames, and acknowledges the barrier. The simulator waits for all live children. It then applies RPC requests, network deliveries, world motion, sensor changes, events, trace output, and property observations in a fixed order.
-
-The default barrier grants one tick. A larger batch grants up to 16 ticks at one barrier. Each batch entry has separate inbound and outbound mailboxes. The simulator can observe and answer an application action only at the batch boundary, so a batch of N makes N ms the smallest effective response step. A batch of 10 runs about seven times faster than a batch of 1. The exact gain depends on the CPU, layout, scenario, and application.
+The runtime prepares all grants before it processes any output.
+The task queue then orders RPC requests, network deliveries, world motion, sensor changes, and property observations.
+The trace records the run metadata and observations.
 
 ## 3. File structure
 
 ```
 simulation/
 ├── src/
-│   ├── main.cpp                  # Interactive entry point and render loop
 │   ├── defs.h                    # Shared constants
 │   ├── settings.cpp/.h           # Settings and layout parsing
 │   ├── util.cpp/.h               # Common parsing and validation helpers
 │   │
-│   ├── childproc/                # native_sim process launch and cleanup
-│   ├── childsync/                # Shared mappings, futex barrier, and mailboxes
+│   ├── firmware/                 # World assembly and firmware grants
 │   ├── engine/                   # Deterministic tick task queue
 │   ├── event/                    # Timed world-event and scenario input
 │   ├── ltl/                      # LTLf lexer, parser, checker, monitor, and observer
@@ -127,18 +65,21 @@ simulation/
 ├── layouts/                      # Example layouts
 ├── scenarios/                    # Scenario TOML files and LTLf property files
 ├── CMakeLists.txt                # Application and test build
-├── events_example.toml           # Example timed world events
 ├── layout_example.toml           # Example module graph and geometry
 └── settings_example.toml         # Example run and physical settings
 ```
 
 ## 4. Events
 
-The simulator reads timed input from `events.toml` or from a scenario TOML file. A tub event gives the tick, tub id, module id, optional position, optional removal time, seven-byte RFID UID, and up to 32 four-byte payload pages. Missing payload pages contain deterministic data from the master seed.
+The scenario file contains the timed events.
+A tub event gives the time, tub ID, module ID, optional position, optional removal time, and seven-byte RFID UID.
+A tub event can also supply up to 32 four-byte payload pages.
+The simulator generates missing payload pages from the master seed.
 
-An event changes the physical world. It does not send a message to an application. The application observes a tub through the laser and RFID RPC services when the tub reaches those instruments.
-
-A finite scenario also has a `[scenario]` table. Its optional `layout` and `binary` values make the scenario directly runnable by either simulator executable; paths are relative to the scenario file. Its `duration` sets the inclusive end of the trace. Its `properties` value names the LTLf file. The runtime applies tick-zero events before it starts the child processes, and it applies later events in tick order.
+The `[scenario]` table gives the duration and can name an LTLf property file.
+A relative property path starts at the scenario file directory.
+Without properties, the run ends after the inclusive duration tick.
+The runtime places tick-zero tubs before the first firmware grant and applies later events in tick order.
 
 ## 5. World
 
@@ -150,47 +91,30 @@ A tub moves on the big or small belt. The servo selects its path at the junction
 
 ## 6. Applications
 
-The runtime starts one `native_sim` child process for each active layout module. `application_path` supplies the common file. A module can use its own `binary` value. Module 255 is the optional tower and has no conveyor geometry.
-
-The child receives its module id and inherited shared-memory descriptors in `QSIM_MODULE_ID`, `QSIM_CTRL_FD`, and `QSIM_MBOX_FD`. It validates the shared-memory ABI, maps its private mailbox segment, marks itself ready, and waits for the next barrier generation. The first heartbeat changes its lifecycle from activating to running. Missing the activation or heartbeat deadline changes only that module to stopped, resets its application-facing platform state, reaps its child process, and removes it from later barriers. Other children and global world time continue. The visualization marks the stopped module with a red overlay.
+World assembly links one private image for each active layout module.
+The runtime binds images in ascending module ID order.
+The first heartbeat changes a module from activating to running.
+A stopped module receives no further grants.
+Module 255 is the optional tower and has no conveyor geometry.
 
 Each physical module has an independent start offset, fixed clock rate, and local tick-skip probability. The global world and network clock still advances on every simulator tick. A skipped local tick does not advance that application's uptime, code, RPC service delays, or rate-limit windows. A ready response or event waits for the module's next executed tick.
 
-## 7. Shared memory transport
+## 7. Firmware transport
 
-The simulator and SDK use the same `quercus/lockstep_shm.h` layout. The control mapping contains the barrier and per-module wake state. Each child has a separate segment with inbound and outbound mailboxes for each batch tick.
+The image ABI exchanges RPC frames through bounded buffers.
+Each buffer holds four frames and up to 4088 data bytes.
+A frame can use at most 1024 bytes.
+The simulator validates the frame offsets before it reads the output.
 
-A mailbox is one 4096-byte page. It has four frame slots and 4088 data bytes. A frame can use at most 1024 bytes. The simulator validates every slot offset before it reads child data. It returns busy or no-memory status when a frame cannot fit.
-
-The reference barrier uses acquire and release operations with Linux futex waits. The parent writes mailboxes while the children are blocked. The children write outbound mailboxes while the parent is blocked. The final participating child writes the release word and wakes the parent.
-
-Selective synchronization gives each child an authoritative wake sequence. A child does not use the global generation as its wait predicate. The futex banks route notifications to 32 compact scheduler indices. Thus, module IDs do not have a 32-module limit. A child reads its wake sequence before and after it reads the bank sequence. This order prevents a missed wake.
-
-A selective grant contains a quiet prefix and one normal batch suffix. The quiet prefix catches up a child after earlier epochs. The suffix retains the reference mailbox slots and logical timestamps. The parent includes only selected children in the expected completion count.
-
-Exact runahead uses a separate grant mode and keeps the legacy batch mode unchanged. Each child publishes its next possible Zephyr execution time.
-
-The transport removes its priority-999 event before it queries the native_sim scheduler. Known silent system-timer events do not limit the certificate.
-
-The parent maps each certificate through the exact grant, skip, clock-drift, and `delta_us` sequence. An event boundary is not part of the quiet interval.
-
-The parent copies the world, platform, network, and deterministic random state for lookahead. This copy does not write traces or application output.
-
-The first parent-to-child handoff limits the quiet interval. A queued engine task also limits lookahead before its due tick.
-
-The parent sends one compact grant for the proven prefix. Then it commits each logical tick through the normal task queue and observation path.
-
-If a proof is missing or stale, the parent sends one strict tick. `sim_ipc_send()` stops the child if an RPC occurs inside runahead.
+The runtime skips an idle grant when the image has no input and its next wake is beyond the grant.
+The image catches up to the start of the next grant before it receives input.
 
 `docs/PROTOCOL.md` defines the RPC frame. Requests cross the next application handoff and enter one of three deterministic Core0 handler lanes owned by that module. Lane assignment follows seeded intake order. A confirmable request keeps its lane through response handoff even when it is waiting for that module's per-category mutex. Different categories on one module and matching categories on separate modules can therefore run concurrently, while one module's category remains serialized. Responses and events return on an executed local tick. Laser events have a configurable additional delay. RFID events use a configurable seeded delay distribution. Module packets, logs, and panic reports use the configured deterministic network delay and loss model.
 
 ## 8. Visualization
 
-The SDL3 visualization reads the runtime world after each engine advance. It draws the configured module positions and angles, current actuator values, sensor state, tubs, trace status, simulation time, and effective speed in a 2D top-down view.
-
-The interactive loop targets 60 frames per second. It reserves 2 ms of each frame for input and drawing and gives the remaining time to child progress. The simulation clock shown in the GUI is the engine tick that the applications experienced.
-
-The controls can pause the run, change the requested simulation speed, and change the view scale. The default scale comes from `settings.toml`. Closing the window stops the runtime and all child processes.
+The world currently runs headlessly.
+The visualization sources remain available for the P8 SDL3 integration.
 
 ## 9. Questions or feedback
 

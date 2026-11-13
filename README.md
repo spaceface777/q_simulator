@@ -19,7 +19,6 @@ simulation/
 ├── .gitlab-ci.yml           # GitLab CI job
 ├── .gitmodules              # Submodule locations
 ├── CMakeLists.txt           # Main build file
-├── events_example.toml      # Example event schedule
 ├── layout_example.toml      # Example module layout
 └── settings_example.toml    # Example run settings
 ```
@@ -59,19 +58,33 @@ It writes the executable and a separate `world.exe.dbg` file.
 
 ## Run a scenario
 
-Pass the scenario and settings to the world executable.
+Pass the scenario to the world executable.
 
 ```sh
-./world.exe scenarios/hardware_test_blocked_beam.toml --settings settings_example.toml
+./world.exe scenarios/hardware_test_blocked_beam.toml
 ```
 
 On macOS, use `sh ./world.exe` if the system does not start APE files directly.
 A world can run compatible scenarios in separate invocations.
+Use `--settings settings_example.toml` to supply runtime settings.
+The world uses built-in defaults for each setting that the file omits.
+If you omit `--settings`, the world uses built-in defaults for the entire run.
 If the layout or firmware changes, build the world again.
-The current build runs headlessly.
+The current build runs headlessly. The `--gui` option reports that GUI support is unavailable until P8.
 
 The scenario runner returns 0 when all properties hold and 1 when a property fails or remains undecided.
 It also returns 1 when the simulation cannot finish and 2 when its input is invalid.
+
+Each scenario supplies `[scenario].duration`.
+If the run needs assertions, set `properties` to an LTLf file relative to the scenario.
+Put timed events in the scenario file. See [the tub arrivals example](scenarios/tub_arrivals.toml).
+
+| Layout under `layouts/` | Compatible scenarios under `scenarios/` |
+| --- | --- |
+| `hardware_test.toml` | `hardware_test.toml`, `hardware_test_blocked_beam.toml`, `hardware_test_tag_at_startup.toml` |
+| `laser_alignment.toml` | `laser_alignment.toml` |
+| `one_module.toml` | `module_movement.toml`, `module_movement_idle.toml` |
+| `default.toml` | `per_module_variation.toml`, `tub_arrivals.toml` |
 
 ## Tests
 
@@ -88,7 +101,7 @@ After the firmware build, run the linked-world tests.
 python3 test/sim/test_worlds.py build/qsim
 ```
 
-The tests build one world per layout and compare traces from two runs of each scenario.
+The tests build one world per layout and compare traces across repeated runs with default and explicit settings.
 The two RFID diagnostics retain one undecided property each with the historical applet revision.
 The tests require those exact verdicts.
 
