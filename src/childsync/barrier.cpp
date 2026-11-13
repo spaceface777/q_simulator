@@ -3,14 +3,52 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#ifdef __COSMOPOLITAN__
+#include <climits>
+#include <cosmo.h>
+#include <cstdlib>
+#include <libc/dce.h>
+extern "C" int sys_futex(uint32_t*, int, int, const struct timespec*, uint32_t*, int);
+#else
 #include <linux/futex.h>
+#endif
 #include <stdexcept>
 #include <sys/mman.h>
+#ifndef __COSMOPOLITAN__
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 
 namespace childsync {
 
+#ifdef __COSMOPOLITAN__
+	int futex_wake(uint32_t& word, int count) noexcept {
+		return cosmo_futex_wake(reinterpret_cast<cosmo_futex_t*>(&word), count, 1);
+	}
+
+	int futex_wake_bitset(uint32_t& word, int count, uint32_t mask) noexcept {
+		if (IsLinux()) return sys_futex(&word, 10 /* FUTEX_WAKE_BITSET */, count, nullptr, nullptr, mask);
+		return futex_wake(word, INT_MAX);
+	}
+
+	bool futex_wait_bitset(uint32_t& word, uint32_t expected, uint32_t mask,
+						   std::chrono::microseconds timeout) noexcept {
+		struct timespec now{};
+		(void)::clock_gettime(CLOCK_MONOTONIC, &now);
+		const auto            nanos = now.tv_nsec + timeout.count() * 1000;
+		const struct timespec deadline{now.tv_sec + nanos / 1000000000, nanos % 1000000000};
+		if (IsLinux()) {
+			const int result = sys_futex(&word, 9 /* FUTEX_WAIT_BITSET */, expected, &deadline, nullptr, mask);
+			return !(result < 0 && errno == ETIMEDOUT);
+		}
+		return cosmo_futex_wait(reinterpret_cast<cosmo_futex_t*>(&word), expected, 1, CLOCK_MONOTONIC, &deadline) !=
+			   -ETIMEDOUT;
+	}
+
+	bool futex_wait(uint32_t& word, uint32_t expected, std::chrono::microseconds timeout) noexcept {
+		return futex_wait_bitset(word, expected, UINT32_MAX, timeout);
+	}
+#else
 	namespace {
 
 		long futex(uint32_t* word, int op, uint32_t value, const struct timespec* timeout,
@@ -51,6 +89,8 @@ namespace childsync {
 		return !(result < 0 && errno == ETIMEDOUT);
 	}
 
+#endif
+
 	void Mapping::reset() noexcept {
 		if (base_ != nullptr) {
 			::munmap(base_, bytes_);
@@ -64,7 +104,14 @@ namespace childsync {
 	}
 
 	Mapping::Mapping(const char* name, std::size_t bytes) : bytes_(bytes) {
+#ifdef __COSMOPOLITAN__
+		(void)name;
+		char path[] = "/tmp/qsim-shm-XXXXXX";
+		fd_         = ::mkstemp(path);
+		if (fd_ >= 0) ::unlink(path);
+#else
 		fd_ = static_cast<int>(::syscall(SYS_memfd_create, name, 0u));
+#endif
 		if (fd_ < 0) {
 			throw std::runtime_error("Failed to create shared segment: " + std::string(::strerror(errno)));
 		}
@@ -83,7 +130,7 @@ namespace childsync {
 			throw std::runtime_error("Failed to map shared segment: " + reason);
 		}
 
-		// memfd pages read as zero, so every counter and offset starts cleared.
+		// The new mapping starts with zeroed counters and offsets.
 	}
 
 	Mapping::Mapping(int fd, std::size_t bytes) : fd_(fd), bytes_(bytes) {

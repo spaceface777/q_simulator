@@ -9,6 +9,16 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(COMPILATION_FLAGS -Wall -Wextra -Werror)
+if(QUERCUS_COSMOPOLITAN)
+    # GCC 16 emits false positives in Cosmopolitan's libc++ string implementation.
+    list(APPEND COMPILATION_FLAGS -Wno-error=array-bounds -Wno-error=stringop-overflow -Wno-error=restrict)
+    if(CMAKE_HOST_APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+        # The AArch64 driver emits ELF. Wrap each executable for the Apple Silicon loader.
+        set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
+        string(APPEND CMAKE_CXX_LINK_EXECUTABLE
+            " && \"${CMAKE_COMMAND}\" -E rename <TARGET> <TARGET>.dbg && sh \"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
+    endif()
+endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto=auto -g")
 
 # Opt in to the checked build while chasing a bug, rather than paying for it on every run.

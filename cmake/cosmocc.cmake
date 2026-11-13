@@ -1,0 +1,22 @@
+# Use the Cosmopolitan driver for the host CPU.
+set(COSMOCC_TOOLCHAIN_PATH "$ENV{COSMOCC_TOOLCHAIN_PATH}" CACHE PATH "Extracted cosmocc toolchain")
+if(NOT COSMOCC_TOOLCHAIN_PATH)
+    message(FATAL_ERROR "Set COSMOCC_TOOLCHAIN_PATH to the extracted cosmocc toolchain")
+endif()
+
+if(CMAKE_HOST_WIN32 OR CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    set(cosmocc_arch x86_64)
+else()
+    set(cosmocc_arch aarch64)
+endif()
+
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR ${cosmocc_arch})
+set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
+set(CMAKE_C_COMPILER "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-cc")
+set(CMAKE_CXX_COMPILER "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-c++")
+set(CMAKE_AR "${cosmocc_bin}/${cosmocc_arch}-linux-cosmo-gcc-ar" CACHE FILEPATH "Cosmopolitan archiver")
+set(CMAKE_RANLIB "${cosmocc_bin}/${cosmocc_arch}-linux-cosmo-gcc-ranlib" CACHE FILEPATH "Cosmopolitan archive indexer")
+set(CMAKE_EXECUTABLE_SUFFIX .exe)
+set(QUERCUS_COSMOPOLITAN ON)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES COSMOCC_TOOLCHAIN_PATH)
