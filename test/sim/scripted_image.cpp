@@ -53,7 +53,7 @@ namespace test_app {
 		template <unsigned Id> struct App {
 			static inline State state{};
 
-			static int bind(uint32_t) {
+			static int bind(uint32_t, uint8_t, const qsim_env_entry_t*, size_t) {
 				state                 = {};
 				state.id              = Id;
 				state.call_id         = 0x8000;

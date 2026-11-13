@@ -118,7 +118,7 @@ namespace events {
 		util::require(scenario != nullptr, "A [scenario] table is required");
 		for (const auto& [key, value] : *scenario) {
 			(void)value;
-			util::require(key == "duration" || key == "properties",
+			util::require(key == "duration" || key == "properties" || key == "environment",
 						  "Unknown scenario field: " + std::string(key.str()));
 		}
 
@@ -131,6 +131,21 @@ namespace events {
 			const auto properties = node->value<std::string>();
 			util::require(properties && !properties->empty(), "[scenario].properties must name an LTLf .spec file");
 			schedule.property_file = (file.parent_path() / *properties).lexically_normal();
+		}
+
+		if (const auto* node = scenario->get("environment")) {
+			const auto* environment = node->as_table();
+			util::require(environment != nullptr, "[scenario].environment must be a TOML table");
+			for (const auto& [key, value] : *environment) {
+				util::require(!key.str().empty() && key.str() != "QUERCUS_MODULE_ID" &&
+								  key.str().find('=') == std::string_view::npos &&
+								  key.str().find('\0') == std::string_view::npos,
+							  "Invalid firmware environment key");
+				const auto text = value.value<std::string>();
+				util::require(text && text->find('\0') == std::string::npos,
+							  "Firmware environment values must be strings without NUL bytes");
+				schedule.environment.emplace(std::string(key.str()), *text);
+			}
 		}
 
 		const toml::node* group = table.get("tub");

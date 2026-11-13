@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -32,9 +33,10 @@ namespace events {
 	};
 
 	struct Schedule {
-		std::vector<TubArrival> tubs;
-		uint64_t                duration_tick = 0;
-		std::optional<fs::path> property_file;
+		std::vector<TubArrival>            tubs;
+		uint64_t                           duration_tick = 0;
+		std::optional<fs::path>            property_file;
+		std::map<std::string, std::string> environment;
 
 		// Zero for an empty schedule.
 		[[nodiscard]] uint64_t last_tick() const noexcept;

@@ -10,13 +10,18 @@ namespace firmware {
 		}
 	} // namespace
 
-	InProcessBackend::InProcessBackend(std::span<const ImageBinding> bindings, uint64_t seed) {
-		for (const auto& [module, api, digest] : bindings) {
-			auto& instance = instances_[module.raw()];
+	InProcessBackend::InProcessBackend(std::span<const ImageBinding> bindings, uint64_t seed,
+									   const std::map<std::string, std::string>& environment) {
+		for (const auto& [name, value] : environment) environment_.push_back({name.c_str(), value.c_str()});
+		for (const auto& binding : bindings) {
+			const auto* api      = binding.api;
+			auto&       instance = instances_[binding.module.raw()];
 			if (instance.api || !api || api->abi_version != QSIM_IMAGE_ABI_VERSION || !api->bind || !api->run)
-				throw failure(module, "invalid image binding");
-			if (const int status = api->bind(static_cast<uint32_t>(seed)); status != 0)
-				throw failure(module, "bind returned " + std::to_string(status));
+				throw failure(binding.module, "invalid image binding");
+			if (const int status = api->bind(static_cast<uint32_t>(seed), binding.module.raw(), environment_.data(),
+											 environment_.size());
+				status != 0)
+				throw failure(binding.module, "bind returned " + std::to_string(status));
 			instance.api = api;
 		}
 	}

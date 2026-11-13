@@ -127,7 +127,7 @@ namespace sim {
 				if (std::ranges::find(active_modules_, binding.module) == active_modules_.end())
 					throw std::invalid_argument("Firmware configured for inactive module " +
 												std::to_string(binding.module.raw()));
-			backend_ = std::make_unique<firmware::InProcessBackend>(bindings, seed_);
+			backend_ = std::make_unique<firmware::InProcessBackend>(bindings, seed_, environment_);
 		} catch (...) {
 			stop();
 			throw;
@@ -180,6 +180,7 @@ namespace sim {
 			entry.field(input, trace::digest_file(input));
 		}
 		entry.field("modules", static_cast<uint64_t>(active_modules_.size()));
+		if (!environment_.empty()) entry.field("firmware_environment", environment_);
 		if (!layout.empty()) entry.field("layout_sha256", seed::sha256_hex(layout));
 		trace_.write(entry);
 		for (std::size_t index = 0; index < property_monitors_.size(); index++) {
@@ -267,6 +268,7 @@ namespace sim {
 		if (running_ || global_tick_ != 0) {
 			throw std::logic_error("Scenario events must be loaded before applications launch");
 		}
+		environment_ = schedule.environment;
 
 		for (const events::TubArrival& tub : schedule.tubs) {
 			const uint8_t          id       = tub.id;

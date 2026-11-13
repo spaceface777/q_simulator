@@ -20,7 +20,7 @@ int main(void) {
 	CHECK(__stop_qsim_instances - instances == 2);
 	for (unsigned i = 0; i < 2; ++i) {
 		CHECK(instances[i].abi_version == QSIM_IMAGE_ABI_VERSION);
-		CHECK(instances[i].bind(100 + i) == 0);
+		CHECK(instances[i].bind(100 + i, 1 + i, NULL, 0) == 0);
 	}
 
 	quercus_mailbox_t input[2]        = {0};

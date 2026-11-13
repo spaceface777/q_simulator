@@ -84,6 +84,7 @@ namespace sim {
 		std::vector<module::ModuleId>               active_modules_;
 		std::vector<ModuleRuntime>                  modules_;
 		std::vector<firmware::ExecutionGrant>       grants_;
+		std::map<std::string, std::string>          environment_;
 		std::unique_ptr<firmware::InProcessBackend> backend_;
 		rpc::FrameReader                            reader_;
 		// Sensor delivery and observation consume changes at different phase boundaries.

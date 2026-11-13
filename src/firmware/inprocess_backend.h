@@ -1,8 +1,11 @@
 #pragma once
 
 #include <array>
+#include <map>
 #include <optional>
 #include <span>
+#include <string>
+#include <vector>
 
 #include <quercus/sim_instance.h>
 
@@ -26,7 +29,8 @@ namespace firmware {
 
 	class InProcessBackend {
 	public:
-		InProcessBackend(std::span<const ImageBinding> bindings, uint64_t seed);
+		InProcessBackend(std::span<const ImageBinding> bindings, uint64_t seed,
+						 const std::map<std::string, std::string>& environment);
 		void execute_epoch(std::span<ExecutionGrant> grants);
 		void retire(module::ModuleId module);
 
@@ -37,6 +41,7 @@ namespace firmware {
 			uint64_t                next_wake = 0;
 		};
 
+		std::vector<qsim_env_entry_t>                   environment_;
 		std::array<Instance, QUERCUS_MODULE_TABLE_SIZE> instances_{};
 	};
 } // namespace firmware
