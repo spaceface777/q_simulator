@@ -1,0 +1,40 @@
+#pragma once
+
+#include <array>
+#include <span>
+
+#include <quercus/sim_instance.h>
+
+#include "../module/types.h"
+
+namespace firmware {
+
+	struct ImageBinding {
+		module::ModuleId        module;
+		const qsim_image_api_t* api;
+	};
+
+	struct ExecutionGrant {
+		module::ModuleId  module;
+		bool              granted  = false;
+		uint32_t          delta_us = 0;
+		quercus_mailbox_t inbound{};
+		quercus_mailbox_t outbound{};
+	};
+
+	class InProcessBackend {
+	public:
+		InProcessBackend(std::span<const ImageBinding> bindings, uint64_t seed);
+		void execute_epoch(std::span<ExecutionGrant> grants);
+		void retire(module::ModuleId module);
+
+	private:
+		struct Instance {
+			const qsim_image_api_t* api       = nullptr;
+			uint64_t                time      = 0;
+			uint64_t                next_wake = 0;
+		};
+
+		std::array<Instance, QUERCUS_MODULE_TABLE_SIZE> instances_{};
+	};
+} // namespace firmware
