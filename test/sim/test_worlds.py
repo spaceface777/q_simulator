@@ -1,11 +1,23 @@
-"""Build each scenario world once and run each scenario twice."""
+"""Reuse linked worlds and check repeatability with runtime settings overrides."""
 
 import argparse
+import hashlib
+import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import tomllib
+
+
+def launch(world: Path, *args: object, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
+    command = [world] if sys.platform == "win32" else ["sh", world]
+    return subprocess.run([*command, *map(str, args)], cwd=cwd, env=env, capture_output=True, text=True)
+
+
+def world_identity(world: Path) -> tuple[int, bytes]:
+    with world.open("rb") as stream:
+        return world.stat().st_mtime_ns, hashlib.file_digest(stream, "sha256").digest()
 
 
 def main() -> None:
@@ -21,25 +33,42 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         worlds = {}
-        for scenario in sorted((root / "scenarios").glob("*.toml")):
-            with scenario.open("rb") as stream:
-                metadata = tomllib.load(stream).get("scenario", {})
-            if "layout" not in metadata:
-                continue
-            layout = (scenario.parent / metadata["layout"]).resolve()
+        identities = {}
+        runtime_env = os.environ.copy()
+        runtime_env.pop("COSMOCC_TOOLCHAIN_PATH", None)
+        partial_settings = work / "partial.toml"
+        partial_settings.write_text("seed = 1\n")
+        # Its presence must not affect runs with no explicit settings file.
+        (work / "settings.toml").write_text("seed = 123\n")
+        layouts = {
+            "hardware_test": "hardware_test",
+            "hardware_test_blocked_beam": "hardware_test",
+            "hardware_test_tag_at_startup": "hardware_test",
+            "laser_alignment": "laser_alignment",
+            "module_movement": "one_module",
+            "module_movement_idle": "one_module",
+            "per_module_variation": "default",
+            "tub_arrivals": "default",
+        }
+        scenarios = {path.stem: path for path in (root / "scenarios").glob("*.toml")}
+        if scenarios.keys() != layouts.keys():
+            raise RuntimeError("each bundled scenario needs a matching world layout")
+        for name, layout_name in layouts.items():
+            scenario = scenarios[name]
+            layout = root / "layouts" / f"{layout_name}.toml"
             if layout not in worlds:
                 world = work / f"{layout.stem}.exe"
                 subprocess.run([sys.executable, qsim, "build", layout, "-o", world], check=True)
                 worlds[layout] = world
+                identities[world] = world_identity(world)
+                result = launch(world, cwd=work, env=runtime_env)
+                if result.returncode != 2 or "A scenario file is required" not in result.stderr:
+                    raise RuntimeError(f"{world.name} accepted a missing scenario argument")
             world = worlds[layout]
-            launcher = [world] if sys.platform == "win32" else ["sh", world]
             traces = [work / "first.ndjson", work / "second.ndjson"]
             for trace in traces:
-                result = subprocess.run([
-                    *launcher, scenario.relative_to(root), "--settings", "settings_example.toml",
-                    "--trace", trace,
-                ], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                verdicts = [line for line in result.stdout.splitlines() if line.startswith(("FAIL ", "UNRESOLVED "))]
+                result = launch(world, scenario, "--trace", trace, cwd=work, env=runtime_env)
+                verdicts = [line for line in result.stderr.splitlines() if line.startswith(("FAIL ", "UNRESOLVED "))]
                 expected = expected_unresolved.get(scenario.stem)
                 if expected is None:
                     ok = result.returncode == 0 and not verdicts
@@ -47,10 +76,42 @@ def main() -> None:
                     ok = result.returncode == 1 and len(verdicts) == 1 and verdicts[0].startswith(
                         f"UNRESOLVED {expected} at ")
                 if not ok:
-                    raise RuntimeError(f"{scenario.name} returned {result.returncode}\n{result.stdout}")
+                    raise RuntimeError(f"{scenario.name} returned {result.returncode}\n{result.stdout}{result.stderr}")
             if traces[0].read_bytes() != traces[1].read_bytes():
                 raise RuntimeError(f"{scenario.name} produced different traces")
+            result = launch(world, scenario, "--settings", partial_settings, "--trace", traces[1],
+                            cwd=work, env=runtime_env)
+            if result.returncode != (1 if expected else 0):
+                raise RuntimeError(f"{scenario.name} failed with partial settings\n{result.stderr}")
+            implicit = traces[0].read_bytes().splitlines()
+            explicit = traces[1].read_bytes().splitlines()
+            if json.loads(implicit[0])["seed"] != 1 or implicit[1:] != explicit[1:]:
+                raise RuntimeError(f"{scenario.name} did not use the built-in defaults")
+            if name == "tub_arrivals":
+                if json.loads(implicit[-1]) != {"type": "run_complete", "tick": 45001}:
+                    raise RuntimeError("the events-only scenario did not run through its duration")
+                if not any(json.loads(row).get("type") == "tub" for row in implicit[1:]):
+                    raise RuntimeError("the events-only scenario did not produce tub events")
             print(f"{scenario.name}: {'one undecided property' if expected else 'passed'}", flush=True)
+        scenario = root / "scenarios/hardware_test_blocked_beam.toml"
+        world = next(path for path in identities if path.stem == "hardware_test")
+        result = launch(world, scenario, "--settings", work / "missing.toml", cwd=work, env=runtime_env)
+        if result.returncode != 2 or "No settings file found" not in result.stderr:
+            raise RuntimeError("the world accepted an explicitly missing settings file")
+        result = launch(world, scenario, "--gui", cwd=work, env=runtime_env)
+        if result.returncode != 2 or "GUI support is unavailable" not in result.stderr:
+            raise RuntimeError("the world did not report the unavailable GUI")
+        partial_settings.write_text("seed = 17\n")
+        result = launch(world, scenario, "--settings", partial_settings, "--trace", traces[0],
+                        cwd=work, env=runtime_env)
+        if result.returncode != 0:
+            raise RuntimeError(f"the world failed with a custom seed\n{result.stderr}")
+        with traces[0].open() as trace:
+            if json.loads(trace.readline())["seed"] != 17:
+                raise RuntimeError("the world ignored the explicit seed override")
+        for world, identity in identities.items():
+            if world_identity(world) != identity:
+                raise RuntimeError(f"{world.name} changed during scenario runs")
 
 
 if __name__ == "__main__":

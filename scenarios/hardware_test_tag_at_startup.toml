@@ -3,10 +3,8 @@
 # is a failure. This scenario checks that the earlier diagnostics still run before that failure is
 # encoded and latched.
 #
-# Run it with:
 
 [scenario]
-layout = "../layouts/hardware_test.toml"
 duration = "7s"
 properties = "hardware_test_tag_at_startup.spec"
 

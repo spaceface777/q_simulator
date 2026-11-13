@@ -51,7 +51,7 @@ namespace {
 				  << "Options:\n"
 				  << "  -s, --settings <path>   Override runtime settings from a TOML file\n"
 				  << "      --seed <n>          The master seed, overriding the one in settings\n"
-				  << "      --timeout <sec>     Override the scenario's simulated-time limit\n"
+				  << "      --timeout <sec>     Set an earlier simulated-time limit\n"
 				  << "      --trace <path>      Write an NDJSON trace of the run\n"
 				  << "      --gui               Request the GUI (unavailable in this build)\n"
 				  << "  -k, --keep-going        Evaluate every property to the end after a failure\n"
@@ -163,21 +163,19 @@ int main(int argc, char const* argv[]) {
 		if (options.seed) {
 			settings::set_setting<int>("seed", static_cast<int>(*options.seed));
 		}
-		schedule = events::parse_events(options.scenario, static_cast<uint64_t>(settings::get_setting<int>("seed")));
+		schedule = events::parse_scenario(options.scenario, static_cast<uint64_t>(settings::get_setting<int>("seed")));
 	} catch (const std::exception& error) {
 		std::cerr << "Could not read the scenario: " << error.what() << std::endl;
 		return EXIT_CONFIGURATION;
 	}
 
-	if (!schedule.properties) {
-		std::cerr << options.scenario << " is missing [scenario].duration and [scenario].properties" << std::endl;
-		return EXIT_CONFIGURATION;
-	}
-
-	ltl::File properties;
+	ltl::File   properties;
+	std::string property_file;
 	try {
-		properties =
-			ltl::parse(read_file(schedule.properties->property_file), schedule.properties->property_file.string());
+		if (schedule.property_file) {
+			property_file = schedule.property_file->string();
+			properties    = ltl::parse(read_file(*schedule.property_file), property_file);
+		}
 	} catch (const std::exception& error) {
 		std::cerr << "Could not read the properties: " << error.what() << std::endl;
 		return EXIT_CONFIGURATION;
@@ -192,18 +190,20 @@ int main(int argc, char const* argv[]) {
 	world::set_calibration_seed(master_seed);
 
 	sim::Runtime runtime(master_seed, firmware::linked_images(settings::get_active_modules()));
-	uint64_t     timeout_tick = schedule.properties->duration_tick;
+	uint64_t     timeout_tick = schedule.duration_tick;
 	if (options.timeout) {
 		const double ticks = (*options.timeout * 1'000'000.0) / static_cast<double>(sim::TICK_DURATION.count());
-		util::require(ticks <= static_cast<double>(std::numeric_limits<uint64_t>::max()), "Timeout is too large");
-		timeout_tick = static_cast<uint64_t>(ticks);
+		if (ticks >= static_cast<double>(std::numeric_limits<uint64_t>::max())) {
+			std::cerr << "Timeout is too large" << std::endl;
+			return EXIT_CONFIGURATION;
+		}
+		timeout_tick = std::min(timeout_tick, static_cast<uint64_t>(ticks));
 	}
 
 	runtime.set_halt_on_failure(!options.keep_going);
 	try {
 		runtime.load(schedule);
-		runtime.load_properties(std::move(properties), schedule.properties->duration_tick,
-								schedule.properties->property_file.string());
+		runtime.load_properties(std::move(properties), schedule.duration_tick, property_file);
 	} catch (const std::exception& error) {
 		std::cerr << "Could not configure the properties: " << error.what() << std::endl;
 		return EXIT_CONFIGURATION;
@@ -213,7 +213,7 @@ int main(int argc, char const* argv[]) {
 		std::vector<std::string> inputs;
 		if (options.settings) inputs.push_back(options.settings->string());
 		inputs.push_back(options.scenario);
-		inputs.push_back(schedule.properties->property_file.string());
+		if (schedule.property_file) inputs.push_back(property_file);
 		runtime.trace_to(options.trace, inputs, firmware::linked_layout());
 		runtime.start(timeout_tick);
 	} catch (const std::exception& error) {
@@ -230,9 +230,9 @@ int main(int argc, char const* argv[]) {
 	bool timed_out = false;
 
 	try {
-		while (!runtime.halted() && runtime.properties_pending() > 0) {
+		while (!runtime.halted() && (runtime.properties_total() == 0 || runtime.properties_pending() > 0)) {
 			if (runtime.tick() > timeout_tick) {
-				timed_out = true;
+				timed_out = timeout_tick < schedule.duration_tick || runtime.properties_pending() > 0;
 				break;
 			}
 
@@ -319,6 +319,10 @@ int main(int argc, char const* argv[]) {
 	if (failed) {
 		if (timed_out) {
 			if (options.timeout) {
+				if (total == 0) {
+					std::cerr << "The run timed out after " << ticks << " ticks" << std::endl;
+					return EXIT_PROPERTY_FAILED;
+				}
 				std::cerr << "The run timed out with " << runtime.properties_pending() << " of " << total
 						  << " properties still pending after " << ticks << " ticks" << std::endl;
 			} else {
@@ -337,7 +341,8 @@ int main(int argc, char const* argv[]) {
 	}
 
 	if (!options.quiet) {
-		std::cout << "All " << total << " properties held after " << ticks << " ticks" << std::endl;
+		if (total == 0) std::cout << "Scenario completed after " << ticks << " ticks" << std::endl;
+		else std::cout << "All " << total << " properties held after " << ticks << " ticks" << std::endl;
 	}
 	return EXIT_SUCCESS;
 }

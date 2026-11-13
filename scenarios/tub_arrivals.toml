@@ -1,13 +1,14 @@
-# ===== Events =====
+# ===== Scenario: scheduled tub arrivals =====
 # Defines what happens in the simulated world during a run.
 #
-# This file is read by the simulation and never by an application. A tub arriving is a change
-# to the world, not a message; an application finds out about it the same way it does on the
-# physical system, by reading the tag when the tub reaches a reader.
+# A tub arrival changes the world. The application reads the tag when the tub reaches a reader.
 #
 # There are no plane events. On the physical system the flight board is owned by the tower
 # application, which publishes it to the other modules itself. To have flight data in a run,
 # give module 255 a tower application in layout.toml.
+
+[scenario]
+duration = "45s"
 
 # === Tubs ===
 # Tubs have the following attributes:
@@ -48,13 +49,3 @@ id = 4
 module = 3
 uid = 0x04000000000000
 payload = [[0x03, 0x01, 0x04, 0x01], [1, 0, 0, 0]]
-
-# To run this input as a finite test, add a scenario table and put the temporal properties in the
-# named sibling file. The duration is quoted and uses the same exact unit syntax as property scopes:
-#
-# [scenario]
-# duration = "45s"
-# properties = "events_example.spec"
-#
-# See docs/temporal-properties.md for the LTLf language. The removed [assert.*] format is not
-# accepted by simulation-scenario.

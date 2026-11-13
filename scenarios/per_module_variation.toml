@@ -2,14 +2,11 @@
 # Checks that per-module calibration reaches the platform and that detector-driven routes complete
 # independently on two differently calibrated modules without predicted timing windows.
 #
-# Run it with:
-#
 # Every module draws its own belt curves, electrical figures, and servo pace from the physical
 # populations. Which module is faster is a property of the seed, so the properties require both
 # routes to progress without assuming an ordering between them.
 
 [scenario]
-layout = "../layouts/default.toml"
 duration = "30s"
 properties = "per_module_variation.spec"
 

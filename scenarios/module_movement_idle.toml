@@ -2,8 +2,6 @@
 # Checks the half of the applet the full-route scenario cannot reach: what it does before a tag
 # ever arrives.
 #
-# Run it with:
-#
 # The applet subscribes to three detector events but starts on only one of them. `wait_for_event`
 # discards every event id other than the one it is waiting for, so a laser going dark must not
 # start the route. That discard is easy to write and easy to get wrong, and an applet that
@@ -11,7 +9,6 @@
 # handed a tag at time zero there, so the wrong trigger and the right one fire together.
 
 [scenario]
-layout = "../layouts/one_module.toml"
 duration = "15s"
 properties = "module_movement_idle.spec"
 

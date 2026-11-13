@@ -14,7 +14,6 @@ Makefile
 bin/
 build/
 settings.toml
-events.toml
 layout.toml
 channel0_0
 *.exe

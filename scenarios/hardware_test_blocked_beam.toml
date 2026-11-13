@@ -2,10 +2,8 @@
 # The diagnostic's job is to notice a module that is not fit to test. This scenario blocks the
 # left beam from startup and checks that the laser failure is detected, encoded, and latched.
 #
-# Run it with:
 
 [scenario]
-layout = "../layouts/hardware_test.toml"
 duration = "6s"
 properties = "hardware_test_blocked_beam.spec"
 

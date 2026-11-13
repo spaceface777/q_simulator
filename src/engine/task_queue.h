@@ -14,7 +14,7 @@ namespace engine {
 	// seeded shuffle, so a run cannot silently depend on insertion order.
 	enum class Priority : int {
 		CHILD_INTAKE      = 0, // What the applications sent.
-		SCENARIO_EVENTS   = 1, // Stimuli from events.toml.
+		SCENARIO_EVENTS   = 1, // Stimuli from the scenario.
 		WORLD_ADVANCE     = 2, // Physical state.
 		PLATFORM_OUTBOUND = 3, // What the applications are told.
 		MONITORING        = 4, // Temporal properties over the resulting state.

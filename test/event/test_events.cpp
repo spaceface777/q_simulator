@@ -36,8 +36,9 @@ namespace {
 
 		void TearDown() override { fs::remove(path); }
 
-		void write(const std::string& contents) {
+		void write(const std::string& contents, bool add_duration = true) {
 			std::ofstream file(path);
+			if (add_duration && !contents.starts_with("[scenario]")) file << "[scenario]\nduration = \"30s\"\n";
 			file << contents;
 		}
 	};
@@ -59,7 +60,7 @@ payload = [
 )";
 	write(contents);
 
-	const events::Schedule schedule = events::parse_events(path);
+	const events::Schedule schedule = events::parse_scenario(path);
 	ASSERT_EQ(schedule.tubs.size(), 1u);
 	const events::TubArrival& parsed = schedule.tubs[0];
 	EXPECT_EQ(parsed.tick, 1500u);
@@ -75,14 +76,14 @@ TEST_F(EventsTest, ParsesArrayUid) {
 	std::string contents = tub();
 	contents.replace(contents.find("uid = 0x11223344556677"), 22, "uid = [1, 2, 3, 4, 5, 6, 7]");
 	write("[tub.first]\n" + contents);
-	const events::Schedule schedule = events::parse_events(path);
+	const events::Schedule schedule = events::parse_scenario(path);
 	ASSERT_EQ(schedule.tubs.size(), 1u);
 	EXPECT_EQ(schedule.tubs[0].uid, (RfidUid{1, 2, 3, 4, 5, 6, 7}));
 }
 
 TEST_F(EventsTest, OrdersBySchedulingRatherThanFileOrder) {
 	write("[tub.later]\n" + tub(2.0, 9) + "\n[tub.earlier]\n" + tub(0.1, 4));
-	const events::Schedule schedule = events::parse_events(path);
+	const events::Schedule schedule = events::parse_scenario(path);
 	ASSERT_EQ(schedule.tubs.size(), 2u);
 	EXPECT_EQ(schedule.tubs[0].id, 4);
 	EXPECT_EQ(schedule.tubs[1].id, 9);
@@ -90,12 +91,12 @@ TEST_F(EventsTest, OrdersBySchedulingRatherThanFileOrder) {
 
 TEST_F(EventsTest, RejectsReusingATubIdAfterRemoval) {
 	write("[tub.first]\n" + tub(0.0, 7, "removed = 1.0\n") + "\n[tub.second]\n" + tub(2.0, 7));
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
 TEST_F(EventsTest, PlacesAtReaderUnlessToldOtherwise) {
 	write("[tub.default]\n" + tub(0.0, 1) + "\n[tub.beam]\n" + tub(1.0, 2, "position = \"left_laser\"\n"));
-	const events::Schedule schedule = events::parse_events(path);
+	const events::Schedule schedule = events::parse_scenario(path);
 	ASSERT_EQ(schedule.tubs.size(), 2u);
 	EXPECT_EQ(schedule.tubs[0].position, world::Position::ENTRY);
 	EXPECT_EQ(schedule.tubs[1].position, world::Position::LEFT_LASER);
@@ -103,7 +104,7 @@ TEST_F(EventsTest, PlacesAtReaderUnlessToldOtherwise) {
 
 TEST_F(EventsTest, ReadsRemovalAndExtendsLastTick) {
 	write("[tub.first]\n" + tub(1.0, 3, "removed = 4.5\n"));
-	const events::Schedule schedule = events::parse_events(path);
+	const events::Schedule schedule = events::parse_scenario(path);
 	ASSERT_TRUE(schedule.tubs[0].removed_tick.has_value());
 	EXPECT_EQ(*schedule.tubs[0].removed_tick, 4500u);
 	EXPECT_EQ(schedule.last_tick(), 4500u);
@@ -111,28 +112,28 @@ TEST_F(EventsTest, ReadsRemovalAndExtendsLastTick) {
 
 TEST_F(EventsTest, RejectsRemovedBeforeArrival) {
 	write("[tub.first]\n" + tub(5.0, 3, "removed = 2.0\n"));
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
 TEST_F(EventsTest, RejectsMissingOrWrongLengthUid) {
 	write("[tub.first]\ntime = 0\nid = 1\nmodule = 1\n" + ZERO_PAYLOAD);
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 	write("[tub.first]\n" + tub().replace(tub().find("0x11223344556677"), 16, "[1, 2, 3]"));
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
 TEST_F(EventsTest, RejectsOutOfRangeUidAndUidByte) {
 	write("[tub.first]\n" + tub().replace(tub().find("0x11223344556677"), 16, "0x100000000000000"));
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 	write("[tub.first]\n" + tub().replace(tub().find("0x11223344556677"), 16, "[1, 2, 3, 4, 5, 6, 256]"));
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
 TEST_F(EventsTest, FillsOmittedTrailingPagesDeterministicallyFromSeed) {
 	write("[tub.first]\ntime = 0\nid = 1\nmodule = 1\nuid = 1\npayload = [0x11223344]\n");
-	const events::Schedule first      = events::parse_events(path, 42);
-	const events::Schedule repeated   = events::parse_events(path, 42);
-	const events::Schedule other_seed = events::parse_events(path, 43);
+	const events::Schedule first      = events::parse_scenario(path, 42);
+	const events::Schedule repeated   = events::parse_scenario(path, 42);
+	const events::Schedule other_seed = events::parse_scenario(path, 43);
 	EXPECT_EQ(first.tubs[0].payload[0], (RfidPage{0x11, 0x22, 0x33, 0x44}));
 	EXPECT_EQ(first.tubs[0].payload, repeated.tubs[0].payload);
 	EXPECT_NE(first.tubs[0].payload[1], other_seed.tubs[0].payload[1]);
@@ -141,64 +142,71 @@ TEST_F(EventsTest, FillsOmittedTrailingPagesDeterministicallyFromSeed) {
 TEST_F(EventsTest, RejectsMoreThanThirtyTwoPayloadPages) {
 	write("[tub.first]\ntime = 0\nid = 1\nmodule = 1\nuid = 1\npayload = ["
 		  "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]\n");
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
 TEST_F(EventsTest, RejectsMalformedOrOutOfRangePayloadPages) {
 	std::string malformed = tub();
 	malformed.replace(malformed.find("payload = [\n    0"), 17, "payload = [\n    [1, 2, 3]");
 	write("[tub.first]\n" + malformed);
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 
 	std::string oversized = tub();
 	oversized.replace(oversized.find("payload = [\n    0"), 17, "payload = [\n    0x100000000");
 	write("[tub.first]\n" + oversized);
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
 TEST_F(EventsTest, RejectsRemovedStructuredFieldsAndLegacyRfid) {
 	for (const std::string field : {"origin = [\"module\", 1]", "destination = [\"module\", 2]", "safe = true",
 									"needs_security = false", "rfid = []"}) {
 		write("[tub.first]\n" + tub(1.5, 3, field + "\n"));
-		EXPECT_THROW((void)events::parse_events(path), std::invalid_argument) << field;
+		EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument) << field;
 	}
 }
 
 TEST_F(EventsTest, RejectsUnknownStartingPositionAndInvalidIds) {
 	write("[tub.first]\n" + tub(1.5, 3, "position = \"under_the_belt\"\n"));
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 	write("[tub.first]\n" + tub(1.5, 0));
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 	std::string invalid_module = tub();
 	invalid_module.replace(invalid_module.find("module = 1"), 10, "module = 25");
 	write("[tub.first]\n" + invalid_module);
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
 TEST_F(EventsTest, AcceptsAScenarioWithNothingInIt) {
 	write("");
-	const events::Schedule schedule = events::parse_events(path);
+	const events::Schedule schedule = events::parse_scenario(path);
 	EXPECT_TRUE(schedule.tubs.empty());
 	EXPECT_EQ(schedule.last_tick(), 0u);
 }
 
 TEST_F(EventsTest, ParsesPropertyConfigurationWithTheLtlDurationSyntax) {
 	write("[scenario]\nduration = \"1h2m3.004s\"\nproperties = \"route.spec\"\n");
-	const events::Schedule schedule = events::parse_events(path);
-	ASSERT_TRUE(schedule.properties.has_value());
-	EXPECT_EQ(schedule.properties->duration_tick, 3723004u);
-	EXPECT_EQ(schedule.properties->property_file, path.parent_path() / "route.spec");
+	const events::Schedule schedule = events::parse_scenario(path);
+	ASSERT_TRUE(schedule.property_file.has_value());
+	EXPECT_EQ(schedule.duration_tick, 3723004u);
+	EXPECT_EQ(*schedule.property_file, path.parent_path() / "route.spec");
 }
 
 TEST_F(EventsTest, RequiresValidPropertyConfiguration) {
 	write("[scenario]\nduration = 1.5\nproperties = \"route.spec\"\n");
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 	write("[scenario]\nduration = \"3s\"\n");
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	const auto schedule = events::parse_scenario(path);
+	EXPECT_EQ(schedule.duration_tick, 3000u);
+	EXPECT_FALSE(schedule.property_file.has_value());
+
+	write("", false);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
+	write("[scenario]\nduration = \"3s\"\nlayout = \"world.toml\"\n");
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }
 
 TEST_F(EventsTest, RejectsMissingFileAndRemovedAssertionFormat) {
-	EXPECT_THROW((void)events::parse_events(path.string() + ".missing"), std::exception);
+	EXPECT_THROW((void)events::parse_scenario(path.string() + ".missing"), std::exception);
 	write("[assert.old]\ncheck = \"arrived_at\"\n");
-	EXPECT_THROW((void)events::parse_events(path), std::invalid_argument);
+	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }

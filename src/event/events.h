@@ -31,20 +31,16 @@ namespace events {
 		RfidPayload payload{};
 	};
 
-	struct PropertyConfiguration {
-		fs::path property_file;
-		uint64_t duration_tick = 0;
-	};
-
 	struct Schedule {
-		std::vector<TubArrival>              tubs;
-		std::optional<PropertyConfiguration> properties;
+		std::vector<TubArrival> tubs;
+		uint64_t                duration_tick = 0;
+		std::optional<fs::path> property_file;
 
 		// Zero for an empty schedule.
 		[[nodiscard]] uint64_t last_tick() const noexcept;
 	};
 
-	[[nodiscard]] Schedule parse_events(const fs::path& file, uint64_t master_seed = 0);
+	[[nodiscard]] Schedule parse_scenario(const fs::path& file, uint64_t master_seed = 0);
 
 } // namespace events
 

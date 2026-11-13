@@ -105,8 +105,8 @@ namespace events {
 		return last;
 	}
 
-	Schedule parse_events(const fs::path& file, uint64_t master_seed) {
-		util::require(fs::exists(file), "No events.toml found in the same folder as the simulation executable");
+	Schedule parse_scenario(const fs::path& file, uint64_t master_seed) {
+		util::require(fs::exists(file), "No scenario file found at " + file.string());
 
 		const toml::table table = toml::parse_file(file.string());
 		Schedule          schedule;
@@ -114,24 +114,23 @@ namespace events {
 		util::require(table.get("assert") == nullptr,
 					  "[assert.*] is no longer supported; declare [scenario].properties with an LTLf .spec file");
 
-		if (const toml::node* node = table.get("scenario"); node != nullptr) {
-			const toml::table* scenario = node->as_table();
-			util::require(scenario != nullptr, "scenario must be a TOML table");
+		const auto* scenario = table["scenario"].as_table();
+		util::require(scenario != nullptr, "A [scenario] table is required");
+		for (const auto& [key, value] : *scenario) {
+			(void)value;
+			util::require(key == "duration" || key == "properties",
+						  "Unknown scenario field: " + std::string(key.str()));
+		}
 
-			const std::optional<std::string> duration   = (*scenario)["duration"].value<std::string>();
-			const std::optional<std::string> properties = (*scenario)["properties"].value<std::string>();
-			util::require(duration.has_value(), "[scenario].duration must be a quoted, unit-bearing duration");
-			util::require(properties.has_value() && !properties->empty(),
-						  "[scenario].properties must name an LTLf .spec file");
+		const auto duration = (*scenario)["duration"].value<std::string>();
+		util::require(duration.has_value(), "[scenario].duration must be a quoted, unit-bearing duration");
+		schedule.duration_tick = ltl::parse_duration(*duration, file.string() + ":[scenario].duration");
+		util::require(schedule.duration_tick < UINT64_MAX, "Scenario duration is too large");
 
-			PropertyConfiguration configuration;
-			configuration.duration_tick = ltl::parse_duration(*duration, file.string() + ":[scenario].duration");
-			configuration.property_file = fs::path(*properties);
-			if (configuration.property_file.is_relative()) {
-				configuration.property_file = file.parent_path() / configuration.property_file;
-			}
-			configuration.property_file = configuration.property_file.lexically_normal();
-			schedule.properties         = std::move(configuration);
+		if (const auto* node = scenario->get("properties")) {
+			const auto properties = node->value<std::string>();
+			util::require(properties && !properties->empty(), "[scenario].properties must name an LTLf .spec file");
+			schedule.property_file = (file.parent_path() / *properties).lexically_normal();
 		}
 
 		const toml::node* group = table.get("tub");

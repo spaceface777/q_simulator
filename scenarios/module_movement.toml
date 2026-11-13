@@ -1,8 +1,6 @@
 # ===== Scenario: module_movement, the full demonstration route =====
 # Checks the `module_movement` applet against the route its own source drives, leg by leg.
 #
-# Run it with:
-#
 # The applet enables both emitters, subscribes to the RFID and both laser detectors, and waits
 # for a tag. A tag already at the reader at startup is turned into a synthetic start event, so
 # a tub placed at time zero starts the route rather than deadlocking it. It then repeats eight
@@ -22,7 +20,6 @@
 # progressively wider clock windows.
 
 [scenario]
-layout = "../layouts/one_module.toml"
 duration = "45s"
 properties = "module_movement.spec"
 

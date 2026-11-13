@@ -1,10 +1,8 @@
 # ===== Scenario: laser_alignment =====
 # Exercises alignment, RFID brightness, misalignment, and the 30-second recovery state without a GUI.
 #
-# Run it with:
 
 [scenario]
-layout = "../layouts/laser_alignment.toml"
 duration = "60s"
 properties = "laser_alignment.spec"
 
