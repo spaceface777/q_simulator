@@ -11,7 +11,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <toml++/toml.hpp>
 #include <vector>
 
 #include "../defs.h"
@@ -28,37 +27,37 @@ namespace {
 	constexpr std::chrono::microseconds SLICE{50000};
 
 	// Host-time budget for one slice of completed firmware grants.
-	constexpr std::chrono::milliseconds CHILD_BUDGET{5000};
+	constexpr std::chrono::milliseconds GRANT_BUDGET{5000};
 
 	constexpr int EXIT_PROPERTY_FAILED = 1;
 	constexpr int EXIT_CONFIGURATION   = 2;
 
 	struct Options {
-		std::string             scenario = "events.toml";
-		std::string             settings = "settings.toml";
-		std::string             trace;
-		std::optional<uint64_t> seed;
-		std::optional<double>   timeout;
-		bool                    quiet      = false;
-		bool                    keep_going = false;
+		std::string                          scenario;
+		std::optional<std::filesystem::path> settings;
+		std::string                          trace;
+		std::optional<uint64_t>              seed;
+		std::optional<double>                timeout;
+		bool                                 quiet      = false;
+		bool                                 keep_going = false;
 	};
 
 	void usage() {
-		std::cout << "Use: ./world.exe [options] [scenario.toml]\n"
+		std::cout << "Use: ./world.exe scenario.toml [options]\n"
 				  << "\n"
 				  << "Runs a scenario against an application with no GUI and no operator, and\n"
 				  << "exits non-zero if any temporal property does not hold.\n"
 				  << "\n"
 				  << "Options:\n"
-				  << "  -s, --settings <path>   The settings file (default: settings.toml)\n"
+				  << "  -s, --settings <path>   Override runtime settings from a TOML file\n"
 				  << "      --seed <n>          The master seed, overriding the one in settings\n"
 				  << "      --timeout <sec>     Override the scenario's simulated-time limit\n"
 				  << "      --trace <path>      Write an NDJSON trace of the run\n"
+				  << "      --gui               Request the GUI (unavailable in this build)\n"
 				  << "  -k, --keep-going        Evaluate every property to the end after a failure\n"
 				  << "  -q, --quiet             Print only failures\n"
 				  << "  -h, --help              Print all options\n"
 				  << "  -v, --version           Print version\n"
-				  << "\n"
 				  << "\n"
 				  << "Exit codes:\n"
 				  << "  0  every property held\n"
@@ -93,6 +92,8 @@ namespace {
 			}
 			if (argument == "-s" || argument == "--settings") {
 				options.settings = take_value(argc, argv, index, argument);
+			} else if (argument == "--gui") {
+				throw std::invalid_argument("GUI support is unavailable in this build");
 			} else if (argument == "--trace") {
 				options.trace = take_value(argc, argv, index, argument);
 			} else if (argument == "--seed") {
@@ -119,6 +120,7 @@ namespace {
 			}
 		}
 
+		util::require(scenario_given, "A scenario file is required");
 		return options;
 	}
 
@@ -208,9 +210,11 @@ int main(int argc, char const* argv[]) {
 	}
 
 	try {
-		runtime.trace_to(options.trace,
-						 {options.settings, options.scenario, schedule.properties->property_file.string()},
-						 firmware::linked_layout());
+		std::vector<std::string> inputs;
+		if (options.settings) inputs.push_back(options.settings->string());
+		inputs.push_back(options.scenario);
+		inputs.push_back(schedule.properties->property_file.string());
+		runtime.trace_to(options.trace, inputs, firmware::linked_layout());
 		runtime.start(timeout_tick);
 	} catch (const std::exception& error) {
 		std::cerr << "Failed to start the simulation: " << error.what() << std::endl;
@@ -236,7 +240,7 @@ int main(int argc, char const* argv[]) {
 			const uint64_t ticks_left    = timeout_tick - before + 1;
 			const uint64_t slice_ticks   = static_cast<uint64_t>(SLICE.count() / sim::TICK_DURATION.count());
 			uint64_t       granted_ticks = std::min(ticks_left, slice_ticks);
-			runtime.advance(std::chrono::microseconds(granted_ticks * sim::TICK_DURATION.count()), 1.0, CHILD_BUDGET);
+			runtime.advance(std::chrono::microseconds(granted_ticks * sim::TICK_DURATION.count()), 1.0, GRANT_BUDGET);
 
 			// A host time limit can prevent another complete grant.
 			if (runtime.tick() == before) {

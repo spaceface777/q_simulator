@@ -26,18 +26,6 @@ namespace settings {
 	}
 
 	template <typename T, typename Predicate>
-	static void parse_setting(std::string_view setting, T default_value, Predicate pred) {
-		toml::node* node = settings_table.get(setting);
-		util::require(node, "Missing setting '" + std::string(setting) + "' in settings.toml");
-
-		T value = static_cast<T>(node->value_or(default_value));
-		util::require(pred(value), "Invalid value for '" + std::string(setting) + "' in settings.toml");
-
-		settings::set_setting(setting, value);
-	}
-
-	// A setting with a usable default, so a new knob does not invalidate an older settings.toml.
-	template <typename T, typename Predicate>
 	static void parse_optional_setting(std::string_view setting, T fallback, Predicate pred) {
 		const toml::node* node = settings_table.get(setting);
 		if (node == nullptr) {
@@ -45,9 +33,9 @@ namespace settings {
 			return;
 		}
 
-		T value = static_cast<T>(node->value_or(fallback));
-		util::require(pred(value), "Invalid value for '" + std::string(setting) + "' in settings.toml");
-		settings::set_setting(setting, value);
+		const auto value = node->value<T>();
+		util::require(value && pred(*value), "Invalid value for '" + std::string(setting) + "' in settings file");
+		settings::set_setting(setting, *value);
 	}
 
 	// Every id a module may have: the routing range followed by the tower.
@@ -230,15 +218,23 @@ namespace settings {
 		parse_optional_setting("rfid_position_sd", calibration_defaults.rfid_position_sd, valid_position_sd);
 	}
 
-	void parse_settings(fs::path settings, std::string_view layout) {
-		util::require(fs::exists(settings), "No settings file found at " + settings.string());
-		reset_state();
-		settings_table          = toml::parse_file(settings.string());
-		const auto layout_table = toml::parse(layout);
-		parse_setting("simulation_speed", -1.0, [](double value) { return value >= 0; });
-		parse_setting("seed", -1, [](int value) { return value >= 0; });
-		parse_setting("scale", -1.0, [](double value) { return value >= 0.25 && value <= 5; });
+	static void apply_runtime_settings() {
+		parse_optional_setting("simulation_speed", 1.0,
+							   [](double value) { return std::isfinite(value) && value >= 0; });
+		parse_optional_setting("seed", 1, [](int value) { return value >= 0; });
+		parse_optional_setting("scale", 1.0, [](double value) { return value >= 0.25 && value <= 5; });
 		parse_optional_settings();
+		set_setting("debug", false);
+	}
+
+	void parse_settings(const std::optional<fs::path>& settings, std::string_view layout) {
+		reset_state();
+		if (settings) {
+			util::require(fs::exists(*settings), "No settings file found at " + settings->string());
+			settings_table = toml::parse_file(settings->string());
+		}
+		const auto layout_table = toml::parse(layout);
+		apply_runtime_settings();
 
 		const toml::node* module_node = layout_table.get("module");
 		if (module_node != nullptr && module_node->is_table()) {
@@ -255,8 +251,6 @@ namespace settings {
 		}
 
 		validate_module_connections();
-
-		set_setting("debug", false);
 	}
 
 	template <typename T> T get_setting(std::string_view setting) {
@@ -304,11 +298,7 @@ namespace settings {
 
 	void install_test_defaults() {
 		settings_table = toml::table{};
-		set_setting("simulation_speed", 1.0);
-		set_setting("seed", 1);
-		set_setting("scale", 1.0);
-		set_setting("debug", false);
-		parse_optional_settings();
+		apply_runtime_settings();
 	}
 
 #endif

@@ -3,11 +3,8 @@
 # For example layouts, check the layouts folder in the Simulation repo.
 
 # === General ===
-# The path to the Core 1 application built for Zephyr native_sim. Used for every module that
-# does not override it with a per-module "binary" in layout.toml.
-
 # The speed at which the simulation will be run.
-# Must be above 0.
+# The GUI uses this value as its initial speed.
 simulation_speed = 1.0
 
 # The master seed handed to every application at launch. Reproducing a run starts with
@@ -116,5 +113,5 @@ servo_module_offset_sd_ms = 50.0
 servo_movement_jitter_sd_ms = 50.0
 
 # The scale of the simulation overview.
-# Must be between 0.0 and 5.0.
+# Must be between 0.25 and 5.0.
 scale = 1.0

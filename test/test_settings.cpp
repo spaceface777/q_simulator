@@ -248,13 +248,15 @@ TEST_F(SettingsTest, ParseSettingsMissingFile) {
 	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
 }
 
-TEST_F(SettingsTest, ParseSettingsMissingRouterPath) {
-	std::string invalid_toml = R"(simulation_speed = 1.0
-scale = 1.0
-)";
+TEST_F(SettingsTest, OmittedSettingsAndPartialSettingsUseDefaults) {
+	ASSERT_NO_THROW(settings::parse_settings(std::nullopt, layout));
+	EXPECT_EQ(settings::get_setting<int>("seed"), 1);
+	EXPECT_DOUBLE_EQ(settings::get_setting<double>("scale"), 1.0);
 
-	write_settings(invalid_toml);
-	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::invalid_argument);
+	write_settings("seed = 17\n");
+	ASSERT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
+	EXPECT_EQ(settings::get_setting<int>("seed"), 17);
+	EXPECT_DOUBLE_EQ(settings::get_setting<double>("scale"), 1.0);
 }
 
 TEST_F(SettingsTest, ParseSettingsInvalidScale) {

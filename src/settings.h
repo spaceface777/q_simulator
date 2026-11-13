@@ -36,7 +36,7 @@ namespace settings {
 		std::string type = "default";
 	};
 
-	void parse_settings(fs::path settings, std::string_view layout);
+	void parse_settings(const std::optional<fs::path>& settings, std::string_view layout);
 
 	// Only returns generic types that are also in TOML. Throws if the setting is not found.
 	template <typename T> [[nodiscard]] T get_setting(std::string_view setting);
