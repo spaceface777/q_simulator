@@ -39,7 +39,7 @@ namespace {
 		EXPECT_FALSE(grants[1].crash);
 		EXPECT_EQ(quercus_mailbox_count(&grants[1].outbound), 1);
 		const auto report = firmware::crash::report(*grants[0].crash, 1, 0, grants[0].module_time_us);
-		EXPECT_NE(report.find("Module 1 crashed: segmentation fault"), std::string::npos) << report;
+		EXPECT_NE(report.find("test_crash_containment.cpp:"), std::string::npos) << report;
 
 		grants[0].granted = false;
 		backend.execute_epoch(grants);

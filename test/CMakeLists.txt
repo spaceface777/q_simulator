@@ -38,7 +38,7 @@ target_compile_definitions(tests PRIVATE TESTING)
 # Resolve scenario fixtures independently of the test working directory.
 target_compile_definitions(tests PRIVATE REPO_ROOT="${CMAKE_SOURCE_DIR}")
 
-target_compile_options(tests PRIVATE ${COMPILATION_FLAGS})
+target_compile_options(tests PRIVATE ${COMPILATION_FLAGS} -g -fno-omit-frame-pointer)
 
 if(QUERCUS_COSMOPOLITAN AND CMAKE_HOST_APPLE)
     add_test(NAME tests COMMAND sh $<TARGET_FILE:tests>)

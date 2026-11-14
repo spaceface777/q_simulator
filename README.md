@@ -78,6 +78,7 @@ The current build runs headlessly. The `--gui` option reports that GUI support i
 The scenario runner returns 0 when all properties hold and 1 when a property fails or remains undecided.
 It also returns 1 when firmware crashes or the simulation cannot finish, and 2 when its input is invalid.
 After a firmware fault, the world stops that module and continues the scenario.
+Keep the matching `world.exe.dbg` beside the executable for source lines in crash reports.
 
 Each scenario supplies `[scenario].duration`.
 If the run needs assertions, set `properties` to an LTLf file relative to the scenario.

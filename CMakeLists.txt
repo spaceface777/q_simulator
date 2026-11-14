@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12.0)
-project(simulation VERSION 1.0.0 LANGUAGES CXX)
+project(simulation VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 23)
@@ -22,6 +22,7 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
 option(ENABLE_LTO "Enable LTO in optimized builds" ON)
 if(ENABLE_LTO)
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -flto=auto")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto=auto")
     # GCC 16 can fail during partitioning for a relocatable LTO link.
     set(prelink_lto -flto=auto -flto-partition=one -flinker-output=nolto-rel)
@@ -107,10 +108,13 @@ endif()
 
 # === Builds ===
 
+include(cmake/libbacktrace.cmake)
+
 add_library(core STATIC
     src/firmware/inprocess_backend.cpp
     src/firmware/crash_posix.cpp
     src/firmware/crash_report.cpp
+    ${backtrace_sources}
     src/sim/module_clock.cpp
     src/sim/runtime.cpp
     src/sim/pacing.cpp
@@ -140,6 +144,7 @@ target_link_libraries(core PUBLIC
 
 target_include_directories(core PUBLIC "${QUERCUS_SDK_ROOT}/include")
 
+target_include_directories(core PRIVATE "${libbacktrace_SOURCE_DIR}")
 target_compile_options(core PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
 set_source_files_properties(src/firmware/crash_posix.cpp PROPERTIES
     COMPILE_OPTIONS -fno-omit-frame-pointer)
