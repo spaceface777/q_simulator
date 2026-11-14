@@ -92,6 +92,10 @@ The simulator keeps the shell environment separate.
 | `one_module.toml` | `module_movement.toml`, `module_movement_idle.toml` |
 | `default.toml` | `per_module_variation.toml`, `tub_arrivals.toml` |
 
+## Optimization
+
+See [Build and measure optimized worlds](docs/OPTIMIZATION.md) for profile training and benchmarks.
+
 ## Tests
 
 Run the simulator unit tests.
