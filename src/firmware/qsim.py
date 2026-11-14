@@ -81,7 +81,7 @@ def main() -> None:
             world = scratch / "world.exe"
             subprocess.run([
                 shell, compiler, "-o", world, simulator,
-                scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread",
+                scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread", "-lgcov",
             ], check=True)
             symbols = scratch / "world.exe.dbg"
             if "@CMAKE_HOST_SYSTEM_NAME@" == "Darwin" and arch == "aarch64":

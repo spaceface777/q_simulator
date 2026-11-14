@@ -19,7 +19,34 @@ if(QUERCUS_COSMOPOLITAN)
             " && \"${CMAKE_COMMAND}\" -E rename <TARGET> <TARGET>.dbg && sh \"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
     endif()
 endif()
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto=auto -g")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
+option(ENABLE_LTO "Enable LTO in optimized builds" ON)
+if(ENABLE_LTO)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto=auto")
+    # GCC 16 can fail during partitioning for a relocatable LTO link.
+    set(prelink_lto -flto=auto -flto-partition=one -flinker-output=nolto-rel)
+endif()
+
+set(PGO OFF CACHE STRING "Simulator PGO mode: OFF, TRAIN or USE")
+set_property(CACHE PGO PROPERTY STRINGS OFF TRAIN USE)
+set(profile_dir "${CMAKE_BINARY_DIR}/pgo")
+if(PGO STREQUAL "TRAIN")
+    set(profile_flags "-fprofile-generate=${profile_dir}" -fprofile-update=atomic)
+    link_libraries(gcov)
+elseif(PGO STREQUAL "USE")
+    file(GLOB_RECURSE profiles "${profile_dir}/*.gcda")
+    if(NOT profiles)
+        message(FATAL_ERROR "No simulator PGO data. Build in TRAIN mode and run the training scenarios first.")
+    endif()
+    set(profile_flags "-fprofile-use=${profile_dir}" -fprofile-correction -fprofile-partial-training)
+    # Training scenarios exercise the world entry point and core, not unit tests.
+    list(APPEND COMPILATION_FLAGS -Wno-error=missing-profile)
+elseif(NOT PGO STREQUAL "OFF")
+    message(FATAL_ERROR "PGO must be OFF, TRAIN or USE")
+endif()
+if(profile_flags)
+    list(APPEND profile_flags "-fprofile-prefix-path=${CMAKE_BINARY_DIR}")
+endif()
 
 # Opt in to the checked build while chasing a bug, rather than paying for it on every run.
 option(ENABLE_DEBUG_CONTAINERS "Enable libstdc++ debug containers" OFF)
@@ -111,12 +138,12 @@ target_link_libraries(core PUBLIC
 
 target_include_directories(core PUBLIC "${QUERCUS_SDK_ROOT}/include")
 
-target_compile_options(core PRIVATE ${COMPILATION_FLAGS})
+target_compile_options(core PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
 
 if(QUERCUS_COSMOPOLITAN)
     add_library(world_entry OBJECT src/scenario/main.cpp src/firmware/linked_world.cpp)
     target_link_libraries(world_entry PRIVATE core)
-    target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS})
+    target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
     target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}")
 
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
@@ -124,10 +151,9 @@ if(QUERCUS_COSMOPOLITAN)
     else()
         set(cosmocc_abi -mno-red-zone -mno-tls-direct-seg-refs)
     endif()
-    # GCC 16 can fail during partitioning for this relocatable LTO link.
     add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/qsim.o"
         COMMAND "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-g++"
-            -nostdlib -r -O3 -flto=auto -flto-partition=one -flinker-output=nolto-rel ${cosmocc_abi}
+            -nostdlib -r -O3 ${prelink_lto} ${profile_flags} ${cosmocc_abi}
             -o "${CMAKE_BINARY_DIR}/qsim.o" $<TARGET_OBJECTS:world_entry>
             -Wl,--whole-archive $<TARGET_FILE:core> -Wl,--no-whole-archive
         DEPENDS world_entry $<TARGET_OBJECTS:world_entry> core
