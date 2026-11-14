@@ -42,3 +42,24 @@ python3 tools/benchmark_worlds.py --world baseline baseline.exe --world pgo opti
 The benchmark records elapsed time per scenario and checks that the exit status and failed or undecided properties agree across runs.
 It alternates the execution order and reports median suite time.
 The reported time includes process startup. World assembly takes place before the benchmark.
+
+## Router benchmark
+
+The benchmark used the [P5 router suite](COSMOPOLITAN_P5.md) and one 18-module world per build mode.
+The Mac and the MiniPC each used their own profiles.
+The simulator, Zephyr firmware, and native runners all used the selected build mode.
+The MiniPC process could run on CPUs 2 and 3.
+
+| Host | Cases | LTO off | LTO on | LTO and PGO |
+| --- | --- | ---: | ---: | ---: |
+| Apple Silicon Mac | Full suite | 15.954 s | 15.507 s | 12.709 s |
+| Intel N100 MiniPC | Full suite | 34.075 s | 32.751 s | 26.559 s |
+| Apple Silicon Mac | Light cases (`battery__*`) | 0.386 s | 0.384 s | 0.363 s |
+| Intel N100 MiniPC | Light cases (`battery__*`) | 0.397 s | 0.388 s | 0.348 s |
+| Apple Silicon Mac | Heavy cases (`big__*`) | 1.809 s | 1.770 s | 1.448 s |
+| Intel N100 MiniPC | Heavy cases (`big__*`) | 3.814 s | 3.671 s | 3.148 s |
+
+Each result is the median of three runs on the same cases used for training.
+The benchmark ran 67 cases and skipped four marked cases.
+All build modes had the same verdicts, with 60 passes and the same seven failures.
+GCC applied partial training to translation units without profile counters.
