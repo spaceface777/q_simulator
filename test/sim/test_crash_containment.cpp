@@ -1,7 +1,18 @@
+#define _COSMO_SOURCE
 #include "../../src/firmware/crash.h"
 #include "../../src/firmware/inprocess_backend.h"
 
 #include <gtest/gtest.h>
+
+#include <csignal>
+#include <sys/mman.h>
+#include <unistd.h>
+
+#if defined(__COSMOPOLITAN__) && defined(__x86_64__)
+#include <libc/dce.h>
+#include <libc/nt/enum/pageflags.h>
+#include <libc/nt/memory.h>
+#endif
 
 namespace {
 	int bind(uint32_t, uint8_t, const qsim_env_entry_t*, size_t) {
@@ -24,6 +35,24 @@ namespace {
 
 	__attribute__((noinline)) void hang(void*) {
 		for (;;) asm volatile("" ::: "memory");
+	}
+
+	volatile bool stop_recursing = false;
+
+	__attribute__((noinline)) void recurse() {
+		volatile char frame[2048];
+		frame[0] = 1;
+		if (!stop_recursing) recurse();
+		stop_recursing = frame[0] != 0;
+	}
+
+	void overflow(void* stack_top) {
+#if defined(__aarch64__)
+		asm volatile("mov sp, %0; blr %1; brk #0" : : "r"(stack_top), "r"(&recurse) : "memory");
+#else
+		asm volatile("mov %0, %%rsp; call *%1; ud2" : : "r"(stack_top), "r"(&recurse) : "memory");
+#endif
+		__builtin_unreachable();
 	}
 
 	constexpr qsim_image_api_t broken{QSIM_IMAGE_ABI_VERSION, bind, fault};
@@ -64,6 +93,42 @@ namespace {
 		crash::set_watchdog_limit_ms(previous);
 		ASSERT_FALSE(returned);
 		ASSERT_EQ(capture.cause, crash::Cause::HANG);
+		const auto report = crash::report(capture, 1, 0, 1);
+		EXPECT_NE(report.find("test_crash_containment.cpp:"), std::string::npos) << report;
+
+		crash::Capture next;
+		EXPECT_TRUE(crash::run_guarded([](void*) {}, nullptr, next));
+	}
+
+	TEST(CrashContainment, RecoversFromCoroutineStackOverflow) {
+		namespace crash                  = firmware::crash;
+		constexpr std::size_t stack_size = 256 * 1024;
+		const std::size_t     page       = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+		auto*                 stack =
+			static_cast<char*>(mmap(nullptr, stack_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+		ASSERT_NE(stack, MAP_FAILED);
+		// Leave room below the guard for exception delivery on Windows.
+		char* guard = stack + 64 * 1024;
+		bool  protected_stack;
+#if defined(__COSMOPOLITAN__) && defined(__x86_64__)
+		if (IsWindows()) {
+			uint32_t old;
+			protected_stack = VirtualProtect(guard, page, kNtPageReadwrite | kNtPageGuard, &old);
+		} else
+#endif
+		{
+			protected_stack = mprotect(guard, page, PROT_NONE) == 0;
+		}
+		crash::Capture capture;
+		const bool     returned = !protected_stack || crash::run_guarded(overflow, stack + stack_size, capture);
+		EXPECT_EQ(munmap(stack, stack_size), 0);
+		ASSERT_TRUE(protected_stack);
+		ASSERT_FALSE(returned);
+#if defined(__COSMOPOLITAN__) && defined(__x86_64__)
+		if (IsWindows()) {
+			EXPECT_EQ(capture.cause, crash::Cause::STACK_OVERFLOW);
+		}
+#endif
 		const auto report = crash::report(capture, 1, 0, 1);
 		EXPECT_NE(report.find("test_crash_containment.cpp:"), std::string::npos) << report;
 

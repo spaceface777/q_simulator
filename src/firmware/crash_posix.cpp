@@ -18,9 +18,13 @@
 #ifdef __COSMOPOLITAN__
 #include <libc/dce.h>
 #ifdef __x86_64__
+#include <libc/nt/enum/exceptionhandleractions.h>
 #include <libc/nt/enum/memflags.h>
 #include <libc/nt/enum/pageflags.h>
+#include <libc/nt/enum/status.h>
 #include <libc/nt/memory.h>
+#include <libc/nt/signals.h>
+#include <libc/nt/struct/ntexceptionrecord.h>
 #endif
 #endif
 
@@ -111,6 +115,37 @@ namespace firmware::crash {
 			siglongjmp(current->jump, 1);
 		}
 
+#if defined(__COSMOPOLITAN__) && defined(__x86_64__)
+		// A Windows guard page becomes writable before the exception is delivered,
+		// giving the exception dispatcher space on the exhausted coroutine stack.
+		int32_t __attribute__((ms_abi)) stack_overflow(NtExceptionPointers* exception) {
+			Guard*      guard  = current;
+			const auto& record = *exception->ExceptionRecord;
+			if (!guard || !guard->active || record.ExceptionCode != kNtStatusGuardPageViolation ||
+				record.NumberParameters < 2)
+				return kNtExceptionContinueSearch;
+
+			const auto& registers     = *exception->ContextRecord;
+			const auto  fault_address = record.ExceptionInformation[1];
+			// A stack probe may touch the guard before moving the stack pointer.
+			NtMemoryBasicInformation fault{}, stack{};
+			if (!VirtualQuery(reinterpret_cast<const void*>(fault_address), &fault, sizeof(fault)) ||
+				!VirtualQuery(reinterpret_cast<const void*>(registers.Rsp), &stack, sizeof(stack)) ||
+				fault.AllocationBase != stack.AllocationBase)
+				return kNtExceptionContinueSearch;
+
+			guard->active       = 0;
+			Capture& capture    = guard->capture;
+			capture.cause       = Cause::STACK_OVERFLOW;
+			capture.signal      = SIGSEGV;
+			capture.address     = fault_address;
+			capture.frames[0]   = registers.Rip;
+			capture.frame_count = 1;
+			walk_frames(capture, registers.Rbp, registers.Rsp, read_memory, strip);
+			resume();
+		}
+#endif
+
 		void handle(int signal, siginfo_t* info, void* raw) {
 			const int  saved_errno = errno;
 			const bool hang        = signal == WATCHDOG_SIGNAL;
@@ -168,6 +203,11 @@ namespace firmware::crash {
 			action.sa_flags = SA_SIGINFO | SA_ONSTACK;
 			if (sigaction(WATCHDOG_SIGNAL, &action, &previous[WATCHDOG_SIGNAL]) != 0)
 				throw std::system_error(errno, std::generic_category(), "install firmware watchdog handler");
+#if defined(__COSMOPOLITAN__) && defined(__x86_64__)
+			if (IsWindows() &&
+				!AddVectoredExceptionHandler(1, reinterpret_cast<NtVectoredExceptionHandler>(&stack_overflow)))
+				throw std::runtime_error("install firmware stack overflow handler");
+#endif
 			watchdog::start(interrupt);
 		}
 

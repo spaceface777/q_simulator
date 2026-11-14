@@ -6,7 +6,7 @@
 #include <string>
 
 namespace firmware::crash {
-	enum class Cause : uint8_t { FAULT, HANG };
+	enum class Cause : uint8_t { FAULT, HANG, STACK_OVERFLOW };
 	inline constexpr std::size_t MAX_FRAMES = 64;
 
 	struct Capture {

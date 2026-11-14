@@ -80,6 +80,7 @@ It also returns 1 when firmware crashes or the simulation cannot finish, and 2 w
 After a firmware fault or watchdog timeout, the world stops that module and continues the scenario.
 Keep the matching `world.exe.dbg` beside the executable for source lines in crash reports.
 Set `QSIM_WATCHDOG_MS` to change the five-second grant watchdog limit. Set it to zero to disable the watchdog.
+Rebuild Windows firmware with the updated SDK to enable coroutine stack-overflow recovery.
 
 Each scenario supplies `[scenario].duration`.
 If the run needs assertions, set `properties` to an LTLf file relative to the scenario.

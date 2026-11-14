@@ -60,6 +60,7 @@ namespace firmware::crash {
 
 	std::string summary(const Capture& capture) {
 		if (capture.cause == Cause::HANG) return "watchdog timeout";
+		if (capture.cause == Cause::STACK_OVERFLOW) return "stack overflow";
 		return description(capture.signal);
 	}
 
