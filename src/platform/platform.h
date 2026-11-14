@@ -187,6 +187,7 @@ namespace platform {
 
 		uint64_t    last_heartbeat_global_tick = 0;
 		bool        heartbeat_warned           = false;
+		bool        crashed                    = false;
 		bool        heartbeat_failed           = false;
 		bool        rate_stopped               = false;
 		std::string stop_reason;
@@ -284,7 +285,7 @@ namespace platform {
 		void pause_application(module::ModuleId id, uint64_t tick);
 
 		void stop_application(uint64_t tick, module::ModuleId id, std::string reason, Bucket cause,
-							  bool heartbeat_failure);
+							  bool heartbeat_failure, bool diagnose = true);
 
 	public:
 		explicit Manager(world::State& world, module::Changes* changes = nullptr);
@@ -336,6 +337,7 @@ namespace platform {
 
 		[[nodiscard]] Lifecycle lifecycle(module::ModuleId id) const;
 
+		void application_crashed(uint64_t tick, module::ModuleId id, std::string reason);
 		[[nodiscard]] const std::string& stop_reason(module::ModuleId id) const;
 
 		[[nodiscard]] bool is_paused(module::ModuleId id, uint64_t tick) const;

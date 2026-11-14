@@ -28,6 +28,7 @@ namespace firmware {
 
 	void InProcessBackend::execute_epoch(std::span<ExecutionGrant> grants) {
 		for (auto& grant : grants) {
+			grant.crash.reset();
 			quercus_mailbox_clear(&grant.outbound);
 			if (!grant.granted) continue;
 			auto& image = instances_[grant.module.raw()];
@@ -36,7 +37,29 @@ namespace firmware {
 			const uint64_t start = image.time;
 			image.time += grant.delta_us;
 			if (image.next_wake > image.time && quercus_mailbox_count(&grant.inbound) == 0) continue;
-			const int status = image.api->run(start, image.time, &grant.inbound, &grant.outbound, &image.next_wake);
+
+			struct Run {
+				Instance&       image;
+				ExecutionGrant& grant;
+				uint64_t        start;
+				int             status = 0;
+			} call{image, grant, start};
+
+			crash::Capture capture;
+			if (!crash::run_guarded(
+					[](void* data) {
+						auto& run  = *static_cast<Run*>(data);
+						run.status = run.image.api->run(run.start, run.image.time, &run.grant.inbound,
+														&run.grant.outbound, &run.image.next_wake);
+					},
+					&call, capture)) {
+				image.api = nullptr;
+				quercus_mailbox_clear(&grant.outbound);
+				grant.crash          = capture;
+				grant.module_time_us = image.time;
+				continue;
+			}
+			const int status = call.status;
 			if (status != 0) throw failure(grant.module, "run returned " + std::to_string(status));
 			if (!quercus_mailbox_valid(&grant.outbound)) throw failure(grant.module, "invalid output batch");
 		}

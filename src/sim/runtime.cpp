@@ -566,8 +566,20 @@ namespace sim {
 		platform_->prepare_tick(global_tick_);
 		backend_->execute_epoch(grants_);
 
-		for (ModuleRuntime& instance : modules_) {
-			if (instance.active && instance.retire_after_ack) retire_module(instance.id, global_tick_);
+		for (std::size_t index = 0; index < modules_.size(); ++index) {
+			ModuleRuntime& instance = modules_[index];
+			const auto&    grant    = grants_[index];
+			if (grant.crash) {
+				firmware_crashed_ = true;
+				std::cout.flush();
+				std::cerr << firmware::crash::report(*grant.crash, instance.id.raw(), global_tick_, grant.module_time_us)
+						  << std::flush;
+				platform_->application_crashed(global_tick_, instance.id, firmware::crash::summary(*grant.crash));
+				quiesce_module_for_stop(instance, module_ticks_[instance.id.raw()], std::nullopt);
+				retire_module(instance.id, global_tick_);
+			} else if (instance.active && instance.retire_after_ack) {
+				retire_module(instance.id, global_tick_);
+			}
 		}
 		for (std::size_t index = 0; index < modules_.size(); index++) {
 			ModuleRuntime&                  instance = modules_[index];

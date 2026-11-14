@@ -61,7 +61,7 @@ namespace {
 				  << "\n"
 				  << "Exit codes:\n"
 				  << "  0  every property held\n"
-				  << "  1  a property did not hold, or the run could not be completed\n"
+				  << "  1  a property did not hold, firmware crashed, or the run could not finish\n"
 				  << "  2  the scenario or configuration could not be read\n"
 				  << std::endl;
 	}
@@ -256,7 +256,7 @@ int main(int argc, char const* argv[]) {
 	}
 
 	const std::size_t                      unclear = runtime.properties_unresolved();
-	const bool                             failed  = runtime.failed() || timed_out || unclear > 0;
+	const bool                             failed  = runtime.failed() || runtime.firmware_crashed() || timed_out || unclear > 0;
 	const std::size_t                      total   = runtime.properties_total();
 	const std::size_t                      broken  = runtime.properties_failed();
 	const uint64_t                         ticks   = runtime.tick();
@@ -332,7 +332,7 @@ int main(int argc, char const* argv[]) {
 		} else if (broken == 0 && unclear > 0) {
 			std::cerr << unclear << " of " << total << " properties were undecided when the trace ended after " << ticks
 					  << " ticks; extend the scenario or bound the obligation" << std::endl;
-		} else {
+		} else if (broken > 0) {
 			std::cerr << broken << " of " << total << " properties failed after " << ticks << " ticks";
 			if (unclear > 0) std::cerr << ", and " << unclear << " were left undecided";
 			std::cerr << std::endl;

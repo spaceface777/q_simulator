@@ -13,6 +13,7 @@ add_executable(tests
     ltl/test_observation.cpp
     module/test_types.cpp
     sim/scripted_image.cpp
+    sim/test_crash_containment.cpp
     sim/test_runtime.cpp
     sim/test_determinism.cpp
     rpc/test_frame.cpp

@@ -10,6 +10,7 @@
 #include <quercus/sim_instance.h>
 
 #include "../module/types.h"
+#include "crash.h"
 
 namespace firmware {
 
@@ -20,11 +21,13 @@ namespace firmware {
 	};
 
 	struct ExecutionGrant {
-		module::ModuleId  module;
-		bool              granted  = false;
-		uint32_t          delta_us = 0;
-		quercus_mailbox_t inbound{};
-		quercus_mailbox_t outbound{};
+		module::ModuleId              module;
+		bool                          granted  = false;
+		uint32_t                      delta_us = 0;
+		quercus_mailbox_t             inbound{};
+		quercus_mailbox_t             outbound{};
+		std::optional<crash::Capture> crash{};
+		uint64_t                      module_time_us = 0;
 	};
 
 	class InProcessBackend {

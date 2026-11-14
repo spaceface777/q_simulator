@@ -109,6 +109,8 @@ endif()
 
 add_library(core STATIC
     src/firmware/inprocess_backend.cpp
+    src/firmware/crash_posix.cpp
+    src/firmware/crash_report.cpp
     src/sim/module_clock.cpp
     src/sim/runtime.cpp
     src/sim/pacing.cpp
@@ -139,6 +141,8 @@ target_link_libraries(core PUBLIC
 target_include_directories(core PUBLIC "${QUERCUS_SDK_ROOT}/include")
 
 target_compile_options(core PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
+set_source_files_properties(src/firmware/crash_posix.cpp PROPERTIES
+    COMPILE_OPTIONS -fno-omit-frame-pointer)
 
 if(QUERCUS_COSMOPOLITAN)
     add_library(world_entry OBJECT src/scenario/main.cpp src/firmware/linked_world.cpp)

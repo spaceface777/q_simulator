@@ -93,8 +93,9 @@ namespace sim {
 		uint64_t                                global_tick_ = 0;
 		std::array<uint64_t, MODULE_TABLE_SIZE> module_ticks_{};
 		int64_t                                 budget_us_ = 0;
-		bool                                    running_   = false;
-		bool                                    started_   = false;
+		bool                                    firmware_crashed_ = false;
+		bool                                    running_          = false;
+		bool                                    started_          = false;
 
 		double                                   effective_speed_      = 0.0;
 		bool                                     effective_speed_seen_ = false;
@@ -176,6 +177,7 @@ namespace sim {
 			return module_ticks_[module.raw()];
 		}
 
+		[[nodiscard]] bool firmware_crashed() const noexcept { return firmware_crashed_; }
 		[[nodiscard]] bool failed() const noexcept;
 
 		[[nodiscard]] bool halted() const noexcept { return halt_on_failure_ && failed(); }
