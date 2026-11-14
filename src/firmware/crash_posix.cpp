@@ -1,7 +1,9 @@
 #define _COSMO_SOURCE
 #include "crash.h"
 #include "crash_walk.h"
+#include "crash_watchdog.h"
 
+#include <atomic>
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -24,10 +26,12 @@
 
 namespace firmware::crash {
 	namespace {
+		constexpr int WATCHDOG_SIGNAL = SIGUSR2;
 
 		struct Guard {
 			sigjmp_buf            jump;
 			Capture&              capture;
+			uint64_t              call;
 			volatile sig_atomic_t active;
 		};
 
@@ -38,9 +42,12 @@ namespace firmware::crash {
 		alignas(uint32_t) thread_local char scratch_random_state[128];
 		alignas(16) thread_local char signal_stack[128 * 1024];
 		alignas(16) thread_local char resume_stack[4096];
-		std::once_flag   installed;
-		struct sigaction previous[NSIG];
-		int              probe[2] = {-1, -1};
+		std::once_flag        installed;
+		struct sigaction      previous[NSIG];
+		int                   probe[2] = {-1, -1};
+		std::mutex            interrupt_mutex;
+		pthread_t             watched_thread;
+		std::atomic<uint64_t> interrupted_call{0};
 
 		uintptr_t strip(uintptr_t address) noexcept {
 #if defined(__aarch64__)
@@ -77,7 +84,8 @@ namespace firmware::crash {
 			return ::read(probe[0], complete ? out : discard, written) == written && complete;
 		}
 
-		void fill(Capture& capture, int signal, const siginfo_t* info, const ucontext_t& context) noexcept {
+		void fill(Capture& capture, Cause cause, int signal, const siginfo_t* info,
+				  const ucontext_t& context) noexcept {
 			const auto& registers = context.uc_mcontext;
 #if defined(__aarch64__)
 			const uintptr_t pc = strip(registers.pc);
@@ -89,8 +97,9 @@ namespace firmware::crash {
 			const auto  fp   = static_cast<uintptr_t>(regs[REG_RBP]);
 			const auto  sp   = static_cast<uintptr_t>(regs[REG_RSP]);
 #endif
-			capture.cause  = Cause::FAULT;
-			capture.signal = signal;
+			capture.cause    = cause;
+			capture.signal   = signal;
+			capture.limit_ms = cause == Cause::HANG ? watchdog_limit_ms() : 0;
 			capture.address =
 				info && (signal == SIGSEGV || signal == SIGBUS) ? reinterpret_cast<uintptr_t>(info->si_addr) : 0;
 			capture.frames[0]   = pc;
@@ -103,12 +112,13 @@ namespace firmware::crash {
 		}
 
 		void handle(int signal, siginfo_t* info, void* raw) {
-			const int saved_errno = errno;
-			Guard*    guard       = current;
-			if (guard && guard->active) {
+			const int  saved_errno = errno;
+			const bool hang        = signal == WATCHDOG_SIGNAL;
+			Guard*     guard       = current;
+			if (guard && guard->active && (!hang || guard->call == interrupted_call.load(std::memory_order_acquire))) {
 				guard->active = 0;
 				auto& context = *static_cast<ucontext_t*>(raw);
-				fill(guard->capture, signal, info, context);
+				fill(guard->capture, hang ? Cause::HANG : Cause::FAULT, signal, info, context);
 #if defined(__COSMOPOLITAN__) && defined(__x86_64__)
 				if (IsWindows()) resume();
 #endif
@@ -124,12 +134,19 @@ namespace firmware::crash {
 				context.uc_mcontext.gregs[REG_RSP] = top - 8;
 				context.uc_mcontext.gregs[REG_RBP] = 0;
 #endif
-			} else {
+			} else if (!hang) {
 				// A simulator fault keeps its original signal disposition.
 				sigaction(signal, &previous[signal], nullptr);
 				if (signal == SIGTRAP || !info || info->si_code <= 0) raise(signal);
 			}
 			errno = saved_errno;
+		}
+
+		void interrupt(uint64_t call) {
+			std::lock_guard lock(interrupt_mutex);
+			if (call != watchdog::watched()) return;
+			interrupted_call.store(call, std::memory_order_release);
+			pthread_kill(watched_thread, WATCHDOG_SIGNAL);
 		}
 
 		void install() {
@@ -148,6 +165,10 @@ namespace firmware::crash {
 				if (sigaction(signal, &action, &previous[signal]) != 0)
 					throw std::system_error(errno, std::generic_category(), "install firmware fault handler");
 			}
+			action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+			if (sigaction(WATCHDOG_SIGNAL, &action, &previous[WATCHDOG_SIGNAL]) != 0)
+				throw std::system_error(errno, std::generic_category(), "install firmware watchdog handler");
+			watchdog::start(interrupt);
 		}
 
 		void prepare_thread() {
@@ -170,10 +191,16 @@ namespace firmware::crash {
 	bool run_guarded(void (*call)(void*), void* argument, Capture& capture) {
 		std::call_once(installed, install);
 		prepare_thread();
-		Guard guard{{}, capture, 0};
+		const uint32_t limit = watchdog_limit_ms();
+		Guard          guard{{}, capture, limit ? watchdog::next_call() : 0, 0};
 		capture.frame_count = 0;
 		current             = &guard;
 		if (sigsetjmp(guard.jump, 0) == 0) {
+			if (limit) {
+				std::lock_guard lock(interrupt_mutex);
+				watched_thread = pthread_self();
+				watchdog::watch(guard.call);
+			}
 			guard.active = 1;
 			call(argument);
 			guard.active = 0;
@@ -181,6 +208,7 @@ namespace firmware::crash {
 			pthread_sigmask(SIG_SETMASK, &outside_mask, nullptr);
 			setstate(host_random_state);
 		}
+		watchdog::watch(0);
 		current = nullptr;
 		return !capture.frame_count;
 	}

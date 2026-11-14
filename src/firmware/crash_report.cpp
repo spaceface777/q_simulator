@@ -59,6 +59,7 @@ namespace firmware::crash {
 	} // namespace
 
 	std::string summary(const Capture& capture) {
+		if (capture.cause == Cause::HANG) return "watchdog timeout";
 		return description(capture.signal);
 	}
 
@@ -66,6 +67,7 @@ namespace firmware::crash {
 		std::ostringstream text;
 		text << "Module " << module << " crashed: " << summary(capture) << " at tick " << tick << " (module time "
 			 << module_time_us << " us)\n";
+		if (capture.cause == Cause::HANG) text << "Grant exceeded " << capture.limit_ms << " ms\n";
 		if (capture.address) text << "Fault address 0x" << std::hex << capture.address << std::dec << '\n';
 
 		static Symbols  symbols;

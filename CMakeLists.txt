@@ -114,6 +114,7 @@ add_library(core STATIC
     src/firmware/inprocess_backend.cpp
     src/firmware/crash_posix.cpp
     src/firmware/crash_report.cpp
+    src/firmware/crash_watchdog.cpp
     ${backtrace_sources}
     src/sim/module_clock.cpp
     src/sim/runtime.cpp

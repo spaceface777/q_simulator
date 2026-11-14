@@ -22,6 +22,10 @@ namespace {
 		return 0;
 	}
 
+	__attribute__((noinline)) void hang(void*) {
+		for (;;) asm volatile("" ::: "memory");
+	}
+
 	constexpr qsim_image_api_t broken{QSIM_IMAGE_ABI_VERSION, bind, fault};
 	constexpr qsim_image_api_t working{QSIM_IMAGE_ABI_VERSION, bind, healthy};
 
@@ -49,5 +53,21 @@ namespace {
 		ASSERT_EQ(size, 1);
 		ASSERT_NE(data, nullptr);
 		EXPECT_EQ(*data, 2);
+	}
+
+	TEST(CrashContainment, WatchdogInterruptsAndReportsGrant) {
+		namespace crash         = firmware::crash;
+		const uint32_t previous = crash::watchdog_limit_ms();
+		crash::set_watchdog_limit_ms(30);
+		crash::Capture capture;
+		const bool     returned = crash::run_guarded(hang, nullptr, capture);
+		crash::set_watchdog_limit_ms(previous);
+		ASSERT_FALSE(returned);
+		ASSERT_EQ(capture.cause, crash::Cause::HANG);
+		const auto report = crash::report(capture, 1, 0, 1);
+		EXPECT_NE(report.find("test_crash_containment.cpp:"), std::string::npos) << report;
+
+		crash::Capture next;
+		EXPECT_TRUE(crash::run_guarded([](void*) {}, nullptr, next));
 	}
 } // namespace
