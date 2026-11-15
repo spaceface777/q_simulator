@@ -11,6 +11,7 @@ Makefile
 *.cmake
 */*.cmake
 !cmake/libbacktrace.cmake
+!test/unit_suites.cmake
 *.tcl
 bin/
 build/

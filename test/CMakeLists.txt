@@ -36,8 +36,58 @@ set_property(TARGET tests APPEND PROPERTY LINK_DEPENDS "${sim_core_object}")
 
 target_compile_options(tests PRIVATE ${COMPILATION_FLAGS} ${test_compile_options} -fno-omit-frame-pointer)
 
-if(QUERCUS_COSMOPOLITAN AND CMAKE_HOST_APPLE)
-    add_test(NAME tests COMMAND sh $<TARGET_FILE:tests>)
-else()
-    add_test(NAME tests COMMAND tests)
+# === Tests ===
+# ctest names every test by its group: unit.<suite>, world.<check> and applet.<applet>.<scenario>.
+# Select a group with -L unit, -L world or -L applet, and single tests with -R.
+
+if(QUERCUS_COSMOPOLITAN AND NOT CMAKE_HOST_WIN32)
+    # APE executables without a shebang start only through a shell.
+    set(unit_emulator sh)
 endif()
+set(unit_suites "${CMAKE_CURRENT_BINARY_DIR}/unit_suites.cmake")
+if(NOT EXISTS "${unit_suites}")
+    file(WRITE "${unit_suites}" "add_test(unit.NOT_BUILT \"${CMAKE_COMMAND}\" -E false)\n")
+endif()
+add_custom_command(TARGET tests POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" "-DEMULATOR=${unit_emulator}" "-DEXECUTABLE=$<TARGET_FILE:tests>"
+        "-DOUTPUT=${unit_suites}" -P "${CMAKE_CURRENT_SOURCE_DIR}/unit_suites.cmake"
+    VERBATIM)
+set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${unit_suites}")
+
+# The world and applet tests link the test applets into worlds. qbuild builds them first, for the
+# simulator's toolchain: Zephyr and west must be set up as for any other Core 1 application.
+find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
+set(applets_dir "${CMAKE_SOURCE_DIR}/test/applets")
+if(QUERCUS_COSMOPOLITAN)
+    set(applet_toolchain cosmocc)
+    set(firmware_dir "${applets_dir}/out")
+else()
+    set(applet_toolchain host)
+    set(firmware_dir "${applets_dir}/out/host")
+endif()
+add_test(NAME applet.build
+    COMMAND "${Python3_EXECUTABLE}" "${applets_dir}/q_sdk/qbuild" sim --toolchain ${applet_toolchain}
+    WORKING_DIRECTORY "${applets_dir}")
+set_tests_properties(applet.build PROPERTIES FIXTURES_SETUP applets LABELS applet TIMEOUT 3600)
+
+foreach(check repeatability command_line gui)
+    add_test(NAME world.${check}
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_worlds.py"
+            "${CMAKE_BINARY_DIR}/qsim" "${firmware_dir}" ${check})
+    set_tests_properties(world.${check} PROPERTIES FIXTURES_REQUIRED applets LABELS world
+        SKIP_RETURN_CODE 77)
+endforeach()
+
+file(GLOB scenarios LIST_DIRECTORIES true CONFIGURE_DEPENDS "${applets_dir}/*/scenarios/*")
+foreach(scenario IN LISTS scenarios)
+    if(NOT EXISTS "${scenario}/expected.txt")
+        continue()
+    endif()
+    get_filename_component(scenario_name "${scenario}" NAME)
+    get_filename_component(applet "${scenario}/../.." ABSOLUTE)
+    get_filename_component(applet "${applet}" NAME)
+    add_test(NAME applet.${applet}.${scenario_name}
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_scenario.py"
+            "${CMAKE_BINARY_DIR}/qsim" "${firmware_dir}" "${scenario}")
+    set_tests_properties(applet.${applet}.${scenario_name} PROPERTIES FIXTURES_REQUIRED applets LABELS applet)
+endforeach()

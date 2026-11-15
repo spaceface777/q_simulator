@@ -137,19 +137,22 @@ See [Build and measure optimized worlds](docs/OPTIMIZATION.md) for profile train
 
 ## Tests
 
-Run the unit tests.
+ctest runs three groups of tests. Their names start with the group.
+
+| Group | Tests |
+| --- | --- |
+| `unit.<suite>` | One test for each GoogleTest suite of the simulator. |
+| `world.<check>` | Checks of the world executable: repeatable traces and settings, the command line, and the GUI. |
+| `applet.<applet>.<scenario>` | One test for each scenario of the [test applets](test/applets). `applet.build` builds the applets first. |
 
 ```sh
-ctest --test-dir build --output-on-failure
+ctest --test-dir build -j --output-on-failure
 ```
 
-Build the test applets, then run the world checks and an applet scenario.
-
-```sh
-(cd test/applets && q_sdk/qbuild sim)
-python3 test/test_worlds.py build/qsim test/applets/out
-python3 test/run_scenario.py build/qsim test/applets/out test/applets/crash/scenarios/segfault
-```
+Use `-L unit`, `-L world`, or `-L applet` to run one group, and `-R` to select tests by name.
+To run single unit tests, pass a GoogleTest filter to the test executable, for example `build/tests --gtest_filter='TraceEntry.*'`.
+The world and applet tests need the Zephyr setup from [Build a world](#build-a-world).
+`world.gui` reports that it skipped if the world cannot load SDL3. It uses the SDL3 dummy video driver.
 
 ### Applet scenarios
 
@@ -170,6 +173,23 @@ To see the output of a scenario, run it directly.
 ```sh
 python3 test/run_scenario.py --verbose build/qsim test/applets/out test/applets/crash/scenarios/segfault
 ```
+
+#### Test coverage
+
+Generate an HTML coverage report with a Debug build. The report includes the code that the world and applet tests run.
+[gcovr](https://gcovr.com) must use the `gcov` of the simulator's compiler.
+
+```sh
+cmake -S . -B build-coverage -G Ninja -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-coverage
+ctest --test-dir build-coverage -j
+mkdir -p build-coverage/coverage
+gcovr -r . build-coverage --filter src/ --exclude-throw-branches \
+    --gcov-executable "sh $COSMOCC_TOOLCHAIN_PATH/bin/$(uname -m | sed s/arm64/aarch64/)-linux-cosmo-gcov" \
+    --html-details build-coverage/coverage/index.html
+```
+
+For a host-compiler build, add `-DQSIM_COSMOCC=OFF` and omit `--gcov-executable`.
 
 ## Support
 
