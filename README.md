@@ -118,6 +118,7 @@ Linux artifacts also contain a glibc loader helper and its SHA-256 file.
 For a Linux GUI world, use a cosmocc build with the `COSMO_DLOPEN_HELPER` patch.
 To embed SDL3, put the files from the matching artifact in a directory.
 Set `QSIM_SDL3_ASSETS` to that directory when you configure CMake.
+Without it, the world build uses `native/<os>-<cpu>` in the cosmocc toolchain if it exists, for example `native/linux-amd64`.
 Then build the simulator and assemble the world. The world extracts the files to the user cache on a GUI run.
 To let Ctrl+C close the GUI and flush the trace, rebuild the firmware with the updated SDK.
 Intel macOS supports headless runs.

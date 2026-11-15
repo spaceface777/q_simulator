@@ -47,7 +47,10 @@ def embed_sdl3(world: Path, toolchain: Path, system: str, arch: str) -> None:
     if name is None:
         return
     configured = "@QSIM_SDL3_ASSETS@"
-    assets = Path(configured) if configured else toolchain / "share" / "qsim" / "sdl3" / f"{system.lower()}-{arch}"
+    # The toolchain keeps native libraries for each platform in native/<os>-<cpu>.
+    platform = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}[system] + "-" + \
+        {"aarch64": "arm64", "x86_64": "amd64"}[arch]
+    assets = Path(configured) if configured else toolchain / "native" / platform
     if not configured and not assets.exists():
         return
     files = (name, "dlopen-helper") if system == "Linux" else (name,)
