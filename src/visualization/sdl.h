@@ -2,7 +2,9 @@
 #define QSIM_VISUALIZATION_SDL_H
 
 #include <SDL3/SDL.h>
+#ifdef __COSMOPOLITAN__
 #include <libc/dce.h>
+#endif
 
 namespace visualization {
 
@@ -11,11 +13,11 @@ namespace visualization {
 
 	template <typename Result, typename... Args> struct SdlFunction<Result (*)(Args...)> {
 		Result (*system_v)(Args...) = nullptr;
-#if defined(__x86_64__)
+#if defined(__COSMOPOLITAN__) && defined(__x86_64__)
 		Result(__attribute__((ms_abi)) * windows)(Args...) = nullptr;
 #endif
 		Result operator()(Args... args) const {
-#if defined(__x86_64__)
+#if defined(__COSMOPOLITAN__) && defined(__x86_64__)
 			if (IsWindows()) return windows(args...);
 #endif
 			return system_v(args...);

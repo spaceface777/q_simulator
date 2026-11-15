@@ -158,7 +158,7 @@ namespace visualization {
 	}
 
 	static void render_led(int module_x, int module_y, module::LedColor color, settings::ModuleAngle rotation) {
-		int led_rel_x, led_rel_y;
+		int led_rel_x = 0, led_rel_y = 0;
 		int offset = scale_within_module(20);
 		switch (rotation) {
 		case settings::ModuleAngle::NORMAL:
@@ -206,7 +206,7 @@ namespace visualization {
 
 	static void render_rfid(int module_x, int module_y, int rfid_state, const world::Calibration& calibration,
 							settings::ModuleAngle rotation) {
-		float        rfid_rel_x, rfid_rel_y;
+		float        rfid_rel_x = 0, rfid_rel_y = 0;
 		const double progress  = static_cast<double>(calibration.hardware.rfid_position_um) /
 								 static_cast<double>(calibration.endpoint_to_junction_um);
 		const float  half_size = scale_within_module(75.0 * world::RFID_HALF_SMALL_BELT_FRACTION);
@@ -244,7 +244,7 @@ namespace visualization {
 
 	static void render_big_belt(int module_x, int module_y, module::BeltSpeed speed, bool is_running,
 								settings::ModuleAngle rotation) {
-		float width, height, belt_x, belt_y;
+		float width = 0, height = 0, belt_x = 0, belt_y = 0;
 
 		switch (rotation) {
 		case settings::ModuleAngle::NORMAL:
@@ -313,7 +313,7 @@ namespace visualization {
 
 	static void render_small_belt(float module_x, float module_y, module::BeltSpeed speed, bool is_running,
 								  settings::ModuleAngle rotation) {
-		float width, height, belt_x, belt_y;
+		float width = 0, height = 0, belt_x = 0, belt_y = 0;
 
 		switch (rotation) {
 		case settings::ModuleAngle::NORMAL:
@@ -393,7 +393,7 @@ namespace visualization {
 
 	static void render_laser(float module_x, float module_y, bool power, int detection, int64_t position_um,
 							 int64_t leg_length_um, settings::ModuleAngle rotation) {
-		float       x1, y1, x2, y2;
+		float       x1 = 0, y1 = 0, x2 = 0, y2 = 0;
 		const float position =
 			scale_within_module(90.0 * static_cast<double>(position_um) / static_cast<double>(leg_length_um));
 

@@ -73,18 +73,23 @@ def main() -> None:
         contents = layout.read_bytes()
         firmware = images(layout, contents)
         output = args.output.resolve()
+        # A Cosmopolitan world keeps its symbols in a separate debug file.
+        cosmopolitan = "@QUERCUS_COSMOPOLITAN@" == "ON"
         debug = output.with_name(output.name + ".dbg")
         toolchain = Path(os.getenv("COSMOCC_TOOLCHAIN_PATH", "@COSMOCC_TOOLCHAIN_PATH@"))
         tools = toolchain / "bin"
         arch = "@CMAKE_SYSTEM_PROCESSOR@"
         simulator = Path(__file__).resolve().with_name("qsim.o")
-        if os.name == "nt":
-            shell = tools / "bash.exe"
-            objcopy = tools / f"{arch}-linux-cosmo-objcopy.exe"
-        else:
-            shell = "sh"
-            objcopy = tools / f"{arch}-linux-cosmo-objcopy"
-        compiler = tools / f"{arch}-unknown-cosmo-c++"
+        # cosmocc's compiler driver is a shell script, and its binary tools are APE executables,
+        # which start through a shell outside Windows and by their .exe name on Windows.
+        compile = [Path("@world_cxx@")]
+        objcopy = [Path("@world_objcopy@")]
+        if cosmopolitan and os.name == "nt":
+            compile.insert(0, tools / "bash.exe")
+            objcopy = [objcopy[0].with_name(objcopy[0].name + ".exe")]
+        elif cosmopolitan:
+            compile.insert(0, "sh")
+            objcopy.insert(0, "sh")
         if output in [layout, simulator, *firmware] or debug in [layout, simulator, *firmware]:
             raise ValueError("output would overwrite an input")
 
@@ -99,25 +104,28 @@ def main() -> None:
             (scratch / "firmware_digests").write_bytes(b"".join(digests[image] for image in firmware))
             for name in ("layout.toml", "firmware_digests"):
                 subprocess.run([
-                    *([shell] if os.name != "nt" else []), objcopy, "-I", "binary",
+                    *objcopy, "-I", "binary",
                     "-O", {"aarch64": "elf64-littleaarch64", "x86_64": "elf64-x86-64"}[arch],
                     "-B", {"aarch64": "aarch64", "x86_64": "i386:x86-64"}[arch],
                     "--rename-section", ".data=.rodata,alloc,load,readonly,data,contents",
                     name, name + ".o",
                 ], cwd=scratch, check=True)
             world = scratch / "world.exe"
+            # Firmware objects are not position independent.
+            options = ["-mtiny"] if cosmopolitan else ["-no-pie", "-ldl"]
             subprocess.run([
-                shell, compiler, "-mtiny", "-o", world, simulator,
+                *compile, *options, "-o", world, simulator,
                 scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread", "-lgcov",
             ], check=True)
-            symbols = scratch / "world.exe.dbg"
-            if "@CMAKE_HOST_SYSTEM_NAME@" == "Darwin" and arch == "aarch64":
-                subprocess.run([
-                    "sh", tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M",
-                    tools / "ape-m1.c", "-o", world, symbols,
-                ], check=True)
-            embed_sdl3(world, toolchain, "@CMAKE_HOST_SYSTEM_NAME@", arch)
-            os.replace(symbols, debug)
+            if cosmopolitan:
+                symbols = scratch / "world.exe.dbg"
+                if "@CMAKE_HOST_SYSTEM_NAME@" == "Darwin" and arch == "aarch64":
+                    subprocess.run([
+                        "sh", tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M",
+                        tools / "ape-m1.c", "-o", world, symbols,
+                    ], check=True)
+                embed_sdl3(world, toolchain, "@CMAKE_HOST_SYSTEM_NAME@", arch)
+                os.replace(symbols, debug)
             os.replace(world, output)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"qsim: {error}\n")

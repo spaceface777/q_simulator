@@ -11,13 +11,18 @@
 #include <system_error>
 #include <unistd.h>
 
+#ifdef __COSMOPOLITAN__
 __static_yoink("zipos");
+#endif
 
 namespace visualization {
 	namespace fs = std::filesystem;
 	SdlApi sdl;
 
 	namespace {
+#ifdef __COSMOPOLITAN__
+		// A Cosmopolitan world carries SDL3 for its host in its zip archive, and extracts it to the
+		// user cache before loading it.
 
 		const char* library_name() {
 			if (IsWindows()) return "SDL3.dll";
@@ -84,6 +89,24 @@ namespace visualization {
 			return path;
 		}
 
+		void* open_library() {
+			const char*    name  = library_name();
+			const fs::path cache = cache_root() / "qsim" / "sdl3";
+			const fs::path path  = extract(cache, name);
+			if (IsLinux()) {
+				const fs::path helper = extract(cache, "dlopen-helper");
+				if (setenv("COSMO_DLOPEN_HELPER", helper.c_str(), 1) != 0)
+					throw std::system_error(errno, std::generic_category(),
+											"Could not set the SDL3 loader helper path");
+			}
+			void* library = cosmo_dlopen(path.c_str(), RTLD_NOW);
+			if (!library) {
+				const char* error = cosmo_dlerror();
+				throw std::runtime_error("Could not load " + path.string() + (error ? ": " + std::string(error) : ""));
+			}
+			return library;
+		}
+
 		template <typename Pointer> void bind(void* library, SdlFunction<Pointer>& function, const char* name) {
 			void* symbol = cosmo_dlsym(library, name);
 			if (!symbol) throw std::runtime_error(std::string("SDL3 is missing ") + name);
@@ -97,28 +120,40 @@ namespace visualization {
 			if (!function.system_v) throw std::runtime_error(std::string("Could not bind SDL3 function ") + name);
 		}
 
+		void close_library(void* library) {
+			cosmo_dlclose(library);
+		}
+#else
+		// A host-compiler world uses the system's SDL3.
+		void* open_library() {
+			for (const char* name : {"libSDL3.so.0", "libSDL3.so"}) {
+				if (void* library = dlopen(name, RTLD_NOW | RTLD_LOCAL)) return library;
+			}
+			const char* error = dlerror();
+			throw std::runtime_error(std::string("GUI support is unavailable without the system SDL3 library") +
+									 (error ? ": " + std::string(error) : ""));
+		}
+
+		template <typename Pointer> void bind(void* library, SdlFunction<Pointer>& function, const char* name) {
+			function.system_v = reinterpret_cast<Pointer>(dlsym(library, name));
+			if (!function.system_v) throw std::runtime_error(std::string("SDL3 is missing ") + name);
+		}
+
+		void close_library(void* library) {
+			dlclose(library);
+		}
+#endif
+
 	} // namespace
 
 	void load_sdl() {
-		const char*    name  = library_name();
-		const fs::path cache = cache_root() / "qsim" / "sdl3";
-		const fs::path path  = extract(cache, name);
-		if (IsLinux()) {
-			const fs::path helper = extract(cache, "dlopen-helper");
-			if (setenv("COSMO_DLOPEN_HELPER", helper.c_str(), 1) != 0)
-				throw std::system_error(errno, std::generic_category(), "Could not set the SDL3 loader helper path");
-		}
-		void* library = cosmo_dlopen(path.c_str(), RTLD_NOW);
-		if (!library) {
-			const char* error = cosmo_dlerror();
-			throw std::runtime_error("Could not load " + path.string() + (error ? ": " + std::string(error) : ""));
-		}
+		void* library = open_library();
 		try {
 #define QSIM_BIND_SDL(name) bind(library, sdl.name, #name);
 			QSIM_SDL_FUNCTIONS(QSIM_BIND_SDL)
 #undef QSIM_BIND_SDL
 		} catch (...) {
-			cosmo_dlclose(library);
+			close_library(library);
 			throw;
 		}
 	}

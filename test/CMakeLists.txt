@@ -30,13 +30,9 @@ add_executable(tests
     trace/test_trace.cpp)
 
 # Link the core that the world uses, already optimized, so the test link is an ordinary link.
-if(sim_core_object)
-    target_link_libraries(tests PRIVATE gtest core_interface "${sim_core_object}")
-    add_dependencies(tests qsim-core)
-    set_property(TARGET tests APPEND PROPERTY LINK_DEPENDS "${sim_core_object}")
-else()
-    target_link_libraries(tests PRIVATE gtest core)
-endif()
+target_link_libraries(tests PRIVATE gtest core_interface "${sim_core_object}")
+add_dependencies(tests qsim-core)
+set_property(TARGET tests APPEND PROPERTY LINK_DEPENDS "${sim_core_object}")
 
 # Resolve scenario fixtures independently of the test working directory.
 target_compile_definitions(tests PRIVATE REPO_ROOT="${CMAKE_SOURCE_DIR}")

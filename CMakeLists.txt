@@ -30,7 +30,8 @@ if(QUERCUS_COSMOPOLITAN)
 endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
 option(ENABLE_LTO "Enable LTO in optimized builds" ON)
-if(ENABLE_LTO)
+# The prelink below needs GCC's -flinker-output; other compilers build without LTO.
+if(ENABLE_LTO AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Only the core carries LTO bytecode. The qsim-core.o prelink below optimizes it once, and both
     # the world entry point and the tests link that result.
     set(sim_lto $<$<CONFIG:Release>:-flto=auto>)
@@ -171,7 +172,8 @@ target_compile_options(core PRIVATE ${COMPILATION_FLAGS} ${sim_lto} ${profile_fl
 set_source_files_properties(src/firmware/crash_posix.cpp PROPERTIES
     COMPILE_OPTIONS -fno-omit-frame-pointer)
 
-# Prelink the core into one relocatable object, so that its LTO work only runs once
+# Prelink the core into one relocatable object, so that its LTO work only runs once. Worlds and
+# the tests link this object.
 if(QUERCUS_COSMOPOLITAN)
     set(prelink_cxx "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-g++")
     # GCC can't prove libc++'s impossible std::string growth path unreachable, and warns about it.
@@ -181,50 +183,55 @@ if(QUERCUS_COSMOPOLITAN)
     else()
         set(cosmocc_abi -mno-red-zone -mno-tls-direct-seg-refs)
     endif()
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(world_cxx "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-unknown-cosmo-c++")
+    set(world_objcopy "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-objcopy")
+    set(world_definitions _COSMO_SOURCE)
+else()
     set(prelink_cxx "${CMAKE_CXX_COMPILER}")
-    # Released GCC (up to at least 16.2) crashes in lto-partition.cc when it partitions a relocatable
-    # link. Only the project's cosmocc carries the fix.
-    set(prelink_partition -flto-partition=none)
-endif()
-if(prelink_cxx)
-    set(sim_core_object "${CMAKE_BINARY_DIR}/qsim-core.o")
-    add_custom_command(OUTPUT "${sim_core_object}"
-        COMMAND "${prelink_cxx}" -nostdlib -r -O3 ${prelink_lto} ${prelink_partition} ${prelink_warnings}
-            ${profile_flags} ${cosmocc_abi} -o "${sim_core_object}" -Wl,--whole-archive $<TARGET_FILE:core> -Wl,--no-whole-archive
-        DEPENDS core
-        COMMAND_EXPAND_LISTS VERBATIM)
-    add_custom_target(qsim-core DEPENDS "${sim_core_object}")
-endif()
-
-if(QUERCUS_COSMOPOLITAN)
-    set(QSIM_SDL3_INCLUDE_DIR "" CACHE PATH "SDL3 include directory (optional checkout for offline builds)")
-    if(NOT QSIM_SDL3_INCLUDE_DIR)
-        FetchContent_Declare(sdl3_headers
-            URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
-            URL_HASH SHA256=f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-            SOURCE_SUBDIR quercus-headers-only)
-        FetchContent_MakeAvailable(sdl3_headers)
-        set(QSIM_SDL3_INCLUDE_DIR "${sdl3_headers_SOURCE_DIR}/include")
+    if(prelink_lto)
+        # Released GCC (up to at least 16.2) crashes in lto-partition.cc when it partitions a
+        # relocatable link. Only the project's cosmocc carries the fix.
+        set(prelink_partition -flto-partition=none)
     endif()
-    set(QSIM_SDL3_ASSETS "" CACHE PATH "Directory of prebuilt SDL3 artifacts for this platform")
-    add_library(world_entry OBJECT
-        src/scenario/main.cpp src/firmware/linked_world.cpp
-        src/visualization/buttons.cpp src/visualization/sdl.cpp src/visualization/visualization.cpp)
-    target_link_libraries(world_entry PRIVATE core_interface)
-    target_include_directories(world_entry SYSTEM PRIVATE "${QSIM_SDL3_INCLUDE_DIR}")
-    target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
-    target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}" _COSMO_SOURCE)
-
-    add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/qsim.o"
-        COMMAND "${prelink_cxx}" -nostdlib -r -o "${CMAKE_BINARY_DIR}/qsim.o"
-            $<TARGET_OBJECTS:world_entry> "${sim_core_object}"
-        DEPENDS world_entry $<TARGET_OBJECTS:world_entry> "${sim_core_object}"
-        COMMAND_EXPAND_LISTS VERBATIM)
-    add_custom_target(qsim-world ALL DEPENDS "${CMAKE_BINARY_DIR}/qsim.o")
-    configure_file(src/firmware/qsim.py qsim @ONLY)
+    set(world_cxx "${CMAKE_CXX_COMPILER}")
+    set(world_objcopy "${CMAKE_OBJCOPY}")
 endif()
+set(sim_core_object "${CMAKE_BINARY_DIR}/qsim-core.o")
+add_custom_command(OUTPUT "${sim_core_object}"
+    COMMAND "${prelink_cxx}" -nostdlib -r -O3 ${prelink_lto} ${prelink_partition} ${prelink_warnings}
+        ${profile_flags} ${cosmocc_abi} -o "${sim_core_object}" -Wl,--whole-archive $<TARGET_FILE:core> -Wl,--no-whole-archive
+    DEPENDS core
+    COMMAND_EXPAND_LISTS VERBATIM)
+add_custom_target(qsim-core DEPENDS "${sim_core_object}")
+
+# The world entry point. qsim links it with a layout and its firmware objects into a world.
+set(QSIM_SDL3_INCLUDE_DIR "" CACHE PATH "SDL3 include directory (optional checkout for offline builds)")
+if(NOT QSIM_SDL3_INCLUDE_DIR)
+    FetchContent_Declare(sdl3_headers
+        URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
+        URL_HASH SHA256=f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        SOURCE_SUBDIR quercus-headers-only)
+    FetchContent_MakeAvailable(sdl3_headers)
+    set(QSIM_SDL3_INCLUDE_DIR "${sdl3_headers_SOURCE_DIR}/include")
+endif()
+# Cosmopolitan worlds embed SDL3 from here. Host-compiler worlds load the system's SDL3.
+set(QSIM_SDL3_ASSETS "" CACHE PATH "Directory of prebuilt SDL3 artifacts for this platform")
+add_library(world_entry OBJECT
+    src/scenario/main.cpp src/firmware/linked_world.cpp
+    src/visualization/buttons.cpp src/visualization/sdl.cpp src/visualization/visualization.cpp)
+target_link_libraries(world_entry PRIVATE core_interface)
+target_include_directories(world_entry SYSTEM PRIVATE "${QSIM_SDL3_INCLUDE_DIR}")
+target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
+target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}" ${world_definitions})
+
+add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/qsim.o"
+    COMMAND "${prelink_cxx}" -nostdlib -r -o "${CMAKE_BINARY_DIR}/qsim.o"
+        $<TARGET_OBJECTS:world_entry> "${sim_core_object}"
+    DEPENDS world_entry $<TARGET_OBJECTS:world_entry> "${sim_core_object}"
+    COMMAND_EXPAND_LISTS VERBATIM)
+add_custom_target(qsim-world ALL DEPENDS "${CMAKE_BINARY_DIR}/qsim.o")
+configure_file(src/firmware/qsim.py qsim @ONLY)
 
 # === Formatting ===
 file(GLOB_RECURSE FORMAT_FILES
