@@ -7,24 +7,23 @@ Each prelink emits native code. World assembly links these objects and writes th
 
 Use the toolchain and Zephyr workspace from the [build instructions](../README.md#build-a-world).
 Start with fresh build directories to collect a new profile.
-This example trains both the simulator and the module movement applet.
+This example trains both the simulator and the `conveyor` test applet with its `route` scenario.
 
 ```sh
 cmake -S . -B build-pgo -G Ninja -DPGO=TRAIN
 cmake --build build-pgo --target qsim-world
-(cd external/q_applets && ./q_sdk/qbuild sim module_movement --pgo train)
-python3 build-pgo/qsim build layouts/one_module.toml -o training.exe
-sh ./training.exe scenarios/module_movement.toml
-sh ./training.exe scenarios/module_movement_idle.toml
+(cd test/applets && q_sdk/qbuild sim conveyor --pgo train)
+python3 test/run_scenario.py build-pgo/qsim test/applets/out test/applets/conveyor/scenarios/route
 
 cmake -S . -B build-pgo -DPGO=USE
 cmake --build build-pgo --target qsim-world
-(cd external/q_applets && ./q_sdk/qbuild sim module_movement --pgo use)
-python3 build-pgo/qsim build layouts/one_module.toml -o optimized.exe
+(cd test/applets && q_sdk/qbuild sim conveyor --pgo use)
+python3 build-pgo/qsim build layout.toml -o optimized.exe
 ```
 
-On Windows, launch the executables directly. Repeat the training runs with the layouts, seeds, and scenarios that represent your workload.
-The simulator writes profiles to `build-pgo/pgo`. Each applet writes profiles to `build_sim/<app>/pgo` in its repository.
+The layout is the one from the [build instructions](../README.md#build-a-world).
+Repeat the training runs with the layouts, seeds, and scenarios that represent your workload.
+The simulator writes profiles to `build-pgo/pgo`. Each applet writes profiles to `build_sim/<app>/pgo` in its workspace.
 Use the same build directories, compiler, firmware sources, and backend for both stages.
 The applet build replaces the files in `out/`. Each assembled world retains the objects from its link.
 If you change the source or build options, start a new training run with fresh profiles.
@@ -36,7 +35,7 @@ Use the same layout, settings, and scenarios for every build.
 
 ```sh
 python3 tools/benchmark_worlds.py --world baseline baseline.exe --world pgo optimized.exe \
-  --output results.csv scenarios/module_movement.toml scenarios/module_movement_idle.toml
+  --output results.csv test/applets/conveyor/scenarios/route/scenario.toml
 ```
 
 The benchmark records elapsed time per scenario and checks that the exit status and failed or undecided properties agree across runs.

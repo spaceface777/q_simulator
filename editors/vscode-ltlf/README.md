@@ -4,7 +4,7 @@ A dependency-free VS Code language extension for this repository's `.spec` DSL. 
 
 ## Try it from this checkout
 
-Open `editors/vscode-ltlf` in VS Code and press `F5`, then open any file in `scenarios/*.spec` in the Extension Development Host.
+Open `editors/vscode-ltlf` in VS Code and press `F5`, then open any `properties.spec` file under `test/applets/*/scenarios/` in the Extension Development Host.
 
 To create an installable package, run:
 

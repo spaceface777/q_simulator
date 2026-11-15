@@ -1,0 +1,13 @@
+Running scenario\.toml with 7 properties
+\[Pico 1\]   \[application\] \*\*\* Booting Zephyr OS build .* \*\*\*
+\[Pico 1\]   \[application\] \[00:00:00\.012,000\] \[  0 main\] conveyor: tag detected; carrying it to the left laser
+\[Pico 1\]   \[application\] \[00:00:02\.572,015\] \[  0 main\] conveyor: tub at the left laser
+PASS tub_stays_on_its_module
+PASS servo_stays_in_range
+PASS led_turns_blue_before_the_belts_run \(triggered \d+ times\)
+PASS tub_reaches_the_left_laser
+PASS the_left_beam_event_stops_the_belts_within_50ms \(triggered 1 times\)
+PASS led_turns_green_at_the_end
+PASS every_led_request_is_answered_ok \(triggered 2 times\)
+All 7 properties held after 5001 ticks
+exit status: 0

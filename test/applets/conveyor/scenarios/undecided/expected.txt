@@ -1,0 +1,8 @@
+# An unbounded obligation that the trace never meets is undecided, not failed. It still fails the run.
+PASS tub_reaches_the_left_laser
+UNRESOLVED led_turns_magenta at scenario end 5\.001 s
+  source: properties\.spec:7:1
+  the trace ended before this could be decided; it was not refuted
+  still waiting on: eventually \(module\(1\)\.led_color == 0xff00ff\)
+1 of 2 properties were undecided when the trace ended after 5001 ticks; extend the scenario or bound the obligation
+exit status: 1

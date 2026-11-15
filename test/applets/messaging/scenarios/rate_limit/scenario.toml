@@ -1,0 +1,8 @@
+# Both modules send greetings every 100 ms, twice what the platform's network budget allows.
+[scenario]
+duration = "2s"
+properties = "properties.spec"
+
+[scenario.environment]
+GREETINGS = "10"
+SEND_PERIOD_MS = "100"

@@ -1,0 +1,6 @@
+# The C library's abort frames come first. The report still finds the applet's call.
+Module 1 crashed: abort \(SIGABRT\) at tick 368 \(module time 21000 us\)
+  #\d+ 0x[0-9a-f]+ main at .*crash/src/main\.c:41
+Running scenario\.toml with 1 property
+PASS healthy_module_heartbeats_to_the_end
+exit status: 1

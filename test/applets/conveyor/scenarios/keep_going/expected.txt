@@ -1,0 +1,11 @@
+# --keep-going runs to the scenario end and reports every verdict.
+Running scenario\.toml with 3 properties
+PASS servo_stays_in_range
+FAIL led_stays_dark at 0\.361 s
+  source: properties\.spec:7:1
+  formula: always \(module\(1\)\.led_color == 0x000000\)
+  module\(1\)\.led_color == 0x000000 = false, was 0x0000ff
+FAIL led_turns_magenta_quickly at 0\.100 s
+  deadline: 0\.100 s
+2 of 3 properties failed after 5001 ticks
+exit status: 1

@@ -1,0 +1,7 @@
+# The overflow runs into a guard page: SIGSEGV on Linux, SIGBUS on macOS.
+Module 1 crashed: (segmentation fault \(SIGSEGV\)|bus error \(SIGBUS\)) at tick 368 \(module time 21000 us\)
+Fault address 0x[0-9a-f]+
+  #0 0x[0-9a-f]+ recurse at .*crash/src/main\.c:\d+
+Running scenario\.toml with 1 property
+PASS healthy_module_heartbeats_to_the_end
+exit status: 1

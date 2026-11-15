@@ -1,0 +1,4 @@
+# Two modules run one firmware object. Each learns its own module ID and greets the other.
+[scenario]
+duration = "2s"
+properties = "properties.spec"

@@ -1,0 +1,6 @@
+# The applet stops its heartbeats after five. Core 0 stops the module 2 s into the silence.
+[scenario]
+duration = "4s"
+
+[scenario.environment]
+HEARTBEATS = "5"

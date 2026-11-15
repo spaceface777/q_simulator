@@ -1,0 +1,11 @@
+# One tub waits at the entry reader, as in the route scenario.
+[scenario]
+duration = "5s"
+properties = "properties.spec"
+
+[tub.waiting]
+time = 0.0
+id = 1
+module = 1
+uid = 0x01000000000000
+payload = [0xC0FFEE01]

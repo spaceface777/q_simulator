@@ -1,0 +1,6 @@
+# A host timeout cancels the properties that are still pending.
+CANCELLED servo_stays_in_range at 0\.000 s \(still pending\)
+CANCELLED led_stays_dark at 0\.000 s \(still pending\)
+CANCELLED led_turns_magenta_quickly at 0\.000 s \(still pending\)
+The run timed out with 3 of 3 properties still pending after 1 ticks
+exit status: 1

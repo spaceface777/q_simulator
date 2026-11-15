@@ -1,0 +1,11 @@
+# By default, the first failure ends the run. Undecided properties are not reported.
+Running scenario\.toml with 3 properties
+FAIL led_turns_magenta_quickly at 0\.100 s
+  source: properties\.spec:10:1
+  obligation created at 0\.000 s
+  deadline: 0\.100 s
+  formula: eventually\[0ms, 100ms\] \(module\(1\)\.led_color == 0xff00ff\)
+  obligation: eventually\[0ms, 100ms\] \(module\(1\)\.led_color == 0xff00ff\)
+  module\(1\)\.led_color == 0xff00ff = false, was 0x000000
+1 of 3 properties failed after 101 ticks
+exit status: 1

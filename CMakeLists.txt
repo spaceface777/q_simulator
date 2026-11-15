@@ -118,8 +118,12 @@ endif()
 # The simulation is built against the same headers as the Core 1 applications, so that the
 # RPC wire contract cannot drift between the two sides. QUERCUS_SDK_ROOT may point at an SDK
 # checkout elsewhere; by default the pinned submodule is used.
-set(QUERCUS_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/q_sdk"
+set(QUERCUS_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/q_sdk"
     CACHE PATH "Path to a q_sdk checkout")
+# Build directories from before the SDK moved to the repository root still cache its old path.
+if(QUERCUS_SDK_ROOT STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/external/q_sdk")
+    set(QUERCUS_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/q_sdk" CACHE PATH "Path to a q_sdk checkout" FORCE)
+endif()
 
 if(NOT EXISTS "${QUERCUS_SDK_ROOT}/include/quercus/rpc_wire.h")
     message(FATAL_ERROR
@@ -243,6 +247,9 @@ file(GLOB_RECURSE FORMAT_FILES
     "${CMAKE_SOURCE_DIR}/test/*.cpp"
     "${CMAKE_SOURCE_DIR}/test/*.h"
 )
+
+# Leave out what qbuild generates while it builds the test applets.
+list(FILTER FORMAT_FILES EXCLUDE REGEX "/test/applets/(build_[^/]*|out)/")
 
 add_custom_target(format
     COMMAND clang-format-22 -style=file -i ${FORMAT_FILES}

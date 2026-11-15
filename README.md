@@ -10,33 +10,33 @@ This repository contains the Quercus Airport Simulation. Read this file before y
 simulation/
 ├── docs/                    # Architecture, protocol, and diagrams
 ├── editors/                 # LTLf editor support
-├── external/                # Pinned application and SDK submodules
-├── layouts/                 # Example module layouts
-├── scenarios/               # Finite scenarios and LTLf properties
+├── q_sdk/                   # Pinned Quercus SDK submodule
 ├── src/                     # Simulator source code
-├── test/                    # Unit, integration, and scenario tests
+├── test/                    # Unit, world, and applet tests
+│   └── applets/             # Test applets, each with its scenarios
 ├── .clang-format            # C++ format rules
 ├── .gitlab-ci.yml           # GitLab CI job
 ├── .gitmodules              # Submodule locations
 ├── CMakeLists.txt           # Main build file
-├── layout_example.toml      # Example module layout
 └── settings_example.toml    # Example run settings
 ```
 
 ## Build a world
 
-Initialize the SDK and applet submodules.
+Initialize the SDK submodule.
 
 ```sh
-git submodule update --init --recursive
+git submodule update --init
 ```
 
 Use the Zephyr checkout in the [P2 prerequisites](docs/COSMOPOLITAN_P2.md#prerequisites), with the project cosmocc release `2026.11.14-23` or later.
 Earlier releases crash when they partition the simulator's LTO link.
-Build the firmware objects.
+Build the firmware objects of the test applets, as you would build any other Core 1 application.
 
 ```sh
-(cd external/q_applets && ./q_sdk/qbuild sim)
+cd test/applets
+q_sdk/qbuild sim
+cd ../..
 ```
 
 Configure and build the simulator. The build uses cosmocc by default.
@@ -49,31 +49,41 @@ cmake --build build
 ```
 
 For a Linux build with the host compiler, add `-DQSIM_COSMOCC=OFF` and use a separate build directory.
+Build its firmware with `q_sdk/qbuild sim --toolchain host`, which writes the objects to `out/host/`.
+A host-compiler build works with an upstream Zephyr release.
 
 When you change the simulator core often, configure a separate build directory with `-DENABLE_LTO=OFF`.
 A rebuild after one core edit then takes about half the time, and the unit tests run at the same speed.
 Build worlds for measurements from an LTO build, which is the default.
 
-Build a world from a layout.
+Build a world from a layout. This layout puts the `conveyor` applet on one module.
 
 ```sh
-python3 build/qsim build layouts/hardware_test.toml -o world.exe
+cat > layout.toml <<'TOML'
+firmware = "test/applets/out/conveyor.o"
+
+[module.1]
+active = true
+neighbors = [0, 0, 0]
+pos = [0, 0]
+angle = 0
+TOML
+python3 build/qsim build layout.toml -o world.exe
 ```
 
 A layout can set a default `firmware` path and override it for each module.
 Firmware paths are relative to the layout.
 The world build embeds the layout and one copy of the selected firmware for each active module.
-It writes the executable and a separate `world.exe.dbg` file.
+A cosmocc world also gets a separate `world.exe.dbg` file.
 The world embeds the SHA-256 digest of each firmware object for the attestation RPCs.
 All simulated modules use the public test key with bytes `0x00` through `0x1f`.
-Rebuild firmware objects from P2 through P4 before you use them in a P5 world.
 
 ## Run a scenario
 
 Pass the scenario to the world executable.
 
 ```sh
-./world.exe scenarios/hardware_test_blocked_beam.toml
+./world.exe test/applets/conveyor/scenarios/route/scenario.toml
 ```
 
 On macOS, use `sh ./world.exe` if the system does not start APE files directly.
@@ -92,10 +102,11 @@ Rebuild Windows firmware with the updated SDK to enable coroutine stack-overflow
 
 ### Interactive runs
 
-If the world contains SDL3 for the host platform, run the scenario with `--gui`.
+If the world can load SDL3, run the scenario with `--gui`.
+A cosmocc world must contain SDL3 for the host platform. A host-compiler world loads the system's SDL3.
 
 ```sh
-./world.exe scenarios/hardware_test_blocked_beam.toml --gui --speed 2
+./world.exe test/applets/conveyor/scenarios/route/scenario.toml --gui --speed 2
 ```
 
 `--speed` overrides the initial `simulation_speed` setting. A speed of `0` starts the simulation paused.
@@ -115,17 +126,10 @@ Intel macOS supports headless runs.
 
 Each scenario supplies `[scenario].duration`.
 If the run needs assertions, set `properties` to an LTLf file relative to the scenario.
-Put timed events in the scenario file. See [the tub arrivals example](scenarios/tub_arrivals.toml).
+Put timed events in the scenario file. See [the tub arrivals example](test/applets/idle/scenarios/tub_arrivals/scenario.toml).
 Set firmware variables in `[scenario.environment]`.
 Firmware reads those variables and its own `QUERCUS_MODULE_ID` through `getenv`.
 The simulator keeps the shell environment separate.
-
-| Layout under `layouts/` | Compatible scenarios under `scenarios/` |
-| --- | --- |
-| `hardware_test.toml` | `hardware_test.toml`, `hardware_test_blocked_beam.toml`, `hardware_test_tag_at_startup.toml` |
-| `laser_alignment.toml` | `laser_alignment.toml` |
-| `one_module.toml` | `module_movement.toml`, `module_movement_idle.toml` |
-| `default.toml` | `per_module_variation.toml`, `tub_arrivals.toml` |
 
 ## Optimization
 
@@ -133,49 +137,39 @@ See [Build and measure optimized worlds](docs/OPTIMIZATION.md) for profile train
 
 ## Tests
 
-Run the simulator unit tests.
+Run the unit tests.
 
 ```sh
 ctest --test-dir build --output-on-failure
 ```
 
-On Linux, configure a separate build directory with `-DQSIM_COSMOCC=OFF` to use the host compiler.
-After the firmware build, build the test applets and run the linked-world tests.
-The test applets include a firmware image that crashes on purpose.
+Build the test applets, then run the world checks and an applet scenario.
 
 ```sh
-(cd test/firmware/applets && ../../../external/q_sdk/qbuild sim)
-python3 test/sim/test_worlds.py build/qsim
+(cd test/applets && q_sdk/qbuild sim)
+python3 test/test_worlds.py build/qsim test/applets/out
+python3 test/run_scenario.py build/qsim test/applets/out test/applets/crash/scenarios/segfault
 ```
 
-To also test the GUI without a display, configure the build with `QSIM_SDL3_ASSETS` and add `--gui-smoke`.
-The GUI tests use the SDL3 dummy video driver and run on POSIX hosts.
+### Applet scenarios
 
-The tests build one world per layout and compare traces across repeated runs with default and explicit settings.
-The two RFID diagnostics retain one undecided property each with the historical applet revision.
-The tests require those exact verdicts.
+Each test applet in `test/applets/<applet>/` is an ordinary Core 1 application.
+Its `scenarios/` directory holds one directory for each scenario, with these files:
 
-#### Test coverage
+| File | Contents |
+| --- | --- |
+| `scenario.toml` | The scenario. It can name a property file in the same directory. |
+| `expected.txt` | One regular expression for each line. Each expression must match a whole line of the world's output, in the file's order. Blank lines and lines that start with `#` are comments. |
+| `layout.toml` | Optional. A firmware value without a `/` is the name of a test applet. Without this file, one module runs the applet. |
+| `args` | Optional. More command-line arguments for the world. |
 
-Generate an HTML coverage report with a Debug build.
+The output is the world's standard output and standard error together, followed by `exit status: N`.
+Escape regular expression characters to match text exactly: for example `\(`, `\.` and `\[`.
+To see the output of a scenario, run it directly.
 
 ```sh
-BROWSER=firefox
-
-cmake -B build -DQSIM_COSMOCC=OFF -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug -S . -G Ninja
-cmake --build build --target clean -j
-cmake --build build --target tests -j
-./build/tests
-cd build
-lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,gcov --ignore-errors inconsistent --rc geninfo_unexecuted_blocks=1
-lcov --remove coverage.info '/usr/*' '*/_deps/*' '*/test/*' --output-file coverage_filtered.info
-genhtml coverage_filtered.info --output-directory coverage_html
-cd ..
-cmake -B build -DQSIM_COSMOCC=OFF -S . -G Ninja
-$(echo $BROWSER) build/coverage_html/index.html
+python3 test/run_scenario.py --verbose build/qsim test/applets/out test/applets/crash/scenarios/segfault
 ```
-
-Change `firefox` on the first line to the browser that you use.
 
 ## Support
 

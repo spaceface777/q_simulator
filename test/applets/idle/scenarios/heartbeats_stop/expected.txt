@@ -1,0 +1,6 @@
+# Core 0 notes the late heartbeat after 500 ms of silence, and stops the module after 2 s.
+tick 1052: module 1 heartbeat_late on the heartbeat bucket
+\[Pico 1\]   \[application\] \[00:00:00\.255,000\] \[  0 main\] idle: stopped heartbeats after 5
+tick 2552: module 1 stop on the heartbeat bucket
+Scenario completed after 4001 ticks
+exit status: 0

@@ -59,13 +59,11 @@ simulation/
 │   ├── visualization/            # SDL3 controls and drawing
 │   └── world/                    # Physical state and calibrated behavior
 │
-├── test/                         # Unit, integration, and scenario tests
+├── test/                         # Unit, world, and applet tests
+│   └── applets/                  # Test applets with their scenarios, properties, and expected output
 ├── editors/vscode-ltlf/         # VS Code support for the LTLf property language
-├── external/                     # Pinned q_applets and q_sdk
-├── layouts/                      # Example layouts
-├── scenarios/                    # Scenario TOML files and LTLf property files
+├── q_sdk/                        # Pinned Quercus SDK
 ├── CMakeLists.txt                # Application and test build
-├── layout_example.toml           # Example module graph and geometry
 └── settings_example.toml         # Example run and physical settings
 ```
 

@@ -1,0 +1,3 @@
+Running scenario\.toml with 0 properties
+The run timed out after 1 ticks
+exit status: 1

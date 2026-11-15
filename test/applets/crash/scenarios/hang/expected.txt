@@ -1,0 +1,7 @@
+# The grant watchdog interrupts a module that never yields. This takes the watchdog's 5 s.
+Module 1 crashed: watchdog timeout at tick 368 \(module time 21000 us\)
+Grant exceeded 5000 ms
+  #0 0x[0-9a-f]+ main at .*crash/src/main\.c:44
+Running scenario\.toml with 1 property
+PASS healthy_module_heartbeats_to_the_end
+exit status: 1

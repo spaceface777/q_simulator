@@ -1,0 +1,6 @@
+Running scenario\.toml with 3 properties
+PASS no_tub_before_the_first_arrival
+PASS each_tub_arrives_at_its_module
+PASS tubs_stay_where_they_arrived \(triggered 6003 times\)
+All 3 properties held after 3001 ticks
+exit status: 0

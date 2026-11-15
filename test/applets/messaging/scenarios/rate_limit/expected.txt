@@ -1,0 +1,10 @@
+# Over the network budget, Core 0 warns each module, then pauses it, then resumes it a second later.
+tick 881: module 2 warning on the network bucket \(7/5\)
+.*\[RPC rate limit\] network RPC traffic exceeded its limit\. Allowed: 5 requests/s, peak: 7.*
+tick 983: module 2 pause on the network bucket \(8/5\)
+tick 995: module 1 pause on the network bucket \(8/5\)
+tick 1983: module 2 resume on the global bucket
+tick 1995: module 1 resume on the global bucket
+PASS some_send_is_refused
+PASS sends_are_accepted_or_refused \(triggered 16 times\)
+exit status: 0

@@ -1,0 +1,13 @@
+[module.1]
+active = true
+firmware = "crash"
+neighbors = [0, 0, 0]
+pos = [0, 0]
+angle = 0
+
+[module.2]
+active = true
+firmware = "idle"
+neighbors = [0, 0, 0]
+pos = [5, 5]
+angle = 0

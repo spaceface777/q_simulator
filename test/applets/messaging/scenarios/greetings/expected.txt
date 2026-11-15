@@ -1,0 +1,10 @@
+# Each copy of the firmware object gets its own module ID, and each module hears the other.
+Running scenario\.toml with 3 properties
+\[Pico 2\]   \[application\] \[[0-9:.,]+\] \[  0 main\] messaging: module id=2
+\[Pico 2\]   \[application\] \[[0-9:.,]+\] \[  0 main\] messaging: received "hello from 1"
+\[Pico 1\]   \[application\] \[[0-9:.,]+\] \[  0 main\] messaging: module id=1
+\[Pico 1\]   \[application\] \[[0-9:.,]+\] \[  0 main\] messaging: received "hello from 2"
+PASS both_modules_ask_for_their_id
+PASS both_modules_receive_a_greeting
+PASS every_send_is_answered_ok \(triggered 8 times\)
+exit status: 0

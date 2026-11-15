@@ -1,0 +1,25 @@
+# Tubs arrive at three modules on a schedule. The applets never move them.
+[scenario]
+duration = "3s"
+properties = "properties.spec"
+
+[tub.first]
+time = 0.5
+id = 1
+module = 1
+uid = 0x01000000000000
+payload = [0x00000001]
+
+[tub.second]
+time = 1.0
+id = 2
+module = 2
+uid = 0x02000000000000
+payload = [0x00000002]
+
+[tub.third]
+time = 1.5
+id = 3
+module = 3
+uid = 0x03000000000000
+payload = [0x00000003]

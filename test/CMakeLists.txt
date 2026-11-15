@@ -34,9 +34,6 @@ target_link_libraries(tests PRIVATE gtest core_interface "${sim_core_object}")
 add_dependencies(tests qsim-core)
 set_property(TARGET tests APPEND PROPERTY LINK_DEPENDS "${sim_core_object}")
 
-# Resolve scenario fixtures independently of the test working directory.
-target_compile_definitions(tests PRIVATE REPO_ROOT="${CMAKE_SOURCE_DIR}")
-
 target_compile_options(tests PRIVATE ${COMPILATION_FLAGS} ${test_compile_options} -fno-omit-frame-pointer)
 
 if(QUERCUS_COSMOPOLITAN AND CMAKE_HOST_APPLE)

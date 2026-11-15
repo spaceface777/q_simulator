@@ -1,0 +1,7 @@
+# Module 1 fails with hang. The simulator reports it, stops only that module, and runs to the end.
+[scenario]
+duration = "1s"
+properties = "properties.spec"
+
+[scenario.environment]
+CRASH = "hang"

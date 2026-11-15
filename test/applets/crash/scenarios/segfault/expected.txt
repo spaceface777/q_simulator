@@ -1,0 +1,6 @@
+# The report names the faulting line. Module 2 keeps running, but the crash fails the run.
+Module 1 crashed: segmentation fault \(SIGSEGV\) at tick 368 \(module time 21000 us\)
+  #0 0x[0-9a-f]+ write_through at .*crash/src/main\.c:16
+Running scenario\.toml with 1 property
+PASS healthy_module_heartbeats_to_the_end
+exit status: 1

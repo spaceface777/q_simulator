@@ -15,7 +15,7 @@ Makefile
 bin/
 build/
 settings.toml
-layout.toml
+/layout.toml
 channel0_0
 *.exe
 .DS_Store

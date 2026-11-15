@@ -1,0 +1,5 @@
+FAIL led_stays_dark at 0\.361 s
+  module\(1\)\.led_color == 0x000000 = false, was 0x0000ff
+UNRESOLVED led_turns_magenta at scenario end 5\.001 s
+1 of 2 properties failed after 5001 ticks, and 1 were left undecided
+exit status: 1

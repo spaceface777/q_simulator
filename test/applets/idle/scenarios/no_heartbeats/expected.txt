@@ -1,0 +1,4 @@
+\[Pico 1\]   \[application\] \[00:00:00\.000,000\] \[  0 main\] idle: stopped heartbeats after 0
+tick 10000: module 1 stop on the heartbeat bucket
+Scenario completed after 11001 ticks
+exit status: 0

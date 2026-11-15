@@ -1,0 +1,6 @@
+# The applet never sends a heartbeat. Core 0 stops the module at its 10 s activation deadline.
+[scenario]
+duration = "11s"
+
+[scenario.environment]
+HEARTBEATS = "0"

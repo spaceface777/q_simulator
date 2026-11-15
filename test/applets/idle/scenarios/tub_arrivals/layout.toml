@@ -1,0 +1,19 @@
+firmware = "idle"
+
+[module.1]
+active = true
+neighbors = [2, 0, 0]
+pos = [0, 0]
+angle = 0
+
+[module.2]
+active = true
+neighbors = [3, 0, 1]
+pos = [1, 0]
+angle = 0
+
+[module.3]
+active = true
+neighbors = [0, 0, 2]
+pos = [2, 0]
+angle = 0

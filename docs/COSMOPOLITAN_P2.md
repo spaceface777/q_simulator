@@ -5,7 +5,7 @@ These build and benchmark instructions describe the `cosmopolitan-p2` branch.
 ## Prerequisites
 
 Use the project cosmocc release `2026.11.12-20` and a west workspace with Zephyr v4.5.0.
-Apply the SDK patch `external/q_sdk/patches/zephyr-v4.5.0-cosmocc.patch` to Zephyr.
+Apply the SDK patch `q_sdk/patches/zephyr-v4.5.0-cosmocc.patch` to Zephyr.
 Set `ZEPHYR_BASE` to the patched checkout.
 Set `COSMOCC_TOOLCHAIN_PATH` to the extracted toolchain.
 
@@ -14,16 +14,16 @@ On first use without a cached or installed loader, the APE launcher uses Apple `
 
 ## Firmware artifacts
 
-From the simulator root, run these commands to build both backend variants of `demo_app`.
+From the simulator root, run these commands to build both backend variants of the `messaging` test applet.
 Copy each pair before the next build replaces the files in `out/`.
 
 ```sh
-cd external/q_applets
+cd test/applets
 mkdir -p out/coroutine out/pthread
-./q_sdk/qbuild sim demo_app --zephyr-backend coroutine
-cp out/demo_app.exe out/demo_app.o out/coroutine/
-./q_sdk/qbuild sim demo_app --zephyr-backend pthread
-cp out/demo_app.exe out/demo_app.o out/pthread/
+q_sdk/qbuild sim messaging --zephyr-backend coroutine
+cp out/messaging.exe out/messaging.o out/coroutine/
+q_sdk/qbuild sim messaging --zephyr-backend pthread
+cp out/messaging.exe out/messaging.o out/pthread/
 cd ../..
 ```
 
@@ -34,14 +34,14 @@ P3 adds world assembly from a layout.
 
 ## Two-copy test
 
-Run the same test with both firmware objects.
+The `greetings` scenario of the `messaging` applet links two copies of one object into a world.
+Run it with each firmware object.
 
 ```sh
-test/firmware/two_instances.sh "$PWD/external/q_applets/out/coroutine/demo_app.o"
-test/firmware/two_instances.sh "$PWD/external/q_applets/out/pthread/demo_app.o"
+python3 test/run_scenario.py build-cosmo/qsim test/applets/out/coroutine test/applets/messaging/scenarios/greetings
+python3 test/run_scenario.py build-cosmo/qsim test/applets/out/pthread test/applets/messaging/scenarios/greetings
 ```
 
-The test alternates grants between two linked copies of the same object.
 Each copy receives a different module ID over RPC and reports its own ID.
 
 ## Simulator build
