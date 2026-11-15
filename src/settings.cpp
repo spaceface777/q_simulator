@@ -290,8 +290,6 @@ namespace settings {
 		return module_settings[id.raw()];
 	}
 
-#ifdef TESTING
-
 	void set_module_settings(module::ModuleId id, ModuleSettings settings) {
 		module_settings[id.raw()] = settings;
 	}
@@ -300,8 +298,6 @@ namespace settings {
 		settings_table = toml::table{};
 		apply_runtime_settings();
 	}
-
-#endif
 
 } // namespace settings
 

@@ -28,17 +28,19 @@ add_executable(tests
     world/test_calibration_statistics.cpp
     world/test_servo_travel.cpp)
 
-target_link_libraries(tests PRIVATE
-    gtest
-    core)
-
-target_compile_definitions(core PRIVATE TESTING)
-target_compile_definitions(tests PRIVATE TESTING)
+# Link the core that the world uses, already optimized, so the test link is an ordinary link.
+if(sim_core_object)
+    target_link_libraries(tests PRIVATE gtest core_interface "${sim_core_object}")
+    add_dependencies(tests qsim-core)
+    set_property(TARGET tests APPEND PROPERTY LINK_DEPENDS "${sim_core_object}")
+else()
+    target_link_libraries(tests PRIVATE gtest core)
+endif()
 
 # Resolve scenario fixtures independently of the test working directory.
 target_compile_definitions(tests PRIVATE REPO_ROOT="${CMAKE_SOURCE_DIR}")
 
-target_compile_options(tests PRIVATE ${COMPILATION_FLAGS} -g -fno-omit-frame-pointer)
+target_compile_options(tests PRIVATE ${COMPILATION_FLAGS} ${test_compile_options} -g -fno-omit-frame-pointer)
 
 if(QUERCUS_COSMOPOLITAN AND CMAKE_HOST_APPLE)
     add_test(NAME tests COMMAND sh $<TARGET_FILE:tests>)

@@ -10,8 +10,8 @@ endif()
 
 set(COMPILATION_FLAGS -Wall -Wextra -Werror)
 if(QUERCUS_COSMOPOLITAN)
-    # GCC 16 emits false positives in Cosmopolitan's libc++ string implementation.
-    list(APPEND COMPILATION_FLAGS -Wno-error=array-bounds -Wno-error=stringop-overflow -Wno-error=restrict)
+    # GCC 16 can't tell that libc++'s hash table only reads its bucket hash when it has buckets :((
+    list(APPEND COMPILATION_FLAGS -Wno-error=maybe-uninitialized)
     if(CMAKE_HOST_APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         # The AArch64 driver emits ELF. Wrap each executable for the Apple Silicon loader.
         set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
@@ -22,11 +22,15 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
 option(ENABLE_LTO "Enable LTO in optimized builds" ON)
 if(ENABLE_LTO)
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -flto=auto")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto=auto")
-    # GCC 16 can fail during partitioning for a relocatable LTO link.
-    set(prelink_lto -flto=auto -flto-partition=one -flinker-output=nolto-rel)
+    # Only the core carries LTO bytecode. The qsim-core.o prelink below optimizes it once, and both
+    # the world entry point and the tests link that result.
+    set(sim_lto $<$<CONFIG:Release>:-flto=auto>)
+    set(prelink_lto -flto=auto -flinker-output=nolto-rel)
 endif()
+
+# Test code and GoogleTest skip LTO and the expensive -O3 passes. -O1 keeps them cheap to compile
+# while the suite, which runs far more often than an unchanged object is rebuilt, stays fast.
+set(test_compile_options -O1)
 
 set(PGO OFF CACHE STRING "Simulator PGO mode: OFF, TRAIN or USE")
 set_property(CACHE PGO PROPERTY STRINGS OFF TRAIN USE)
@@ -71,7 +75,12 @@ FetchContent_Declare(
     GIT_TAG        v1.17.0
     GIT_SHALLOW    TRUE
 )
+set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
+# The tests provide their own main().
+set_property(TARGET gtest_main PROPERTY EXCLUDE_FROM_ALL ON)
+target_compile_options(gtest PRIVATE ${test_compile_options})
 
 FetchContent_Declare(
     tomlplusplus
@@ -138,35 +147,55 @@ add_library(core STATIC
     src/ltl/observation.cpp
 )
 
-target_link_libraries(core PUBLIC
+add_library(core_interface INTERFACE)
+target_link_libraries(core_interface INTERFACE
     pthread
     tomlplusplus::tomlplusplus
 )
-
-target_include_directories(core PUBLIC "${QUERCUS_SDK_ROOT}/include")
+target_include_directories(core_interface INTERFACE "${QUERCUS_SDK_ROOT}/include")
+target_link_libraries(core PUBLIC core_interface)
 
 target_include_directories(core PRIVATE "${libbacktrace_SOURCE_DIR}")
-target_compile_options(core PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
+target_compile_options(core PRIVATE ${COMPILATION_FLAGS} ${sim_lto} ${profile_flags})
 set_source_files_properties(src/firmware/crash_posix.cpp PROPERTIES
     COMPILE_OPTIONS -fno-omit-frame-pointer)
 
+# Prelink the core into one relocatable object, so that its LTO work only runs once
 if(QUERCUS_COSMOPOLITAN)
-    add_library(world_entry OBJECT src/scenario/main.cpp src/firmware/linked_world.cpp)
-    target_link_libraries(world_entry PRIVATE core)
-    target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
-    target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}")
-
+    set(prelink_cxx "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-g++")
+    # GCC can't prove libc++'s impossible std::string growth path unreachable, and warns about it.
+    set(prelink_warnings -Wno-alloc-size-larger-than)
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         set(cosmocc_abi -ffixed-x18 -ffixed-x28 -fsigned-char)
     else()
         set(cosmocc_abi -mno-red-zone -mno-tls-direct-seg-refs)
     endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(prelink_cxx "${CMAKE_CXX_COMPILER}")
+    # Released GCC (up to at least 16.2) crashes in lto-partition.cc when it partitions a relocatable
+    # link. Only the project's cosmocc carries the fix.
+    set(prelink_partition -flto-partition=none)
+endif()
+if(prelink_cxx)
+    set(sim_core_object "${CMAKE_BINARY_DIR}/qsim-core.o")
+    add_custom_command(OUTPUT "${sim_core_object}"
+        COMMAND "${prelink_cxx}" -nostdlib -r -O3 ${prelink_lto} ${prelink_partition} ${prelink_warnings}
+            ${profile_flags} ${cosmocc_abi} -o "${sim_core_object}" -Wl,--whole-archive $<TARGET_FILE:core> -Wl,--no-whole-archive
+        DEPENDS core
+        COMMAND_EXPAND_LISTS VERBATIM)
+    add_custom_target(qsim-core DEPENDS "${sim_core_object}")
+endif()
+
+if(QUERCUS_COSMOPOLITAN)
+    add_library(world_entry OBJECT src/scenario/main.cpp src/firmware/linked_world.cpp)
+    target_link_libraries(world_entry PRIVATE core_interface)
+    target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
+    target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}")
+
     add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/qsim.o"
-        COMMAND "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-g++"
-            -nostdlib -r -O3 ${prelink_lto} ${profile_flags} ${cosmocc_abi}
-            -o "${CMAKE_BINARY_DIR}/qsim.o" $<TARGET_OBJECTS:world_entry>
-            -Wl,--whole-archive $<TARGET_FILE:core> -Wl,--no-whole-archive
-        DEPENDS world_entry $<TARGET_OBJECTS:world_entry> core
+        COMMAND "${prelink_cxx}" -nostdlib -r -o "${CMAKE_BINARY_DIR}/qsim.o"
+            $<TARGET_OBJECTS:world_entry> "${sim_core_object}"
+        DEPENDS world_entry $<TARGET_OBJECTS:world_entry> "${sim_core_object}"
         COMMAND_EXPAND_LISTS VERBATIM)
     add_custom_target(qsim-world ALL DEPENDS "${CMAKE_BINARY_DIR}/qsim.o")
     configure_file(src/firmware/qsim.py qsim @ONLY)

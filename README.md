@@ -31,7 +31,8 @@ Initialize the SDK and applet submodules.
 git submodule update --init --recursive
 ```
 
-Use the toolchain and Zephyr checkout in the [P2 prerequisites](docs/COSMOPOLITAN_P2.md#prerequisites).
+Use the Zephyr checkout in the [P2 prerequisites](docs/COSMOPOLITAN_P2.md#prerequisites), with the project cosmocc release `2026.11.14-23` or later.
+Earlier releases crash when they partition the simulator's LTO link.
 Build the firmware objects.
 
 ```sh

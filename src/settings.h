@@ -55,14 +55,11 @@ namespace settings {
 	// Throws if the module is not found.
 	[[nodiscard]] ModuleSettings get_module_settings(module::ModuleId id);
 
-#ifdef TESTING
-
+	// For tests.
 	void set_module_settings(module::ModuleId id, ModuleSettings settings);
 
-	// Installs everything parse_settings would have guaranteed, without a settings.toml.
+	// For tests. Installs everything parse_settings would have guaranteed, without a settings.toml.
 	void install_test_defaults();
-
-#endif
 
 } // namespace settings
 
