@@ -12,6 +12,8 @@ extern const qsim_image_api_t __start_qsim_instances[];
 extern const qsim_image_api_t __stop_qsim_instances[];
 }
 
+QSIM_TOOLCHAIN_MARKER;
+
 namespace firmware {
 	std::string_view linked_layout() {
 		return {_binary_layout_toml_start,

@@ -110,6 +110,12 @@ def main() -> None:
                     "--rename-section", ".data=.rodata,alloc,load,readonly,data,contents",
                     name, name + ".o",
                 ], cwd=scratch, check=True)
+            # Objects from different toolchains have different ABIs, so they must not share a world.
+            for image in [simulator, *dict.fromkeys(firmware)]:
+                subprocess.run([*objcopy, "-O", "binary", "--only-section=.qsim_toolchain", image, "marker"],
+                               cwd=scratch, check=True)
+                if (marker := (scratch / "marker").read_bytes().rstrip(b"\0").decode()) != "@world_toolchain@":
+                    raise ValueError(f"{image} is from the {marker or 'unknown'} toolchain, not @world_toolchain@")
             world = scratch / "world.exe"
             # Firmware objects are not position independent.
             options = ["-mtiny"] if cosmopolitan else ["-no-pie", "-ldl"]
