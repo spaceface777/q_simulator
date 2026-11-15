@@ -253,12 +253,14 @@ file(GLOB_RECURSE FORMAT_FILES
 # Leave out what qbuild generates while it builds the test applets.
 list(FILTER FORMAT_FILES EXCLUDE REGEX "/test/applets/(build_[^/]*|out)/")
 
+# pip installs clang-format 22 under its plain name.
+find_program(CLANG_FORMAT NAMES clang-format-22 clang-format)
 add_custom_target(format
-    COMMAND clang-format-22 -style=file -i ${FORMAT_FILES}
+    COMMAND "${CLANG_FORMAT}" -style=file -i ${FORMAT_FILES}
     VERBATIM)
 
 add_custom_target(format-check
-    COMMAND clang-format-22 -style=file --dry-run --Werror ${FORMAT_FILES}
+    COMMAND "${CLANG_FORMAT}" -style=file --dry-run --Werror ${FORMAT_FILES}
     VERBATIM)
 
 # === Subdirectories ===
