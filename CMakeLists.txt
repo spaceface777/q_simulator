@@ -22,9 +22,9 @@ if(QUERCUS_COSMOPOLITAN)
     if(CMAKE_HOST_APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         # The AArch64 driver emits ELF. Wrap each executable for the Apple Silicon loader.
         set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
-        # Each list item is one command, which both the Ninja and Makefile generators support.
+        # The driver keeps the ELF of a *.exe output in *.exe.dbg. A list item is one more command,
+        # which both the Ninja and Makefile generators support.
         list(APPEND CMAKE_CXX_LINK_EXECUTABLE
-            "\"${CMAKE_COMMAND}\" -E rename <TARGET> <TARGET>.dbg"
             "sh \"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
     endif()
 endif()

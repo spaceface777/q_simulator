@@ -29,6 +29,9 @@ add_executable(tests
     world/test_servo_travel.cpp
     trace/test_trace.cpp)
 
+# The same name everywhere. cosmocc's x86-64 driver also makes an APE file only of *.exe outputs.
+set_target_properties(tests PROPERTIES SUFFIX .exe)
+
 # Link the core that the world uses, already optimized, so the test link is an ordinary link.
 target_link_libraries(tests PRIVATE gtest core_interface "${sim_core_object}")
 add_dependencies(tests qsim-core)
@@ -40,8 +43,9 @@ target_compile_options(tests PRIVATE ${COMPILATION_FLAGS} ${test_compile_options
 # ctest names every test by its group: unit.<suite>, world.<check> and applet.<applet>.<scenario>.
 # Select a group with -L unit, -L world or -L applet, and single tests with -R.
 
-if(QUERCUS_COSMOPOLITAN AND NOT CMAKE_HOST_WIN32)
-    # APE executables without a shebang start only through a shell.
+if(QUERCUS_COSMOPOLITAN AND NOT CMAKE_HOST_WIN32 AND (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_HOST_APPLE))
+    # These builds make tests.exe an APE file, which starts only through a shell outside Windows. On
+    # Linux arm64 it is ELF, which starts directly.
     set(unit_emulator sh)
 endif()
 set(unit_suites "${CMAKE_CURRENT_BINARY_DIR}/unit_suites.cmake")

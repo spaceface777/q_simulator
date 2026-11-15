@@ -16,5 +16,5 @@ build:
     - sudo apt-get update && sudo apt-get install -y clang-format-22
     - cmake --build build -j --target format-check
     - cmake --build build -j --target all
-    - ./build/tests --gtest_shuffle --gtest_repeat=10
+    - ./build/tests.exe --gtest_shuffle --gtest_repeat=10
     - RUN_SLOW_TESTS=1 ctest --test-dir build -j --output-on-failure

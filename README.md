@@ -150,7 +150,7 @@ ctest --test-dir build -j --output-on-failure
 ```
 
 Use `-L unit`, `-L world`, or `-L applet` to run one group, and `-R` to select tests by name.
-To run single unit tests, pass a GoogleTest filter to the test executable, for example `build/tests --gtest_filter='TraceEntry.*'`.
+To run single unit tests, pass a GoogleTest filter to the test executable, for example `build/tests.exe --gtest_filter='TraceEntry.*'`.
 The world and applet tests need the Zephyr setup from [Build a world](#build-a-world).
 `world.gui` reports that it skipped if the world cannot load SDL3. It uses the SDL3 dummy video driver.
 
