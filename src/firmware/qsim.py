@@ -73,6 +73,9 @@ def main() -> None:
         contents = layout.read_bytes()
         firmware = images(layout, contents)
         output = args.output.resolve()
+        # A world is always a *.exe file, whatever it contains, so that it starts on every platform.
+        if output.suffix != ".exe":
+            output = output.with_name(output.name + ".exe")
         # A Cosmopolitan world keeps its symbols in a separate debug file.
         cosmopolitan = "@QUERCUS_COSMOPOLITAN@" == "ON"
         debug = output.with_name(output.name + ".dbg")
