@@ -26,7 +26,8 @@ add_executable(tests
     world/test_world.cpp
     world/test_instruments.cpp
     world/test_calibration_statistics.cpp
-    world/test_servo_travel.cpp)
+    world/test_servo_travel.cpp
+    trace/test_trace.cpp)
 
 # Link the core that the world uses, already optimized, so the test link is an ordinary link.
 if(sim_core_object)
