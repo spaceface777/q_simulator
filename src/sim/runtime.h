@@ -92,7 +92,7 @@ namespace sim {
 		engine::Queue                           queue_;
 		uint64_t                                global_tick_ = 0;
 		std::array<uint64_t, MODULE_TABLE_SIZE> module_ticks_{};
-		int64_t                                 budget_us_ = 0;
+		int64_t                                 budget_us_        = 0;
 		bool                                    firmware_crashed_ = false;
 		bool                                    running_          = false;
 		bool                                    started_          = false;
@@ -178,6 +178,7 @@ namespace sim {
 		}
 
 		[[nodiscard]] bool firmware_crashed() const noexcept { return firmware_crashed_; }
+
 		[[nodiscard]] bool failed() const noexcept;
 
 		[[nodiscard]] bool halted() const noexcept { return halt_on_failure_ && failed(); }

@@ -631,7 +631,7 @@ namespace platform {
 		if (runtime == nullptr || runtime->lifecycle == Lifecycle::STOPPED) return;
 		stop_application(tick, id, "crashed: " + reason, Bucket::GLOBAL, false, false);
 		runtime->rate_stopped = false;
-		runtime->crashed = true;
+		runtime->crashed      = true;
 	}
 
 	std::vector<module::ModuleId> Manager::check_supervision(uint64_t tick) {

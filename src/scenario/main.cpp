@@ -255,11 +255,11 @@ int main(int argc, char const* argv[]) {
 		return EXIT_PROPERTY_FAILED;
 	}
 
-	const std::size_t                      unclear = runtime.properties_unresolved();
-	const bool                             failed  = runtime.failed() || runtime.firmware_crashed() || timed_out || unclear > 0;
-	const std::size_t                      total   = runtime.properties_total();
-	const std::size_t                      broken  = runtime.properties_failed();
-	const uint64_t                         ticks   = runtime.tick();
+	const std::size_t unclear = runtime.properties_unresolved();
+	const bool        failed  = runtime.failed() || runtime.firmware_crashed() || timed_out || unclear > 0;
+	const std::size_t total   = runtime.properties_total();
+	const std::size_t broken  = runtime.properties_failed();
+	const uint64_t    ticks   = runtime.tick();
 	const std::vector<sim::PropertyResult> results = runtime.property_results();
 
 	runtime.stop();

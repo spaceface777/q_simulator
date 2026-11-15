@@ -572,7 +572,8 @@ namespace sim {
 			if (grant.crash) {
 				firmware_crashed_ = true;
 				std::cout.flush();
-				std::cerr << firmware::crash::report(*grant.crash, instance.id.raw(), global_tick_, grant.module_time_us)
+				std::cerr << firmware::crash::report(*grant.crash, instance.id.raw(), global_tick_,
+													 grant.module_time_us)
 						  << std::flush;
 				platform_->application_crashed(global_tick_, instance.id, firmware::crash::summary(*grant.crash));
 				quiesce_module_for_stop(instance, module_ticks_[instance.id.raw()], std::nullopt);

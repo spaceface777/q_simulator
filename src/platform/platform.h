@@ -338,6 +338,7 @@ namespace platform {
 		[[nodiscard]] Lifecycle lifecycle(module::ModuleId id) const;
 
 		void application_crashed(uint64_t tick, module::ModuleId id, std::string reason);
+
 		[[nodiscard]] const std::string& stop_reason(module::ModuleId id) const;
 
 		[[nodiscard]] bool is_paused(module::ModuleId id, uint64_t tick) const;
