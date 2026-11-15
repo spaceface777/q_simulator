@@ -1,0 +1,3 @@
+# Test-only applets that the linked-world tests build with the simulator's pinned SDK.
+schema = 1
+application_roots = ["*"]

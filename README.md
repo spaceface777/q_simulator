@@ -140,11 +140,16 @@ ctest --test-dir build --output-on-failure
 ```
 
 On Linux, configure a separate build directory with `-DQSIM_COSMOCC=OFF` to use the host compiler.
-After the firmware build, run the linked-world tests.
+After the firmware build, build the test applets and run the linked-world tests.
+The test applets include a firmware image that crashes on purpose.
 
 ```sh
+(cd test/firmware/applets && ../../../external/q_sdk/qbuild sim)
 python3 test/sim/test_worlds.py build/qsim
 ```
+
+To also test the GUI without a display, configure the build with `QSIM_SDL3_ASSETS` and add `--gui-smoke`.
+The GUI tests use the SDL3 dummy video driver and run on POSIX hosts.
 
 The tests build one world per layout and compare traces across repeated runs with default and explicit settings.
 The two RFID diagnostics retain one undecided property each with the historical applet revision.
