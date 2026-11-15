@@ -262,12 +262,21 @@ int main(int argc, char const* argv[]) {
 		}
 	}
 
+	// An unusable trace path is a configuration error, like any other bad command-line value.
 	try {
 		std::vector<std::string> inputs;
 		if (options.settings) inputs.push_back(options.settings->string());
 		inputs.push_back(options.scenario);
 		if (schedule.property_file) inputs.push_back(property_file);
 		runtime.trace_to(options.trace, inputs, firmware::linked_layout());
+	} catch (const std::exception& error) {
+		std::cerr << "Could not write the trace: " << error.what() << std::endl;
+		runtime.stop();
+		if (options.gui) visualization::stop();
+		return EXIT_CONFIGURATION;
+	}
+
+	try {
 		runtime.start(timeout_tick);
 	} catch (const std::exception& error) {
 		std::cerr << "Failed to start the simulation: " << error.what() << std::endl;
