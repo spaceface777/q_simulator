@@ -151,6 +151,9 @@ namespace sim {
 			if (binding.digest) platform_->application_launched(binding.module, *binding.digest);
 		}
 
+		// Interactive runs show activation as the first frames advance.
+		if (interactive_) return;
+
 		std::cout << "Waiting for applications to activate" << std::endl;
 
 		// An application activates by sending its first heartbeat, which requires being ticked first.
@@ -436,7 +439,8 @@ namespace sim {
 			return;
 		}
 
-		budget_us_ += static_cast<int64_t>(static_cast<double>(elapsed.count()) * speed);
+		const double requested_us = static_cast<double>(elapsed.count()) * speed;
+		budget_us_ += static_cast<int64_t>(std::min(requested_us, static_cast<double>(INT64_MAX / 2)));
 
 		int64_t granted = budget_us_ / TICK_DURATION.count();
 		budget_us_ -= granted * TICK_DURATION.count();
@@ -451,8 +455,8 @@ namespace sim {
 		for (int64_t index = 0; index < granted; ++index) {
 			step();
 
-			// A decisive property result ends the run inside the tick that produced it, state intact.
-			if (halted() || (!property_monitors_.empty() && properties_pending() == 0)) {
+			// Headless runs stop inside the tick that decides the result.
+			if (!interactive_ && (halted() || (!property_monitors_.empty() && properties_pending() == 0))) {
 				budget_us_ = 0;
 				report_pacing(elapsed, speed, global_tick_ - tick_before);
 				return;

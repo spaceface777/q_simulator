@@ -138,6 +138,7 @@ namespace sim {
 		std::optional<ltl::Observation>                   current_observation_;
 		uint64_t                                          scenario_duration_tick_ = 0;
 		bool                                              halt_on_failure_        = true;
+		bool                                              interactive_            = false;
 		std::string                                       property_filename_;
 		uint64_t                                          next_rpc_observation_id_ = 1;
 		uint64_t                                          next_rpc_work_id_        = 1;
@@ -184,6 +185,11 @@ namespace sim {
 		[[nodiscard]] bool halted() const noexcept { return halt_on_failure_ && failed(); }
 
 		void set_halt_on_failure(bool halt) noexcept { halt_on_failure_ = halt; }
+
+		void set_interactive() noexcept {
+			interactive_     = true;
+			halt_on_failure_ = false;
+		}
 
 		[[nodiscard]] std::size_t properties_total() const noexcept { return property_monitors_.size(); }
 
