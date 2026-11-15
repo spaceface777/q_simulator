@@ -13,8 +13,8 @@ namespace visualization::buttons {
 	void Button::handle(const SDL_Event& event, virtual_clock::ISimulationClock& vclock) noexcept {
 		if (event.type == SDL_EVENT_MOUSE_MOTION || event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
 			event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-			float mx, my;
-			SDL_GetMouseState(&mx, &my);
+			const float mx = event.type == SDL_EVENT_MOUSE_MOTION ? event.motion.x : event.button.x;
+			const float my = event.type == SDL_EVENT_MOUSE_MOTION ? event.motion.y : event.button.y;
 
 			bool inside = true;
 			if (mx < projected_.x) inside = false;                     // Left of button
@@ -50,8 +50,8 @@ namespace visualization::buttons {
 		}
 
 		project_(renderer);
-		SDL_SetRenderDrawColor(renderer, current.r, current.g, current.b, current.a);
-		SDL_RenderFillRect(renderer, &projected_);
+		sdl.SDL_SetRenderDrawColor(renderer, current.r, current.g, current.b, current.a);
+		sdl.SDL_RenderFillRect(renderer, &projected_);
 
 		on_render(renderer, vclock);
 	}
@@ -76,7 +76,7 @@ namespace visualization::buttons {
 
 	void PauseButton::on_render(SDL_Renderer*                                     renderer,
 								[[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		if (settings::get_setting<double>("simulation_speed") == 0)
 			visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::RIGHT, SCALE);
 		else
@@ -91,7 +91,7 @@ namespace visualization::buttons {
 
 	void SlowSlowerButton::on_render(SDL_Renderer*                                     renderer,
 									 [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		visualization::draw_char(renderer, projected_.x + 8, projected_.y + Y_OFFSET, GlyphId::LEFT, SCALE);
 		visualization::draw_char(renderer, projected_.x + 8 + 4 * SCALE, projected_.y + Y_OFFSET, GlyphId::LEFT, SCALE);
 	}
@@ -104,7 +104,7 @@ namespace visualization::buttons {
 
 	void SlowerButton::on_render(SDL_Renderer*                                     renderer,
 								 [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::LEFT, SCALE);
 	}
 
@@ -116,7 +116,7 @@ namespace visualization::buttons {
 
 	void FastFasterButton::on_render(SDL_Renderer*                                     renderer,
 									 [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		visualization::draw_char(renderer, projected_.x + 8, projected_.y + Y_OFFSET, GlyphId::RIGHT, SCALE);
 		visualization::draw_char(renderer, projected_.x + 8 + 4 * SCALE, projected_.y + Y_OFFSET, GlyphId::RIGHT,
 								 SCALE);
@@ -130,7 +130,7 @@ namespace visualization::buttons {
 
 	void FasterButton::on_render(SDL_Renderer*                                     renderer,
 								 [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::RIGHT, SCALE);
 	}
 
@@ -144,11 +144,11 @@ namespace visualization::buttons {
 		const bool badly_behind = behind && pacing.effective < (configured * BADLY_BEHIND_FRACTION);
 
 		if (badly_behind) {
-			SDL_SetRenderDrawColor(renderer, 255, 64, 64, 255);
+			sdl.SDL_SetRenderDrawColor(renderer, 255, 64, 64, 255);
 		} else if (behind) {
-			SDL_SetRenderDrawColor(renderer, 255, 176, 0, 255);
+			sdl.SDL_SetRenderDrawColor(renderer, 255, 176, 0, 255);
 		} else {
-			SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+			sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		}
 
 		std::stringstream ss;
@@ -168,7 +168,7 @@ namespace visualization::buttons {
 
 	void TimeButton::on_render(SDL_Renderer*                                     renderer,
 							   [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		std::stringstream ss;
 		ss << std::fixed << std::setprecision(1) << (vclock.get_virtual_time().count() / 1000.0);
 		visualization::draw_string(renderer, projected_.x, projected_.y + 12, ss.str(), 3);
@@ -181,7 +181,7 @@ namespace visualization::buttons {
 
 	void ZoomInButton::on_render(SDL_Renderer*                                     renderer,
 								 [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::PLUS, SCALE);
 	}
 
@@ -192,13 +192,13 @@ namespace visualization::buttons {
 
 	void ZoomOutButton::on_render(SDL_Renderer*                                     renderer,
 								  [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		visualization::draw_char(renderer, projected_.x + X_OFFSET, projected_.y + Y_OFFSET, GlyphId::MINUS, SCALE);
 	}
 
 	void ZoomButton::on_render(SDL_Renderer*                                     renderer,
 							   [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		std::stringstream ss;
 		ss << std::fixed << std::setprecision(1) << settings::get_setting<double>("scale") << "x";
 		visualization::draw_string(renderer, projected_.x - 3, projected_.y + 12, ss.str(), 3);
@@ -210,7 +210,7 @@ namespace visualization::buttons {
 
 	void DbgButton::on_render(SDL_Renderer*                                     renderer,
 							  [[maybe_unused]] virtual_clock::ISimulationClock& vclock) noexcept {
-		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 		visualization::draw_string(renderer, projected_.x + 3, projected_.y + Y_OFFSET, "dbg", SCALE);
 	}
 

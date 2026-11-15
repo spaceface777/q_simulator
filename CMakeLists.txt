@@ -187,10 +187,24 @@ if(prelink_cxx)
 endif()
 
 if(QUERCUS_COSMOPOLITAN)
-    add_library(world_entry OBJECT src/scenario/main.cpp src/firmware/linked_world.cpp)
+    set(QSIM_SDL3_INCLUDE_DIR "" CACHE PATH "SDL3 include directory (optional checkout for offline builds)")
+    if(NOT QSIM_SDL3_INCLUDE_DIR)
+        FetchContent_Declare(sdl3_headers
+            URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
+            URL_HASH SHA256=f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+            SOURCE_SUBDIR quercus-headers-only)
+        FetchContent_MakeAvailable(sdl3_headers)
+        set(QSIM_SDL3_INCLUDE_DIR "${sdl3_headers_SOURCE_DIR}/include")
+    endif()
+    set(QSIM_SDL3_ASSETS "" CACHE PATH "Directory of prebuilt SDL3 artifacts for this platform")
+    add_library(world_entry OBJECT
+        src/scenario/main.cpp src/firmware/linked_world.cpp
+        src/visualization/buttons.cpp src/visualization/sdl.cpp src/visualization/visualization.cpp)
     target_link_libraries(world_entry PRIVATE core_interface)
+    target_include_directories(world_entry SYSTEM PRIVATE "${QSIM_SDL3_INCLUDE_DIR}")
     target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
-    target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}")
+    target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}" _COSMO_SOURCE)
 
     add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/qsim.o"
         COMMAND "${prelink_cxx}" -nostdlib -r -o "${CMAKE_BINARY_DIR}/qsim.o"

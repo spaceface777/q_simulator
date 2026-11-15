@@ -1,13 +1,13 @@
 #ifndef BUTTONS_H
 #define BUTTONS_H
 
-#include <SDL3/SDL.h>
 #include <atomic>
 #include <iostream>
 #include <memory>
 #include <vector>
 
 #include "../synchronization/virtual_clock.h"
+#include "sdl.h"
 #include "visualization.h"
 
 namespace visualization::buttons {
@@ -30,11 +30,15 @@ namespace visualization::buttons {
 
 		void project_(SDL_Renderer* renderer) noexcept {
 
-			int w = 0;
-			int h = 0;
-			if (!SDL_GetCurrentRenderOutputSize(renderer, &w, &h)) {
+			int   w = 0;
+			int   h = 0;
+			float scale_x, scale_y;
+			if (!sdl.SDL_GetCurrentRenderOutputSize(renderer, &w, &h) ||
+				!sdl.SDL_GetRenderScale(renderer, &scale_x, &scale_y)) {
 				return;
 			}
+			const float width  = w / scale_x;
+			const float height = h / scale_y;
 
 			float render_x, render_y;
 			switch (anchor_) {
@@ -43,16 +47,16 @@ namespace visualization::buttons {
 				render_y = rect_.y;
 				break;
 			case ScreenAnchor::TOP_RIGHT:
-				render_x = w - rect_.x - rect_.w;
+				render_x = width - rect_.x - rect_.w;
 				render_y = rect_.y;
 				break;
 			case ScreenAnchor::BOTTOM_LEFT:
 				render_x = rect_.x;
-				render_y = h - rect_.y - rect_.h;
+				render_y = height - rect_.y - rect_.h;
 				break;
 			case ScreenAnchor::BOTTOM_RIGHT:
-				render_x = w - rect_.x - rect_.w;
-				render_y = h - rect_.y - rect_.h;
+				render_x = width - rect_.x - rect_.w;
+				render_y = height - rect_.y - rect_.h;
 				break;
 			default: return;
 			}
@@ -78,7 +82,7 @@ namespace visualization::buttons {
 
 	class PauseButton : public Button {
 	private:
-		double pre_pause_simulation_speed_ = 0;
+		double pre_pause_simulation_speed_ = 1.0;
 
 	public:
 		PauseButton()

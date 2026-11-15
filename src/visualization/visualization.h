@@ -3,11 +3,11 @@
 #ifndef VISUALIZATION_H
 #define VISUALIZATION_H
 
-#include <SDL3/SDL.h>
-
 #include "../platform/platform.h"
 #include "../synchronization/virtual_clock.h"
 #include "../world/world.h"
+
+struct SDL_Renderer;
 
 namespace visualization {
 
@@ -15,7 +15,7 @@ namespace visualization {
 
 	void update(const world::State& world, const platform::Manager& platform, virtual_clock::ISimulationClock& vclock);
 
-	// Signals the visualization loop to stop.
+	// Closes the window and releases SDL resources.
 	void stop();
 
 	[[nodiscard]] bool is_running();

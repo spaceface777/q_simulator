@@ -2,7 +2,6 @@
 
 #include "visualization.h"
 
-#include <atomic>
 #include <cmath>
 #include <functional>
 #include <iomanip>
@@ -10,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -19,6 +19,7 @@
 #include "../settings.h"
 #include "../synchronization/virtual_clock.h"
 #include "buttons.h"
+#include "sdl.h"
 
 namespace visualization {
 
@@ -33,7 +34,7 @@ namespace visualization {
 		return x * SCALING_FACTOR * scale;
 	}
 
-	static std::atomic<bool> running_;
+	static bool running_ = false;
 
 	static SDL_Window*   window_   = nullptr;
 	static SDL_Renderer* renderer_ = nullptr;
@@ -113,7 +114,7 @@ namespace visualization {
 				if (bits & (1 << (14 - (row * PixelFont::WIDTH + col)))) {
 					const SDL_FRect r = {static_cast<float>(x + col * scale), static_cast<float>(y + row * scale),
 										 static_cast<float>(scale), static_cast<float>(scale)};
-					SDL_RenderFillRect(renderer, &r);
+					sdl.SDL_RenderFillRect(renderer, &r);
 				}
 			}
 		}
@@ -126,7 +127,7 @@ namespace visualization {
 				if (bits & (1 << (14 - (row * PixelFont::WIDTH + col)))) {
 					const SDL_FRect r = {static_cast<float>(x + col * scale), static_cast<float>(y + row * scale),
 										 static_cast<float>(scale), static_cast<float>(scale)};
-					SDL_RenderFillRect(renderer, &r);
+					sdl.SDL_RenderFillRect(renderer, &r);
 				}
 			}
 		}
@@ -181,14 +182,14 @@ namespace visualization {
 		int x = module_x + led_rel_x;
 		int y = module_y + led_rel_y;
 
-		SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-		SDL_SetRenderDrawColor(renderer_, color.r(), color.g(), color.b(), color.a() == 0 ? 255 : color.a());
+		sdl.SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+		sdl.SDL_SetRenderDrawColor(renderer_, color.r(), color.g(), color.b(), color.a() == 0 ? 255 : color.a());
 
 		int radius = 6;
 		for (int w = -radius; w <= radius; w++) {
 			for (int h = -radius; h <= radius; h++) {
 				if (w * w + h * h <= radius * radius) {
-					SDL_RenderPoint(renderer_, x + w, y + h);
+					sdl.SDL_RenderPoint(renderer_, x + w, y + h);
 				}
 			}
 		}
@@ -199,8 +200,8 @@ namespace visualization {
 			draw_number(renderer_, x + 5, y + 40, color.b(), 2);
 		}
 
-		SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 150);
-		SDL_RenderPoint(renderer_, x - 2, y - 2);
+		sdl.SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 150);
+		sdl.SDL_RenderPoint(renderer_, x - 2, y - 2);
 	}
 
 	static void render_rfid(int module_x, int module_y, int rfid_state, const world::Calibration& calibration,
@@ -232,13 +233,13 @@ namespace visualization {
 							   2 * half_size};
 		// The physical reader remains visible when idle. An active tag alternates red and grey so the
 		// existing blink indication does not hide where the randomized reader actually is.
-		const bool active_blink = rfid_state != 0 && (SDL_GetTicks() / 500) % 2 != 0;
+		const bool active_blink = rfid_state != 0 && (sdl.SDL_GetTicks() / 500) % 2 != 0;
 		if (active_blink) {
-			SDL_SetRenderDrawColor(renderer_, 255, 0, 0, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 255, 0, 0, 255);
 		} else {
-			SDL_SetRenderDrawColor(renderer_, 100, 100, 100, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 100, 100, 100, 255);
 		}
-		SDL_RenderFillRect(renderer_, &rfid_rect);
+		sdl.SDL_RenderFillRect(renderer_, &rfid_rect);
 	}
 
 	static void render_big_belt(int module_x, int module_y, module::BeltSpeed speed, bool is_running,
@@ -265,23 +266,23 @@ namespace visualization {
 		SDL_FRect belt = {belt_x, belt_y, width, height};
 
 		if (is_running) {
-			SDL_SetRenderDrawColor(renderer_, 34, 139, 34, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 34, 139, 34, 255);
 		} else {
-			SDL_SetRenderDrawColor(renderer_, 40, 40, 40, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 40, 40, 40, 255);
 		}
-		SDL_RenderFillRect(renderer_, &belt);
+		sdl.SDL_RenderFillRect(renderer_, &belt);
 
 		if (is_running) {
-			SDL_SetRenderDrawColor(renderer_, 50, 205, 50, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 50, 205, 50, 255);
 		} else {
-			SDL_SetRenderDrawColor(renderer_, 100, 100, 100, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 100, 100, 100, 255);
 		}
-		SDL_RenderRect(renderer_, &belt);
+		sdl.SDL_RenderRect(renderer_, &belt);
 
 		if (is_running && speed.raw() != 0) {
 			if (settings::get_setting<bool>("debug")) draw_number(renderer_, belt_x, belt_y, speed.raw(), 2);
 
-			SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
+			sdl.SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
 			double step             = 20.0;
 			double offset           = std::fmod(belt_offset_ * (-speed.raw() / 100.0), step);
 			int    longer_dimension = height > width ? height : width;
@@ -292,7 +293,7 @@ namespace visualization {
 					float draw_x =
 						belt_x + (rotation == settings::ModuleAngle::NORMAL ? (l + offset) : width - (l + offset));
 					if (draw_x >= belt_x && draw_x < belt_x + width) {
-						SDL_RenderLine(renderer_, draw_x, belt_y, draw_x, belt_y + height - 1);
+						sdl.SDL_RenderLine(renderer_, draw_x, belt_y, draw_x, belt_y + height - 1);
 					};
 					break;
 				}
@@ -301,7 +302,7 @@ namespace visualization {
 					float draw_y =
 						belt_y + (rotation == settings::ModuleAngle::ROTATED_90 ? (l + offset) : height - (l + offset));
 					if (draw_y >= belt_y && draw_y < belt_y + height) {
-						SDL_RenderLine(renderer_, belt_x, draw_y, belt_x + width - 1, draw_y);
+						sdl.SDL_RenderLine(renderer_, belt_x, draw_y, belt_x + width - 1, draw_y);
 					};
 					break;
 				}
@@ -344,24 +345,24 @@ namespace visualization {
 		SDL_FRect belt = {belt_x, belt_y, width, height};
 
 		if (is_running) {
-			SDL_SetRenderDrawColor(renderer_, 34, 139, 34, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 34, 139, 34, 255);
 		} else {
-			SDL_SetRenderDrawColor(renderer_, 40, 40, 40, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 40, 40, 40, 255);
 		}
-		SDL_RenderFillRect(renderer_, &belt);
+		sdl.SDL_RenderFillRect(renderer_, &belt);
 
 		if (is_running) {
-			SDL_SetRenderDrawColor(renderer_, 50, 205, 50, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 50, 205, 50, 255);
 		} else {
-			SDL_SetRenderDrawColor(renderer_, 100, 100, 100, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 100, 100, 100, 255);
 		}
-		SDL_RenderRect(renderer_, &belt);
+		sdl.SDL_RenderRect(renderer_, &belt);
 
 		// Animation lines
 		if (is_running && speed.raw() != 0) {
 			if (settings::get_setting<bool>("debug")) draw_number(renderer_, belt_x, belt_y, speed.raw(), 2);
 
-			SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
+			sdl.SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
 			double step             = 20.0;
 			double offset           = -std::fmod(belt_offset_ * (-speed.raw() / 100.0), step);
 			int    longer_dimension = height > width ? height : width;
@@ -372,7 +373,7 @@ namespace visualization {
 					float draw_y =
 						belt_y + (rotation == settings::ModuleAngle::NORMAL ? (l + offset) : height - (l + offset));
 					if (draw_y >= belt_y && draw_y < belt_y + height) {
-						SDL_RenderLine(renderer_, belt_x, draw_y, belt_x + width - 1, draw_y);
+						sdl.SDL_RenderLine(renderer_, belt_x, draw_y, belt_x + width - 1, draw_y);
 					}
 					break;
 				}
@@ -381,7 +382,7 @@ namespace visualization {
 					float draw_x =
 						belt_x + (rotation == settings::ModuleAngle::ROTATED_270 ? (l + offset) : width - (l + offset));
 					if (draw_x >= belt_x && draw_x < belt_x + width) {
-						SDL_RenderLine(renderer_, draw_x, belt_y, draw_x, belt_y + height - 1);
+						sdl.SDL_RenderLine(renderer_, draw_x, belt_y, draw_x, belt_y + height - 1);
 					}
 					break;
 				}
@@ -421,9 +422,9 @@ namespace visualization {
 
 		// The emitter and detector are physical hardware, so their dots remain visible while powered
 		// down. The beam retains the previous red blink while a tub blocks it.
-		const bool beam_visible = power && (detection == 0 || (SDL_GetTicks() / 100) % 2 != 0);
+		const bool beam_visible = power && (detection == 0 || (sdl.SDL_GetTicks() / 100) % 2 != 0);
 		if (beam_visible) {
-			SDL_SetRenderDrawColor(renderer_, 255, 0, 0, 255);
+			sdl.SDL_SetRenderDrawColor(renderer_, 255, 0, 0, 255);
 			float     thickness = 2;
 			SDL_FRect beam;
 			if (x1 == x2) {
@@ -431,14 +432,14 @@ namespace visualization {
 			} else {
 				beam = {x1, y1 - thickness / 2, x2 - x1, thickness};
 			}
-			SDL_RenderFillRect(renderer_, &beam);
+			sdl.SDL_RenderFillRect(renderer_, &beam);
 		}
 
-		SDL_SetRenderDrawColor(renderer_, 100, 100, 100, 255);
+		sdl.SDL_SetRenderDrawColor(renderer_, 100, 100, 100, 255);
 		SDL_FRect dot1 = {x1 - 2.f, y1 - 2.f, 4, 4};
 		SDL_FRect dot2 = {x2 - 2.f, y2 - 2.f, 4, 4};
-		SDL_RenderFillRect(renderer_, &dot1);
-		SDL_RenderFillRect(renderer_, &dot2);
+		sdl.SDL_RenderFillRect(renderer_, &dot1);
+		sdl.SDL_RenderFillRect(renderer_, &dot2);
 	}
 
 	static void render_servo(float module_x, float module_y, module::ServoAngle angle, settings::ModuleAngle rotation) {
@@ -475,7 +476,7 @@ namespace visualization {
 		double end_rel_x = pivot_rel_x + length * cos(total_angle_rad);
 		double end_rel_y = pivot_rel_y + length * sin(total_angle_rad);
 
-		SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
+		sdl.SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
 		float x1 = module_x + pivot_rel_x;
 		float y1 = module_y + pivot_rel_y;
 		float x2 = module_x + end_rel_x;
@@ -484,16 +485,16 @@ namespace visualization {
 		// Draw thick line (width 4)
 		for (int i = -2; i <= 1; ++i) {
 			if (abs(x2 - x1) > abs(y2 - y1)) {
-				SDL_RenderLine(renderer_, x1, y1 + i, x2, y2 + i);
+				sdl.SDL_RenderLine(renderer_, x1, y1 + i, x2, y2 + i);
 			} else {
-				SDL_RenderLine(renderer_, x1 + i, y1, x2 + i, y2);
+				sdl.SDL_RenderLine(renderer_, x1 + i, y1, x2 + i, y2);
 			}
 		}
 
-		SDL_SetRenderDrawColor(renderer_, 50, 50, 50, 255);
+		sdl.SDL_SetRenderDrawColor(renderer_, 50, 50, 50, 255);
 		SDL_FRect pivot_rect = {x1 - 4.f, y1 - 4.f, 8, 8};
-		SDL_RenderFillRect(renderer_, &pivot_rect);
-		SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+		sdl.SDL_RenderFillRect(renderer_, &pivot_rect);
+		sdl.SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
 		if (settings::get_setting<bool>("debug")) draw_number(renderer_, x1 - 12, y1 - 8, angle.raw(), 2);
 	}
 
@@ -619,17 +620,17 @@ namespace visualization {
 		const float x = module_x + rel_x;
 		const float y = module_y + rel_y;
 
-		if (ghost) SDL_SetRenderDrawColor(renderer_, 150, 150, 150, 255);
-		else SDL_SetRenderDrawColor(renderer_, 255, 192, 203, 255);
+		if (ghost) sdl.SDL_SetRenderDrawColor(renderer_, 150, 150, 150, 255);
+		else sdl.SDL_SetRenderDrawColor(renderer_, 255, 192, 203, 255);
 		const int radius =
 			static_cast<int>(std::lround(scale_within_module(180.0 * world::TUB_RADIUS_BIG_BELT_FRACTION)));
 		for (int w = -radius; w <= radius; w++) {
 			for (int h = -radius; h <= radius; h++) {
-				if (w * w + h * h <= radius * radius) SDL_RenderPoint(renderer_, x + w, y + h);
+				if (w * w + h * h <= radius * radius) sdl.SDL_RenderPoint(renderer_, x + w, y + h);
 			}
 		}
 
-		SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
 		draw_number(renderer_, x - 4, y - 6, id, 2);
 		if (settings::get_setting<bool>("debug")) draw_number(renderer_, x - 4, y + 5, progress, 1);
 	}
@@ -665,13 +666,13 @@ namespace visualization {
 		const settings::ModuleSettings module_settings = settings::get_module_settings(module_id);
 
 		SDL_FRect bg = {x, y, scale_within_module(180), scale_within_module(180)};
-		SDL_SetRenderDrawColor(renderer_, 60, 60, 60, 255);
-		SDL_RenderFillRect(renderer_, &bg);
+		sdl.SDL_SetRenderDrawColor(renderer_, 60, 60, 60, 255);
+		sdl.SDL_RenderFillRect(renderer_, &bg);
 
-		SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
-		SDL_RenderRect(renderer_, &bg);
+		sdl.SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
+		sdl.SDL_RenderRect(renderer_, &bg);
 
-		SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+		sdl.SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
 		draw_number(renderer_, x + 5, y + 5, module_id.raw(), 2);
 
 		if (module_settings.type == "security") {
@@ -698,54 +699,51 @@ namespace visualization {
 					 module_settings.angle);
 
 		if (platform.lifecycle(module_id) == platform::Lifecycle::STOPPED) {
-			SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
-			SDL_SetRenderDrawColor(renderer_, 180, 0, 0, 80);
-			SDL_RenderFillRect(renderer_, &bg);
-			SDL_SetRenderDrawColor(renderer_, 255, 64, 64, 255);
+			sdl.SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+			sdl.SDL_SetRenderDrawColor(renderer_, 180, 0, 0, 80);
+			sdl.SDL_RenderFillRect(renderer_, &bg);
+			sdl.SDL_SetRenderDrawColor(renderer_, 255, 64, 64, 255);
 			const float far_x = x + bg.w;
 			const float far_y = y + bg.h;
 			for (int offset = -2; offset <= 2; offset++) {
-				SDL_RenderLine(renderer_, x, y + offset, far_x, far_y + offset);
-				SDL_RenderLine(renderer_, far_x, y + offset, x, far_y + offset);
+				sdl.SDL_RenderLine(renderer_, x, y + offset, far_x, far_y + offset);
+				sdl.SDL_RenderLine(renderer_, far_x, y + offset, x, far_y + offset);
 			}
 		}
 	}
 
 	void stop() {
+		if (!running_) return;
 		running_ = false;
 
-		SDL_DestroyRenderer(renderer_);
-		SDL_DestroyWindow(window_);
-		SDL_Quit();
+		if (renderer_) sdl.SDL_DestroyRenderer(renderer_);
+		if (window_) sdl.SDL_DestroyWindow(window_);
+		sdl.SDL_Quit();
 	}
 
 	static std::vector<std::unique_ptr<buttons::Button>> buttons_;
 
 	void init() {
 		if (running_) return;
+		load_sdl();
+		sdl.SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
+
+		if (!sdl.SDL_Init(SDL_INIT_VIDEO)) {
+			throw std::runtime_error(std::string("Could not initialize SDL video: ") + sdl.SDL_GetError());
+		}
 		running_ = true;
-		last_tubs_.clear();
-		ghost_tubs_.clear();
 
-		if (!SDL_Init(SDL_INIT_VIDEO)) {
-			std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
-			running_ = false;
-			return;
-		}
-
-		window_ = SDL_CreateWindow("Quercus Airport Visualization", 800, 800, SDL_WINDOW_RESIZABLE);
+		const float content_scale = sdl.SDL_GetDisplayContentScale(sdl.SDL_GetPrimaryDisplay());
+		const int   window_size   = static_cast<int>(std::lround(800 * (content_scale > 0 ? content_scale : 1)));
+		window_                   = sdl.SDL_CreateWindow("Quercus Airport Visualization", window_size, window_size,
+														 SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 		if (!window_) {
-			std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-			SDL_Quit();
-			running_ = false;
-			return;
+			throw std::runtime_error(std::string("Could not create the SDL window: ") + sdl.SDL_GetError());
 		}
 
-		renderer_ = SDL_CreateRenderer(window_, nullptr);
+		renderer_ = sdl.SDL_CreateRenderer(window_, nullptr);
 		if (!renderer_) {
-			std::cerr << "Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-			stop();
-			return;
+			throw std::runtime_error(std::string("Could not create the SDL renderer: ") + sdl.SDL_GetError());
 		}
 
 		buttons_.push_back(std::make_unique<buttons::PauseButton>(buttons::PauseButton()));
@@ -768,17 +766,20 @@ namespace visualization {
 			return;
 		}
 
-		scale = settings::get_setting<double>("scale");
+		scale                     = settings::get_setting<double>("scale");
+		const float display_scale = sdl.SDL_GetWindowDisplayScale(window_);
+		if (display_scale > 0 && !sdl.SDL_SetRenderScale(renderer_, display_scale, display_scale))
+			throw std::runtime_error(std::string("Could not scale the SDL renderer: ") + sdl.SDL_GetError());
 
 		SDL_Event event;
-		while (SDL_PollEvent(&event) != 0) {
-			if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+		while (sdl.SDL_PollEvent(&event) != 0) {
+			if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
 				stop();
 				return;
 			}
 
 			if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP) {
-				const bool* keyboard = SDL_GetKeyboardState(nullptr);
+				const bool* keyboard = sdl.SDL_GetKeyboardState(nullptr);
 
 				if (keyboard[SDL_SCANCODE_F4]) {
 					settings::set_setting("debug", !settings::get_setting<bool>("debug"));
@@ -803,6 +804,7 @@ namespace visualization {
 				}
 			}
 
+			sdl.SDL_ConvertEventToRenderCoordinates(renderer_, &event);
 			for (auto& button : buttons_) {
 				button->handle(event, vclock);
 			}
@@ -816,8 +818,8 @@ namespace visualization {
 		const std::chrono::milliseconds dt           = current_time - last_time;
 		last_time                                    = current_time;
 
-		SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
-		SDL_RenderClear(renderer_);
+		sdl.SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
+		sdl.SDL_RenderClear(renderer_);
 
 		for (uint8_t i = 1; i < MAX_MODULES; ++i) {
 			const auto mid = module::ModuleId{i};
@@ -834,7 +836,8 @@ namespace visualization {
 		}
 		belt_offset_ += (dt.count() / 16.0) * BELT_FACTOR;
 
-		SDL_RenderPresent(renderer_);
+		if (!sdl.SDL_RenderPresent(renderer_))
+			throw std::runtime_error(std::string("Could not present the SDL frame: ") + sdl.SDL_GetError());
 	}
 
 	bool is_running() {

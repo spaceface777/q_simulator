@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import tomllib
+import zipfile
 
 
 def images(layout: Path, contents: bytes) -> list[Path]:
@@ -35,6 +36,31 @@ def images(layout: Path, contents: bytes) -> list[Path]:
     return result
 
 
+def embed_sdl3(world: Path, toolchain: Path, system: str, arch: str) -> None:
+    names = {
+        ("Darwin", "aarch64"): "libSDL3.dylib",
+        ("Linux", "aarch64"): "libSDL3.so",
+        ("Linux", "x86_64"): "libSDL3.so",
+        ("Windows", "x86_64"): "SDL3.dll",
+    }
+    name = names.get((system, arch))
+    if name is None:
+        return
+    configured = "@QSIM_SDL3_ASSETS@"
+    assets = Path(configured) if configured else toolchain / "share" / "qsim" / "sdl3" / f"{system.lower()}-{arch}"
+    if not configured and not assets.exists():
+        return
+    files = (name, "dlopen-helper") if system == "Linux" else (name,)
+    with zipfile.ZipFile(world, "a", allowZip64=False) as archive:
+        for filename in files:
+            contents = (assets / filename).read_bytes()
+            digest = (assets / (filename + ".sha256")).read_text(encoding="ascii").strip()
+            if not contents or hashlib.sha256(contents).hexdigest() != digest:
+                raise ValueError(f"SDL3 asset checksum mismatch: {assets / filename}")
+            archive.writestr(zipfile.ZipInfo(f"sdl3/{filename}"), contents, zipfile.ZIP_DEFLATED)
+            archive.writestr(zipfile.ZipInfo(f"sdl3/{filename}.sha256"), digest)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="qsim")
     command = parser.add_subparsers(dest="command", required=True)
@@ -48,7 +74,8 @@ def main() -> None:
         firmware = images(layout, contents)
         output = args.output.resolve()
         debug = output.with_name(output.name + ".dbg")
-        tools = Path(os.getenv("COSMOCC_TOOLCHAIN_PATH", "@COSMOCC_TOOLCHAIN_PATH@")) / "bin"
+        toolchain = Path(os.getenv("COSMOCC_TOOLCHAIN_PATH", "@COSMOCC_TOOLCHAIN_PATH@"))
+        tools = toolchain / "bin"
         arch = "@CMAKE_SYSTEM_PROCESSOR@"
         simulator = Path(__file__).resolve().with_name("qsim.o")
         if os.name == "nt":
@@ -89,6 +116,7 @@ def main() -> None:
                     "sh", tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M",
                     tools / "ape-m1.c", "-o", world, symbols,
                 ], check=True)
+            embed_sdl3(world, toolchain, "@CMAKE_HOST_SYSTEM_NAME@", arch)
             os.replace(symbols, debug)
             os.replace(world, output)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
