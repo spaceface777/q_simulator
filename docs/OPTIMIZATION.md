@@ -10,7 +10,7 @@ Start with fresh build directories to collect a new profile.
 This example trains both the simulator and the module movement applet.
 
 ```sh
-cmake -S . -B build-pgo -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/cosmocc.cmake -DPGO=TRAIN
+cmake -S . -B build-pgo -G Ninja -DPGO=TRAIN
 cmake --build build-pgo --target qsim-world
 (cd external/q_applets && ./q_sdk/qbuild sim module_movement --pgo train)
 python3 build-pgo/qsim build layouts/one_module.toml -o training.exe

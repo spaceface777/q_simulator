@@ -46,15 +46,14 @@ Each copy receives a different module ID over RPC and reports its own ID.
 
 ## Simulator build
 
-Use the toolchain file for a headless Cosmopolitan build.
+The build uses cosmocc by default. Configure a headless Cosmopolitan build.
 
 ```sh
-cmake -S . -B build-cosmo -G Ninja \
-  -DCMAKE_TOOLCHAIN_FILE=cmake/cosmocc.cmake -DTESTING_CONSOLE_BUILD=ON
+cmake -S . -B build-cosmo -G Ninja -DTESTING_CONSOLE_BUILD=ON
 cmake --build build-cosmo
 ```
 
-For a Linux host-toolchain build, omit `-DCMAKE_TOOLCHAIN_FILE` and use a separate build directory.
+For a Linux host-toolchain build, add `-DQSIM_COSMOCC=OFF` and use a separate build directory.
 
 ## GitLab CI
 

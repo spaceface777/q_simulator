@@ -10,7 +10,7 @@ variables:
 
 build:
   script:
-    - cmake -B build -S . -G Ninja
+    - cmake -B build -S . -G Ninja -DQSIM_COSMOCC=OFF
     - sudo apt-get update && sudo apt-get install -y clang-format-22
     - cmake --build build -j --target format-check
     - cmake --build build -j --target all

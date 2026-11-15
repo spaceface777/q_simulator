@@ -39,12 +39,20 @@ Build the firmware objects.
 (cd external/q_applets && ./q_sdk/qbuild sim)
 ```
 
-Configure and build the simulator with Cosmopolitan.
+Configure and build the simulator. The build uses cosmocc by default.
+CMake finds the toolchain through `COSMOCC_TOOLCHAIN_PATH`, a `cosmocc` on `PATH`, or `/opt/cosmocc`.
+Ninja is recommended but not required.
 
 ```sh
-cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/cosmocc.cmake
+cmake -S . -B build -G Ninja
 cmake --build build
 ```
+
+For a Linux build with the host compiler, add `-DQSIM_COSMOCC=OFF` and use a separate build directory.
+
+When you change the simulator core often, configure a separate build directory with `-DENABLE_LTO=OFF`.
+A rebuild after one core edit then takes about half the time, and the unit tests run at the same speed.
+Build worlds for measurements from an LTO build, which is the default.
 
 Build a world from a layout.
 
@@ -131,7 +139,7 @@ Run the simulator unit tests.
 ctest --test-dir build --output-on-failure
 ```
 
-On Linux, configure a separate build directory without the toolchain file to use the host compiler.
+On Linux, configure a separate build directory with `-DQSIM_COSMOCC=OFF` to use the host compiler.
 After the firmware build, run the linked-world tests.
 
 ```sh
@@ -149,7 +157,7 @@ Generate an HTML coverage report with a Debug build.
 ```sh
 BROWSER=firefox
 
-cmake -B build -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug -S . -G Ninja
+cmake -B build -DQSIM_COSMOCC=OFF -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug -S . -G Ninja
 cmake --build build --target clean -j
 cmake --build build --target tests -j
 ./build/tests
@@ -158,7 +166,7 @@ lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,gc
 lcov --remove coverage.info '/usr/*' '*/_deps/*' '*/test/*' --output-file coverage_filtered.info
 genhtml coverage_filtered.info --output-directory coverage_html
 cd ..
-cmake -B build -S . -G Ninja
+cmake -B build -DQSIM_COSMOCC=OFF -S . -G Ninja
 $(echo $BROWSER) build/coverage_html/index.html
 ```
 

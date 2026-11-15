@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.12.0)
+
+# Build with cosmocc unless the configure names another toolchain file or asks for the host compiler.
+option(QSIM_COSMOCC "Build with the cosmocc toolchain (OFF: host compiler, Linux only)" ON)
+if(QSIM_COSMOCC AND NOT DEFINED CMAKE_TOOLCHAIN_FILE AND NOT DEFINED ENV{CMAKE_TOOLCHAIN_FILE})
+    set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cosmocc.cmake" CACHE FILEPATH "Toolchain file")
+endif()
+
 project(simulation VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -15,8 +22,10 @@ if(QUERCUS_COSMOPOLITAN)
     if(CMAKE_HOST_APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         # The AArch64 driver emits ELF. Wrap each executable for the Apple Silicon loader.
         set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
-        string(APPEND CMAKE_CXX_LINK_EXECUTABLE
-            " && \"${CMAKE_COMMAND}\" -E rename <TARGET> <TARGET>.dbg && sh \"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
+        # Each list item is one command, which both the Ninja and Makefile generators support.
+        list(APPEND CMAKE_CXX_LINK_EXECUTABLE
+            "\"${CMAKE_COMMAND}\" -E rename <TARGET> <TARGET>.dbg"
+            "sh \"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
     endif()
 endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
@@ -30,7 +39,9 @@ endif()
 
 # Test code and GoogleTest skip LTO and the expensive -O3 passes. -O1 keeps them cheap to compile
 # while the suite, which runs far more often than an unchanged object is rebuilt, stays fast.
-set(test_compile_options -O1)
+# Line tables (-g1) cost a quarter less to compile than full debug info, and keep the file:line
+# frames that the crash containment tests check.
+set(test_compile_options -O1 -g1)
 
 set(PGO OFF CACHE STRING "Simulator PGO mode: OFF, TRAIN or USE")
 set_property(CACHE PGO PROPERTY STRINGS OFF TRAIN USE)

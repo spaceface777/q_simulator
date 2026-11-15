@@ -1,7 +1,18 @@
 # Use the Cosmopolitan driver for the host CPU.
 set(COSMOCC_TOOLCHAIN_PATH "$ENV{COSMOCC_TOOLCHAIN_PATH}" CACHE PATH "Extracted cosmocc toolchain")
 if(NOT COSMOCC_TOOLCHAIN_PATH)
-    message(FATAL_ERROR "Set COSMOCC_TOOLCHAIN_PATH to the extracted cosmocc toolchain")
+    # Fall back to a cosmocc on PATH or in the conventional install location.
+    find_program(cosmocc_driver NAMES cosmocc HINTS /opt/cosmocc/bin NO_CACHE)
+    if(cosmocc_driver)
+        get_filename_component(cosmocc_driver "${cosmocc_driver}" REALPATH)
+        get_filename_component(cosmocc_driver_dir "${cosmocc_driver}" DIRECTORY)
+        get_filename_component(found_toolchain "${cosmocc_driver_dir}" DIRECTORY)
+        set(COSMOCC_TOOLCHAIN_PATH "${found_toolchain}" CACHE PATH "Extracted cosmocc toolchain" FORCE)
+    endif()
+endif()
+if(NOT COSMOCC_TOOLCHAIN_PATH)
+    message(FATAL_ERROR "Set COSMOCC_TOOLCHAIN_PATH to the extracted cosmocc toolchain, "
+        "or configure with -DQSIM_COSMOCC=OFF for a host-compiler build")
 endif()
 
 if(CMAKE_HOST_WIN32 OR CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
@@ -17,6 +28,15 @@ set(CMAKE_C_COMPILER "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-cc")
 set(CMAKE_CXX_COMPILER "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-c++")
 set(CMAKE_AR "${cosmocc_bin}/${cosmocc_arch}-linux-cosmo-gcc-ar" CACHE FILEPATH "Cosmopolitan archiver")
 set(CMAKE_RANLIB "${cosmocc_bin}/${cosmocc_arch}-linux-cosmo-gcc-ranlib" CACHE FILEPATH "Cosmopolitan archive indexer")
+if(NOT CMAKE_HOST_WIN32)
+    # The archiver tools are APE binaries without a shebang. Only a shell can start them, and the
+    # Makefile generator runs archive commands without one, so start them through sh.
+    foreach(lang C CXX)
+        set(CMAKE_${lang}_ARCHIVE_CREATE "sh <CMAKE_AR> qc <TARGET> <LINK_FLAGS> <OBJECTS>")
+        set(CMAKE_${lang}_ARCHIVE_APPEND "sh <CMAKE_AR> q <TARGET> <LINK_FLAGS> <OBJECTS>")
+        set(CMAKE_${lang}_ARCHIVE_FINISH "sh <CMAKE_RANLIB> <TARGET>")
+    endforeach()
+endif()
 set(CMAKE_EXECUTABLE_SUFFIX .exe)
 set(QUERCUS_COSMOPOLITAN ON)
 list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES COSMOCC_TOOLCHAIN_PATH)
