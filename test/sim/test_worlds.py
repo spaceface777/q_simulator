@@ -5,9 +5,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
+import zipfile
 
 
 def launch(world: Path, *args: object, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
@@ -20,10 +23,48 @@ def world_identity(world: Path) -> tuple[int, bytes]:
         return world.stat().st_mtime_ns, hashlib.file_digest(stream, "sha256").digest()
 
 
+def check_gui_shutdown(world: Path, work: Path, env: dict[str, str]) -> None:
+    scenario = work / "gui.toml"
+    scenario.write_text('[scenario]\nduration = "20ms"\n')
+    settings = work / "paused.toml"
+    settings.write_text("simulation_speed = 0.0\n")
+    trace = work / "gui.ndjson"
+    log = work / "gui.log"
+    with log.open("w") as output:
+        process = subprocess.Popen(
+            ["sh", world, scenario, "--gui", "--speed", "3", "--settings", settings,
+             "--timeout", "0.001", "--trace", trace],
+            cwd=work, env={**env, "SDL_VIDEODRIVER": "dummy"}, stdout=output, stderr=output,
+            start_new_session=True,
+        )
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and process.poll() is None:
+                if "Booting Zephyr OS" in log.read_text():
+                    break
+                time.sleep(0.05)
+            else:
+                raise RuntimeError(f"the GUI did not run through firmware boot\n{log.read_text()}")
+            os.killpg(process.pid, signal.SIGINT)
+            if process.wait(timeout=5) != 130:
+                raise RuntimeError(f"Ctrl+C did not stop the GUI runner\n{log.read_text()}")
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+    last = json.loads(trace.read_text().splitlines()[-1])
+    if last["type"] != "run_complete" or last["tick"] <= 20:
+        raise RuntimeError(f"the GUI did not flush the trace after Ctrl+C: {last}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("qsim", type=Path)
-    qsim = parser.parse_args().qsim.resolve()
+    parser.add_argument("--gui-smoke", action="store_true", help="test Ctrl+C with bundled SDL3 on POSIX")
+    args = parser.parse_args()
+    if args.gui_smoke and sys.platform == "win32":
+        parser.error("--gui-smoke requires POSIX signals")
+    qsim = args.qsim.resolve()
     root = Path(__file__).resolve().parents[2]
     # The P2 process runner reports these same verdicts with the pinned applet.
     expected_unresolved = {
@@ -36,6 +77,8 @@ def main() -> None:
         identities = {}
         runtime_env = os.environ.copy()
         runtime_env.pop("COSMOCC_TOOLCHAIN_PATH", None)
+        sdl_cache = work / "cache"
+        runtime_env["LOCALAPPDATA" if sys.platform == "win32" else "XDG_CACHE_HOME"] = str(sdl_cache)
         partial_settings = work / "partial.toml"
         partial_settings.write_text("seed = 1\n")
         # Its presence must not affect runs with no explicit settings file.
@@ -98,9 +141,23 @@ def main() -> None:
         result = launch(world, scenario, "--settings", work / "missing.toml", cwd=work, env=runtime_env)
         if result.returncode != 2 or "No settings file found" not in result.stderr:
             raise RuntimeError("the world accepted an explicitly missing settings file")
-        result = launch(world, scenario, "--gui", cwd=work, env=runtime_env)
-        if result.returncode != 2 or "GUI support is unavailable" not in result.stderr:
-            raise RuntimeError("the world did not report the unavailable GUI")
+        if (sdl_cache / "qsim" / "sdl3").exists():
+            raise RuntimeError("a headless run extracted SDL3")
+        embeds_sdl = False
+        if zipfile.is_zipfile(world):
+            with zipfile.ZipFile(world) as archive:
+                embeds_sdl = any(name.startswith("sdl3/") for name in archive.namelist())
+        if not embeds_sdl:
+            result = launch(world, scenario, "--gui", cwd=work, env=runtime_env)
+            if result.returncode != 2 or not any(message in result.stderr for message in (
+                "GUI support is unavailable", "This world does not contain",
+            )):
+                raise RuntimeError("the world did not report the unavailable GUI")
+        result = launch(world, scenario, "--gui", "--speed", "-1", cwd=work, env=runtime_env)
+        if result.returncode != 2 or "Invalid speed" not in result.stderr:
+            raise RuntimeError("the world accepted a negative GUI speed")
+        if args.gui_smoke:
+            check_gui_shutdown(worlds[root / "layouts/one_module.toml"], work, runtime_env)
         partial_settings.write_text("seed = 17\n")
         result = launch(world, scenario, "--settings", partial_settings, "--trace", traces[0],
                         cwd=work, env=runtime_env)

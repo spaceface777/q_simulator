@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -11,6 +13,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "../defs.h"
@@ -20,6 +23,7 @@
 #include "../settings.h"
 #include "../sim/runtime.h"
 #include "../util.h"
+#include "../visualization/visualization.h"
 
 namespace {
 
@@ -38,6 +42,8 @@ namespace {
 		std::string                          trace;
 		std::optional<uint64_t>              seed;
 		std::optional<double>                timeout;
+		std::optional<double>                speed;
+		bool                                 gui        = false;
 		bool                                 quiet      = false;
 		bool                                 keep_going = false;
 	};
@@ -45,16 +51,17 @@ namespace {
 	void usage() {
 		std::cout << "Use: ./world.exe scenario.toml [options]\n"
 				  << "\n"
-				  << "Runs a scenario against an application with no GUI and no operator, and\n"
+				  << "Runs a scenario against the linked firmware and\n"
 				  << "exits non-zero if any temporal property does not hold.\n"
 				  << "\n"
 				  << "Options:\n"
 				  << "  -s, --settings <path>   Override runtime settings from a TOML file\n"
 				  << "      --seed <n>          The master seed, overriding the one in settings\n"
-				  << "      --timeout <sec>     Set an earlier simulated-time limit\n"
+				  << "      --timeout <sec>     Set an earlier simulated-time limit in headless mode\n"
 				  << "      --trace <path>      Write an NDJSON trace of the run\n"
-				  << "      --gui               Request the GUI (unavailable in this build)\n"
-				  << "  -k, --keep-going        Evaluate every property to the end after a failure\n"
+				  << "      --gui               Run interactively until the window closes or Ctrl+C\n"
+				  << "      --speed <factor>    Override the initial GUI simulation speed (0 pauses)\n"
+				  << "  -k, --keep-going        Evaluate every property after a failure in headless mode\n"
 				  << "  -q, --quiet             Print only failures\n"
 				  << "  -h, --help              Print all options\n"
 				  << "  -v, --version           Print version\n"
@@ -93,7 +100,12 @@ namespace {
 			if (argument == "-s" || argument == "--settings") {
 				options.settings = take_value(argc, argv, index, argument);
 			} else if (argument == "--gui") {
-				throw std::invalid_argument("GUI support is unavailable in this build");
+				options.gui = true;
+			} else if (argument == "--speed") {
+				const auto value = take_value(argc, argv, index, argument);
+				options.speed    = util::parse_double(value);
+				util::require(options.speed && std::isfinite(*options.speed) && *options.speed >= 0.0,
+							  "Invalid speed: " + value);
 			} else if (argument == "--trace") {
 				options.trace = take_value(argc, argv, index, argument);
 			} else if (argument == "--seed") {
@@ -121,6 +133,7 @@ namespace {
 		}
 
 		util::require(scenario_given, "A scenario file is required");
+		util::require(!options.speed || options.gui, "--speed requires --gui");
 		return options;
 	}
 
@@ -137,6 +150,33 @@ namespace {
 		output << std::fixed << std::setprecision(3)
 			   << (static_cast<double>(tick) * static_cast<double>(sim::TICK_DURATION.count())) / 1'000'000.0 << " s";
 		return output.str();
+	}
+
+	static_assert(std::atomic<bool>::is_always_lock_free);
+	std::atomic<bool> interrupted = false;
+
+	void interrupt(int) {
+		interrupted.store(true, std::memory_order_relaxed);
+	}
+
+	void run_gui(sim::Runtime& runtime) {
+		using Clock                       = std::chrono::steady_clock;
+		constexpr auto              frame = std::chrono::microseconds(1'000'000 / 60);
+		virtual_clock::VirtualClock clock;
+		clock.set_simulation_speed(settings::get_setting<double>("simulation_speed"));
+		const sim::Runtime& view     = runtime;
+		auto                previous = Clock::now();
+		while (!interrupted.load(std::memory_order_relaxed) && visualization::is_running()) {
+			const auto now      = Clock::now();
+			const auto deadline = now + frame;
+			const auto elapsed  = std::chrono::duration_cast<std::chrono::microseconds>(now - previous);
+			previous            = now;
+			runtime.advance(elapsed, clock.simulation_speed(), frame);
+			clock.set_virtual_time(
+				std::chrono::duration_cast<std::chrono::milliseconds>(runtime.tick() * sim::TICK_DURATION));
+			visualization::update(view.world(), view.platform(), clock);
+			std::this_thread::sleep_until(deadline);
+		}
 	}
 
 } // namespace
@@ -163,6 +203,7 @@ int main(int argc, char const* argv[]) {
 		if (options.seed) {
 			settings::set_setting<int>("seed", static_cast<int>(*options.seed));
 		}
+		if (options.speed) settings::set_setting("simulation_speed", *options.speed);
 		schedule = events::parse_scenario(options.scenario, static_cast<uint64_t>(settings::get_setting<int>("seed")));
 	} catch (const std::exception& error) {
 		std::cerr << "Could not read the scenario: " << error.what() << std::endl;
@@ -191,7 +232,7 @@ int main(int argc, char const* argv[]) {
 
 	sim::Runtime runtime(master_seed, firmware::linked_images(settings::get_active_modules()));
 	uint64_t     timeout_tick = schedule.duration_tick;
-	if (options.timeout) {
+	if (options.timeout && !options.gui) {
 		const double ticks = (*options.timeout * 1'000'000.0) / static_cast<double>(sim::TICK_DURATION.count());
 		if (ticks >= static_cast<double>(std::numeric_limits<uint64_t>::max())) {
 			std::cerr << "Timeout is too large" << std::endl;
@@ -201,12 +242,24 @@ int main(int argc, char const* argv[]) {
 	}
 
 	runtime.set_halt_on_failure(!options.keep_going);
+	if (options.gui) runtime.set_interactive();
 	try {
 		runtime.load(schedule);
 		runtime.load_properties(std::move(properties), schedule.duration_tick, property_file);
 	} catch (const std::exception& error) {
 		std::cerr << "Could not configure the properties: " << error.what() << std::endl;
 		return EXIT_CONFIGURATION;
+	}
+
+	if (options.gui) {
+		try {
+			std::signal(SIGINT, interrupt);
+			visualization::init();
+		} catch (const std::exception& error) {
+			std::cerr << error.what() << std::endl;
+			visualization::stop();
+			return EXIT_CONFIGURATION;
+		}
 	}
 
 	try {
@@ -219,6 +272,7 @@ int main(int argc, char const* argv[]) {
 	} catch (const std::exception& error) {
 		std::cerr << "Failed to start the simulation: " << error.what() << std::endl;
 		runtime.stop();
+		if (options.gui) visualization::stop();
 		return EXIT_PROPERTY_FAILED;
 	}
 
@@ -230,7 +284,9 @@ int main(int argc, char const* argv[]) {
 	bool timed_out = false;
 
 	try {
-		while (!runtime.halted() && (runtime.properties_total() == 0 || runtime.properties_pending() > 0)) {
+		if (options.gui) run_gui(runtime);
+		while (!options.gui && !runtime.halted() &&
+			   (runtime.properties_total() == 0 || runtime.properties_pending() > 0)) {
 			if (runtime.tick() > timeout_tick) {
 				timed_out = timeout_tick < schedule.duration_tick || runtime.properties_pending() > 0;
 				break;
@@ -252,17 +308,22 @@ int main(int argc, char const* argv[]) {
 	} catch (const std::exception& error) {
 		std::cerr << "The run ended at tick " << runtime.tick() << ": " << error.what() << std::endl;
 		runtime.stop();
+		if (options.gui) visualization::stop();
 		return EXIT_PROPERTY_FAILED;
 	}
 
-	const std::size_t unclear = runtime.properties_unresolved();
-	const bool        failed  = runtime.failed() || runtime.firmware_crashed() || timed_out || unclear > 0;
-	const std::size_t total   = runtime.properties_total();
-	const std::size_t broken  = runtime.properties_failed();
-	const uint64_t    ticks   = runtime.tick();
+	const std::size_t unclear   = runtime.properties_unresolved();
+	const bool        cancelled = options.gui && runtime.tick() <= schedule.duration_tick;
+	const bool        failed = runtime.failed() || runtime.firmware_crashed() || timed_out || unclear > 0 || cancelled;
+	const std::size_t total  = runtime.properties_total();
+	const std::size_t broken = runtime.properties_failed();
+	const uint64_t    ticks  = runtime.tick();
 	const std::vector<sim::PropertyResult> results = runtime.property_results();
 
 	runtime.stop();
+	if (options.gui) visualization::stop();
+	if (cancelled)
+		std::cerr << "Simulation closed at " << timestamp(ticks) << " before the scenario ended" << std::endl;
 
 	for (const sim::PropertyResult& result : results) {
 		if (result.verdict == ltl::Verdict::TRUE) {
@@ -315,6 +376,7 @@ int main(int argc, char const* argv[]) {
 			}
 		}
 	}
+	if (interrupted.load(std::memory_order_relaxed)) return 130;
 
 	if (failed) {
 		if (timed_out) {

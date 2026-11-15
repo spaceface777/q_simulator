@@ -74,7 +74,6 @@ Use `--settings settings_example.toml` to supply runtime settings.
 The world uses built-in defaults for each setting that the file omits.
 If you omit `--settings`, the world uses built-in defaults for the entire run.
 If the layout or firmware changes, build the world again.
-The current build runs headlessly. The `--gui` option reports that GUI support is unavailable until P8.
 
 The scenario runner returns 0 when all properties hold and 1 when a property fails or remains undecided.
 It also returns 1 when firmware crashes or the simulation cannot finish, and 2 when its input is invalid.
@@ -82,6 +81,29 @@ After a firmware fault or watchdog timeout, the world stops that module and cont
 Keep the matching `world.exe.dbg` beside the executable for source lines in crash reports.
 Set `QSIM_WATCHDOG_MS` to change the five-second grant watchdog limit. Set it to zero to disable the watchdog.
 Rebuild Windows firmware with the updated SDK to enable coroutine stack-overflow recovery.
+
+### Interactive runs
+
+If the world contains SDL3 for the host platform, run the scenario with `--gui`.
+
+```sh
+./world.exe scenarios/hardware_test_blocked_beam.toml --gui --speed 2
+```
+
+`--speed` overrides the initial `simulation_speed` setting. A speed of `0` starts the simulation paused.
+The GUI ignores `--timeout`. The scenario duration still limits assertion evaluation.
+The simulation continues until you close the window or press Ctrl+C.
+
+The [SDL3 workflow](.github/workflows/sdl3.yml) prepares the native libraries and their SHA-256 files.
+Linux artifacts also contain a glibc loader helper and its SHA-256 file.
+For a Linux GUI world, use a cosmocc build with the `COSMO_DLOPEN_HELPER` patch.
+To embed SDL3, put the files from the matching artifact in a directory.
+Set `QSIM_SDL3_ASSETS` to that directory when you configure CMake.
+Then build the simulator and assemble the world. The world extracts the files to the user cache on a GUI run.
+To let Ctrl+C close the GUI and flush the trace, rebuild the firmware with the updated SDK.
+Intel macOS supports headless runs.
+
+### Scenario files
 
 Each scenario supplies `[scenario].duration`.
 If the run needs assertions, set `properties` to an LTLf file relative to the scenario.
