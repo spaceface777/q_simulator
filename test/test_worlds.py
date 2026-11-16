@@ -18,11 +18,10 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 import zipfile
 
-from run_scenario import layout_text, world_command
+from run_scenario import layout_text, scratch_directory, world_command
 
 APPLETS = Path(__file__).resolve().parent / "applets"
 SKIPPED = 77
@@ -213,7 +212,7 @@ def main() -> None:
     parser.add_argument("firmware_dir", type=Path, help="the directory with the built applet objects")
     parser.add_argument("check", choices=CHECKS, nargs="?", help="run only this check (default: all)")
     args = parser.parse_args()
-    with tempfile.TemporaryDirectory() as directory:
+    with scratch_directory() as directory:
         worlds = Worlds(args.qsim.resolve(), args.firmware_dir.resolve(), Path(directory))
         for name in [args.check] if args.check else list(CHECKS):
             CHECKS[name](worlds)

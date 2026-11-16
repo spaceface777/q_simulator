@@ -17,13 +17,16 @@ runs in the scenario directory, so that the paths it reports stay short and stab
 """
 
 import argparse
+import contextlib
 import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 DEFAULT_LAYOUT = """firmware = "{firmware}"
 
@@ -35,6 +38,24 @@ angle = 0
 """
 
 FIRMWARE_NAME = re.compile(r'^(\s*firmware\s*=\s*)"([^"/]+)"(\s*(#.*)?)$', re.MULTILINE)
+
+
+@contextlib.contextmanager
+def scratch_directory():
+    """A temporary directory, removed afterwards. Windows keeps a program's file locked for a moment
+    after the program exits, up to seconds under Arm's x64 emulation, so removal retries there."""
+    directory = tempfile.mkdtemp()
+    try:
+        yield directory
+    finally:
+        for attempt in range(50):
+            try:
+                shutil.rmtree(directory)
+                break
+            except PermissionError:
+                if os.name != "nt" or attempt == 49:
+                    raise
+                time.sleep(0.2)
 
 
 def world_command(world: Path) -> list[str]:
@@ -92,7 +113,7 @@ def main() -> None:
     patterns = expected_lines(scenario)
     extra = shlex.split((scenario / "args").read_text()) if (scenario / "args").exists() else []
 
-    with tempfile.TemporaryDirectory() as directory:
+    with scratch_directory() as directory:
         work = Path(directory)
         layout = work / "layout.toml"
         layout.write_text(layout_text(scenario, applet, args.firmware_dir.resolve()))
