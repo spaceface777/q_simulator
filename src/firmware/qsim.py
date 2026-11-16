@@ -91,7 +91,11 @@ def main() -> None:
         compile = [Path("@world_cxx@")]
         objcopy = [Path("@world_objcopy@")]
         if cosmopolitan and os.name == "nt":
-            compile.insert(0, tools / "bash.exe")
+            # The toolchain's sh (or bash, in releases without its POSIX userland) runs the driver.
+            shell = toolchain / "posix" / "bin" / "sh.exe"
+            if not shell.exists():
+                shell = tools / "bash.exe"
+            compile = [shell, compile[0].as_posix()]
             objcopy = [objcopy[0].with_name(objcopy[0].name + ".exe")]
         elif cosmopolitan:
             compile.insert(0, "sh")

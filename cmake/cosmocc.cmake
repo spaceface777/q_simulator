@@ -24,10 +24,24 @@ endif()
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR ${cosmocc_arch})
 set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
-set(CMAKE_C_COMPILER "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-cc")
-set(CMAKE_CXX_COMPILER "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-c++")
-set(CMAKE_AR "${cosmocc_bin}/${cosmocc_arch}-linux-cosmo-gcc-ar" CACHE FILEPATH "Cosmopolitan archiver")
-set(CMAKE_RANLIB "${cosmocc_bin}/${cosmocc_arch}-linux-cosmo-gcc-ranlib" CACHE FILEPATH "Cosmopolitan archive indexer")
+if(CMAKE_HOST_WIN32)
+    # Windows starts only executables, and the compiler drivers are shell scripts: start them with
+    # the toolchain's sh (dash, in its POSIX userland), or with its bash in releases without one.
+    # Its binary tools also exist under *.exe names.
+    set(cosmocc_sh "${COSMOCC_TOOLCHAIN_PATH}/posix/bin/sh.exe")
+    if(NOT EXISTS "${cosmocc_sh}")
+        set(cosmocc_sh "${cosmocc_bin}/bash.exe")
+    endif()
+    set(CMAKE_C_COMPILER "${cosmocc_sh}" "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-cc")
+    set(CMAKE_CXX_COMPILER "${cosmocc_sh}" "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-c++")
+    set(cosmocc_exe .exe)
+else()
+    set(CMAKE_C_COMPILER "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-cc")
+    set(CMAKE_CXX_COMPILER "${cosmocc_bin}/${cosmocc_arch}-unknown-cosmo-c++")
+    set(cosmocc_exe "")
+endif()
+set(CMAKE_AR "${cosmocc_bin}/${cosmocc_arch}-linux-cosmo-gcc-ar${cosmocc_exe}" CACHE FILEPATH "Cosmopolitan archiver")
+set(CMAKE_RANLIB "${cosmocc_bin}/${cosmocc_arch}-linux-cosmo-gcc-ranlib${cosmocc_exe}" CACHE FILEPATH "Cosmopolitan archive indexer")
 if(NOT CMAKE_HOST_WIN32)
     # The archiver tools are APE binaries without a shebang. Only a shell can start them, and the
     # Makefile generator runs archive commands without one, so start them through sh.

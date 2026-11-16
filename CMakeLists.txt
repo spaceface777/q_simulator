@@ -180,6 +180,10 @@ set_source_files_properties(src/firmware/crash_posix.cpp PROPERTIES
 # the tests link this object.
 if(QUERCUS_COSMOPOLITAN)
     set(prelink_cxx "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-g++")
+    if(CMAKE_HOST_WIN32)
+        # Windows finds the toolchain's programs under their *.exe names.
+        string(APPEND prelink_cxx .exe)
+    endif()
     # GCC can't prove libc++'s impossible std::string growth path unreachable, and warns about it.
     set(prelink_warnings -Wno-alloc-size-larger-than)
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
