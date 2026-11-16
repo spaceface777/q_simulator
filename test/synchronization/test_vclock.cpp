@@ -1,10 +1,42 @@
 #include <chrono>
 #include <gtest/gtest.h>
+#include <optional>
 #include <thread>
 
 #include "../../src/synchronization/virtual_clock.h"
 
 using namespace std::chrono_literals;
+
+namespace {
+
+	using Clock = std::chrono::steady_clock;
+
+	// A moment the clock read steady_clock, known only to lie between two reads of our own. Sleeps
+	// may end late on a loaded machine, so the checks bound the clock by the real time that passed
+	// rather than by the time requested.
+	struct Moment {
+		Clock::time_point first, last;
+	};
+
+	template <typename F> Moment around(F&& f) {
+		auto first = Clock::now();
+		f();
+		return {first, Clock::now()};
+	}
+
+	// What tick() adds for a real interval: both of its conversions truncate to whole milliseconds.
+	std::chrono::milliseconds scaled(Clock::duration real, double speed) {
+		return std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::duration_cast<std::chrono::milliseconds>(real) * speed);
+	}
+
+	// Checks the virtual time that a clock running at speed added between its readings at from and to.
+	void expect_advance(std::chrono::milliseconds advance, Moment from, Moment to, double speed) {
+		EXPECT_GE(advance, scaled(to.first - from.last, speed));
+		EXPECT_LE(advance, scaled(to.last - from.first, speed));
+	}
+
+} // namespace
 
 TEST(VirtualClockTest, DefaultInitialization) {
 	virtual_clock::VirtualClock clock;
@@ -34,15 +66,18 @@ TEST(VirtualClockTest, SetInvalidSimulationSpeedThrows) {
 }
 
 TEST(VirtualClockTest, RealTimeTickAdvancement) {
-	virtual_clock::VirtualClock clock;
+	// Created inside around(), which records when the clock first reads the time
+	std::optional<virtual_clock::VirtualClock> clock;
 
-	// Sleep for 50ms real time
+	auto created = around([&] { clock.emplace(); });
+
+	// Sleep for at least 50ms real time
 	std::this_thread::sleep_for(50ms);
-	clock.tick();
+	auto ticked = around([&] { clock->tick(); });
 
-	// Virtual time should have advanced by roughly 50ms (giving a small tolerance margin)
-	EXPECT_GE(clock.get_virtual_time(), 40ms);
-	EXPECT_LE(clock.get_virtual_time(), 100ms);
+	// At 1x, virtual time advances by the real time that passed
+	EXPECT_GE(clock->get_virtual_time(), 50ms);
+	expect_advance(clock->get_virtual_time(), created, ticked, 1.0);
 }
 
 TEST(VirtualClockTest, SpeedMultiplier2X) {
@@ -50,18 +85,18 @@ TEST(VirtualClockTest, SpeedMultiplier2X) {
 	clock.set_simulation_speed(2.0);
 
 	// Initial tick to establish baseline
-	clock.tick();
+	auto started    = around([&] { clock.tick(); });
 	auto start_time = clock.get_virtual_time();
 
-	// Sleep 50ms in real time
+	// Sleep at least 50ms in real time
 	std::this_thread::sleep_for(50ms);
-	clock.tick();
+	auto ticked = around([&] { clock.tick(); });
 
 	auto virtual_elapsed = clock.get_virtual_time() - start_time;
 
-	// At 2x speed, 50ms real time should advance ~100ms virtual time
-	EXPECT_GE(virtual_elapsed, 80ms);
-	EXPECT_LE(virtual_elapsed, 150ms);
+	// At 2x speed, virtual time advances twice the real time that passed
+	EXPECT_GE(virtual_elapsed, 100ms);
+	expect_advance(virtual_elapsed, started, ticked, 2.0);
 }
 
 TEST(VirtualClockTest, PausedClockZeroSpeed) {
@@ -76,25 +111,30 @@ TEST(VirtualClockTest, PausedClockZeroSpeed) {
 }
 
 TEST(VirtualClockTest, DynamicSpeedChanges) {
-	virtual_clock::VirtualClock clock;
+	// Created inside around(), which records when the clock first reads the time
+	std::optional<virtual_clock::VirtualClock> clock;
 
-	// Run at 1x for 30ms
+	auto created = around([&] { clock.emplace(); });
+
+	// Run at 1x for at least 30ms
 	std::this_thread::sleep_for(30ms);
-	clock.tick();
-	auto time1 = clock.get_virtual_time();
-	EXPECT_GE(time1, 20ms);
+	auto first = around([&] { clock->tick(); });
+	auto time1 = clock->get_virtual_time();
+	EXPECT_GE(time1, 30ms);
+	expect_advance(time1, created, first, 1.0);
 
 	// Increase speed to 5x
-	clock.set_simulation_speed(5.0);
+	clock->set_simulation_speed(5.0);
 
-	// Sleep another 30ms
+	// Sleep at least another 30ms
 	std::this_thread::sleep_for(30ms);
-	clock.tick();
+	auto second = around([&] { clock->tick(); });
 
-	auto delta2 = clock.get_virtual_time() - time1;
+	auto delta2 = clock->get_virtual_time() - time1;
 
-	// 30ms @ 5x should be roughly ~150ms virtual elapsed
-	EXPECT_GE(delta2, 120ms);
+	// At 5x, the second interval advances five times the real time that passed
+	EXPECT_GE(delta2, 150ms);
+	expect_advance(delta2, first, second, 5.0);
 }
 
 TEST(VirtualClockTest, InterfacePolymorphicUsage) {
