@@ -127,6 +127,171 @@ jobs:
         run: |
           ctest --test-dir build -j 4 --output-on-failure
 
+  # Experiment toward a distribution whose PATH holds only the toolchain. Level A: PATH holds only
+  # cosmocc's bin and posix/bin, and CMake, CTest, Ninja and Python are named by their full paths.
+  # Level B: CTest reruns what failed with those tools and west on PATH too. Windows runs from cmd
+  # and PowerShell with backslash paths, as a user types them; the spaces variants put the source,
+  # build and Zephyr in directories whose names contain spaces. (Not the toolchain: its compiler
+  # drivers split their own include paths at spaces, a known cosmocc bug.)
+  minimal-path:
+    name: Minimal PATH (${{ matrix.os }}, ${{ matrix.shell }}${{ matrix.spaces && ', spaces' || '' }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, shell: bash, spaces: false }
+          - { os: ubuntu-24.04, shell: bash, spaces: true }
+          - { os: ubuntu-24.04-arm, shell: bash, spaces: false }
+          - { os: macos-26, shell: bash, spaces: false }
+          - { os: macos-26, shell: bash, spaces: true }
+          - { os: macos-15-intel, shell: bash, spaces: false }
+          - { os: windows-2025, shell: cmd, spaces: false }
+          - { os: windows-2025, shell: pwsh, spaces: false }
+          - { os: windows-2025, shell: pwsh, spaces: true }
+          - { os: windows-11-arm, shell: cmd, spaces: true }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v5
+        with:
+          path: ${{ matrix.spaces && 'q sim/source tree' || 'source' }}
+          submodules: true
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          architecture: ${{ runner.os == 'Windows' && 'x64' || '' }}
+
+      - name: Install cosmocc, Zephyr and the build tools
+        run: |
+          root="$RUNNER_TEMP"
+          [[ "${{ matrix.spaces }}" == true ]] && root="$RUNNER_TEMP/with spaces"
+          mkdir -p "$root" && cd "$RUNNER_TEMP"
+          curl --fail --location --silent --show-error -O "$COSMOCC_URL/cosmocc.tar.xz" -O "$COSMOCC_URL/bsdtar"
+          sums=$(printf '%s  cosmocc.tar.xz\n%s  bsdtar\n' "$COSMOCC_SHA256" "$BSDTAR_SHA256")
+          if [[ "$RUNNER_OS" == macOS ]]; then shasum -a 256 -c <<< "$sums"; else sha256sum -c <<< "$sums"; fi
+          case "$RUNNER_OS" in
+            Windows) mv bsdtar bsdtar.exe && ./bsdtar.exe -xf cosmocc.tar.xz ;;
+            macOS) tar -xf cosmocc.tar.xz ;;
+            *) sh ./bsdtar -xf cosmocc.tar.xz ;;
+          esac
+          if [[ "$RUNNER_OS" == Linux && ! -e /proc/sys/fs/binfmt_misc/APE ]]; then
+            sudo cp "cosmocc/bin/ape-$(uname -m).elf" /usr/bin/ape
+            sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
+          fi
+          cd "$root"
+          python -m pip install --quiet west ninja
+          git clone --quiet --depth 1 --branch v4.5.0 https://github.com/zephyrproject-rtos/zephyr zephyrproject/zephyr
+          source="$GITHUB_WORKSPACE/${{ matrix.spaces && 'q sim/source tree' || 'source' }}"
+          git -C zephyrproject/zephyr apply "$source/q_sdk/patches/zephyr-v4.5.0-cosmocc.patch"
+          python -m pip install --quiet -r zephyrproject/zephyr/scripts/requirements-base.txt
+          (cd zephyrproject && west init -l zephyr)
+          # The level B tools: on Windows their directories, elsewhere a directory of links to them.
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            win() { cygpath -w "$1"; }
+            tool() { command -v "$1.exe"; }
+            tools="$(win "$(dirname "$(tool cmake)")");$(win "$(dirname "$(tool python)")");$(win "$(dirname "$(tool west)")")"
+          else
+            win() { printf '%s\n' "$1"; }
+            tool() { command -v "$1"; }
+            mkdir -p tools
+            for tool in cmake ctest ninja python python3 west; do ln -s "$(command -v "$tool")" "tools/$tool"; done
+            tools="$root/tools"
+          fi
+          {
+            echo "COSMOCC_TOOLCHAIN_PATH=$(win "$RUNNER_TEMP/cosmocc")"
+            echo "ZEPHYR_BASE=$(win "$root/zephyrproject/zephyr")"
+            echo "QS_SOURCE=$(win "$source")"
+            echo "QS_BUILD=$(win "$root/${{ matrix.spaces && 'build dir' || 'build' }}")"
+            echo "QS_CMAKE=$(win "$(tool cmake)")"
+            echo "QS_CTEST=$(win "$(tool ctest)")"
+            echo "QS_NINJA=$(win "$(tool ninja)")"
+            echo "QS_PYTHON=$(win "$(python -c 'import sys; print(sys.executable)')")"
+            echo "QS_TOOLS=$tools"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and test (bash)
+        if: matrix.shell == 'bash'
+        run: |
+          tc="$COSMOCC_TOOLCHAIN_PATH/bin:$COSMOCC_TOOLCHAIN_PATH/posix/bin"
+          clean=(env -i HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" LANG=C.UTF-8
+                 COSMOCC_TOOLCHAIN_PATH="$COSMOCC_TOOLCHAIN_PATH" ZEPHYR_BASE="$ZEPHYR_BASE")
+          # Level B runs only when level A got as far as the tests.
+          a=passed b=-
+          if "${clean[@]}" PATH="$tc" "$QS_CMAKE" -S "$QS_SOURCE" -B "$QS_BUILD" -G Ninja \
+               -DCMAKE_MAKE_PROGRAM="$QS_NINJA" -DPython3_EXECUTABLE="$QS_PYTHON" &&
+             "${clean[@]}" PATH="$tc" "$QS_CMAKE" --build "$QS_BUILD"; then
+            if ! "${clean[@]}" PATH="$tc" "$QS_CTEST" --test-dir "$QS_BUILD" -j 4 --output-on-failure; then
+              a=failed b=passed
+              echo "::group::Level B: rerun the failures with CMake, Ninja, Python and west on PATH"
+              "${clean[@]}" PATH="$tc:$QS_TOOLS" "$QS_CTEST" --test-dir "$QS_BUILD" --rerun-failed -j 4 --output-on-failure || b=failed
+              echo "::endgroup::"
+            fi
+          else
+            a="failed before the tests"
+          fi
+          echo "level A (toolchain only): $a; level B: $b" | tee -a "$GITHUB_STEP_SUMMARY"
+          [[ $b != failed ]]
+
+      - name: Build and test (cmd)
+        if: matrix.shell == 'cmd'
+        shell: cmd
+        run: |
+          set "PATH=%COSMOCC_TOOLCHAIN_PATH%\bin;%COSMOCC_TOOLCHAIN_PATH%\posix\bin"
+          set A=passed
+          set B=-
+          "%QS_CMAKE%" -S "%QS_SOURCE%" -B "%QS_BUILD%" -G Ninja "-DCMAKE_MAKE_PROGRAM=%QS_NINJA%" "-DPython3_EXECUTABLE=%QS_PYTHON%" || goto early
+          "%QS_CMAKE%" --build "%QS_BUILD%" || goto early
+          "%QS_CTEST%" --test-dir "%QS_BUILD%" -j 4 --output-on-failure || goto a_failed
+          goto report
+          :early
+          set "A=failed before the tests"
+          goto report
+          :a_failed
+          set A=failed
+          echo ::group::Level B: rerun the failures with CMake, Ninja, Python and west on PATH
+          set "PATH=%PATH%;%QS_TOOLS%"
+          set B=passed
+          "%QS_CTEST%" --test-dir "%QS_BUILD%" --rerun-failed -j 4 --output-on-failure || set B=failed
+          echo ::endgroup::
+          :report
+          echo level A (toolchain only): %A%; level B: %B%
+          echo level A (toolchain only): %A%; level B: %B% >> "%GITHUB_STEP_SUMMARY%"
+          if "%B%"=="failed" exit /b 1
+
+      - name: Build and test (PowerShell)
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:COSMOCC_TOOLCHAIN_PATH\bin;$env:COSMOCC_TOOLCHAIN_PATH\posix\bin"
+          $a = 'passed'; $b = '-'
+          & $env:QS_CMAKE -S $env:QS_SOURCE -B $env:QS_BUILD -G Ninja "-DCMAKE_MAKE_PROGRAM=$env:QS_NINJA" "-DPython3_EXECUTABLE=$env:QS_PYTHON"
+          if ($LASTEXITCODE -eq 0) { & $env:QS_CMAKE --build $env:QS_BUILD }
+          if ($LASTEXITCODE -ne 0) {
+            $a = 'failed before the tests'
+          } else {
+            & $env:QS_CTEST --test-dir $env:QS_BUILD -j 4 --output-on-failure
+            if ($LASTEXITCODE -ne 0) {
+              $a = 'failed'
+              Write-Output '::group::Level B: rerun the failures with CMake, Ninja, Python and west on PATH'
+              $env:PATH = "$env:PATH;$env:QS_TOOLS"
+              & $env:QS_CTEST --test-dir $env:QS_BUILD --rerun-failed -j 4 --output-on-failure
+              $b = if ($LASTEXITCODE -eq 0) { 'passed' } else { 'failed' }
+              Write-Output '::endgroup::'
+            }
+          }
+          "level A (toolchain only): $a; level B: $b" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          if ($b -eq 'failed') { exit 1 }
+          exit 0
+
   host:
     name: Host compiler and upstream Zephyr (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
