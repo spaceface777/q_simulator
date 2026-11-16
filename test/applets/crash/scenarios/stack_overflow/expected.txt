@@ -1,5 +1,6 @@
-# The overflow runs into a guard page: SIGSEGV on Linux, SIGBUS on macOS.
-Module 1 crashed: (segmentation fault \(SIGSEGV\)|bus error \(SIGBUS\)) at tick 368 \(module time 21000 us\)
+# The overflow runs into a guard page: SIGSEGV on Linux, SIGBUS on macOS. On Windows, the
+# simulator recognizes the guard page violation itself and names it.
+Module 1 crashed: (segmentation fault \(SIGSEGV\)|bus error \(SIGBUS\)|stack overflow) at tick 368 \(module time 21000 us\)
 Fault address 0x[0-9a-f]+
   #0 0x[0-9a-f]+ recurse at .*crash/src/main\.c:\d+
 Running scenario\.toml with 1 property
