@@ -2,6 +2,8 @@ name: Prepare SDL3 artifacts
 
 on:
   workflow_dispatch:
+  # ci.yml builds the libraries that its worlds embed.
+  workflow_call:
 
 permissions:
   contents: read
@@ -16,9 +18,9 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-22.04
-            arch: x86_64
+            cpu: amd64
           - runner: ubuntu-22.04-arm
-            arch: aarch64
+            cpu: arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
@@ -44,7 +46,7 @@ jobs:
           sha256sum assets/dlopen-helper | cut -d ' ' -f 1 > assets/dlopen-helper.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.arch }}
+          name: linux-${{ matrix.cpu }}
           path: assets/
 
   macos:
@@ -64,7 +66,7 @@ jobs:
           shasum -a 256 assets/libSDL3.dylib | cut -d ' ' -f 1 > assets/libSDL3.dylib.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: darwin-aarch64
+          name: macos-arm64
           path: assets/
 
   windows:
@@ -79,5 +81,5 @@ jobs:
           sha256sum assets/SDL3.dll | cut -d ' ' -f 1 > assets/SDL3.dll.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-x86_64
+          name: windows-amd64
           path: assets/

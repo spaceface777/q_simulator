@@ -1,0 +1,186 @@
+name: Simulator CI
+
+# Build and test everywhere: every runner image builds the simulator, the test applets and their worlds
+# with cosmocc and the patched Zephyr, and runs the whole ctest suite. Every Ubuntu image also builds with
+# the Linux host compiler and upstream Zephyr.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simulator-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The pinned cosmocc release, mirrored from its private GitLab project.
+  COSMOCC_URL: https://github.com/spaceface777/q_simulator/releases/download/cosmocc-2026.11.16-39
+  COSMOCC_SHA256: 563d0554faeaf1270e301e827c83f9d632dc23c7dd07c70d6e132f1dbfde2baf
+  BSDTAR_SHA256: cdcfc3a05bba38adb6b0abc869789d68e0416318ad789a21d99d67029ce03c28
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  sdl3:
+    uses: ./.github/workflows/sdl3.yml
+
+  cosmocc:
+    name: Build and test (${{ matrix.os }})
+    needs: [sdl3]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - ubuntu-26.04
+          - ubuntu-22.04-arm
+          - ubuntu-24.04-arm
+          - ubuntu-26.04-arm
+          - windows-2022
+          - windows-2025
+          - windows-11-arm
+          - windows-11-vs2026-arm
+          - macos-15-intel
+          - macos-26-intel
+          - macos-15
+          - macos-26
+          - xcode-27
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          # Windows on Arm uses x64 Python too: Zephyr's windows-curses has no arm64 wheel.
+          architecture: ${{ runner.os == 'Windows' && 'x64' || '' }}
+
+      - name: Select the platform
+        run: |
+          # cosmocc on Windows makes x86-64 programs, which Windows on Arm runs under emulation.
+          os=$(tr '[:upper:]' '[:lower:]' <<< "$RUNNER_OS")
+          cpu=amd64
+          [[ "$RUNNER_ARCH" == ARM64 && "$RUNNER_OS" != Windows ]] && cpu=arm64
+          echo "PLATFORM=$os-$cpu" >> "$GITHUB_ENV"
+
+      - name: Install cosmocc
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --location --silent --show-error -O "$COSMOCC_URL/cosmocc.tar.xz" -O "$COSMOCC_URL/bsdtar"
+          sums=$(printf '%s  cosmocc.tar.xz\n%s  bsdtar\n' "$COSMOCC_SHA256" "$BSDTAR_SHA256")
+          # Git Bash has only sha256sum, and macOS's sha256sum lacks the GNU options.
+          if [[ "$RUNNER_OS" == macOS ]]; then shasum -a 256 -c <<< "$sums"; else sha256sum -c <<< "$sums"; fi
+          # The release's own unpacker understands every xz filter that the archive uses. macOS's tar
+          # does too.
+          case "$RUNNER_OS" in
+            Windows) mv bsdtar bsdtar.exe && ./bsdtar.exe -xf cosmocc.tar.xz ;;
+            macOS) tar -xf cosmocc.tar.xz ;;
+            *) sh ./bsdtar -xf cosmocc.tar.xz ;;
+          esac
+          echo "COSMOCC_TOOLCHAIN_PATH=$RUNNER_TEMP/cosmocc" >> "$GITHUB_ENV"
+          # Some Linux images hand every MZ file to Mono. Register the APE loader for APE's more specific
+          # magic, which the kernel then checks first.
+          if [[ "$RUNNER_OS" == Linux && ! -e /proc/sys/fs/binfmt_misc/APE ]]; then
+            sudo cp "cosmocc/bin/ape-$(uname -m).elf" /usr/bin/ape
+            sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
+          fi
+
+      - name: Install Zephyr with the SDK's cosmocc patch
+        run: |
+          python -m pip install --quiet west ninja
+          git clone --quiet --depth 1 --branch v4.5.0 https://github.com/zephyrproject-rtos/zephyr \
+            "$RUNNER_TEMP/zephyrproject/zephyr"
+          git -C "$RUNNER_TEMP/zephyrproject/zephyr" apply "$GITHUB_WORKSPACE/q_sdk/patches/zephyr-v4.5.0-cosmocc.patch"
+          python -m pip install --quiet -r "$RUNNER_TEMP/zephyrproject/zephyr/scripts/requirements-base.txt"
+          (cd "$RUNNER_TEMP/zephyrproject" && west init -l zephyr)
+          echo "ZEPHYR_BASE=$RUNNER_TEMP/zephyrproject/zephyr" >> "$GITHUB_ENV"
+
+      # Intel macOS runs headless only, so it has no SDL3.
+      - uses: actions/download-artifact@v4
+        if: env.PLATFORM != 'macos-amd64'
+        with:
+          name: ${{ env.PLATFORM }}
+          path: ${{ runner.temp }}/sdl3
+
+      - name: Build
+        run: |
+          sdl3=()
+          [[ -d "$RUNNER_TEMP/sdl3" ]] && sdl3=(-DQSIM_SDL3_ASSETS="$RUNNER_TEMP/sdl3")
+          cmake -S . -B build -G Ninja "${sdl3[@]}"
+          cmake --build build
+
+      - name: Test
+        run: |
+          ctest --test-dir build -j 4 --output-on-failure
+
+  host:
+    name: Host compiler and upstream Zephyr (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - ubuntu-26.04
+          - ubuntu-22.04-arm
+          - ubuntu-24.04-arm
+          - ubuntu-26.04-arm
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install a C++23 compiler, Zephyr and the system SDL3
+        run: |
+          # Older images need GCC 14, from the toolchain PPA on 22.04. SDL3 is packaged from 25.04 on.
+          if [[ "${{ matrix.os }}" == ubuntu-22.04* ]]; then
+            sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          fi
+          sudo apt-get update
+          if [[ "${{ matrix.os }}" == ubuntu-2[24].04* ]]; then
+            sudo apt-get install -y gcc-14 g++-14
+            echo "CC=gcc-14" >> "$GITHUB_ENV"
+            echo "CXX=g++-14" >> "$GITHUB_ENV"
+          fi
+          sudo apt-get install -y ninja-build libsdl3-0 || sudo apt-get install -y ninja-build
+          python -m pip install --quiet west "clang-format>=22,<23"
+          git clone --quiet --depth 1 --branch v4.4.1 https://github.com/zephyrproject-rtos/zephyr \
+            "$RUNNER_TEMP/zephyrproject/zephyr"
+          python -m pip install --quiet -r "$RUNNER_TEMP/zephyrproject/zephyr/scripts/requirements-base.txt"
+          (cd "$RUNNER_TEMP/zephyrproject" && west init -l zephyr)
+          echo "ZEPHYR_BASE=$RUNNER_TEMP/zephyrproject/zephyr" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DQSIM_COSMOCC=OFF
+          cmake --build build
+          cmake --build build --target format-check
+
+      - name: Test
+        run: |
+          # Ubuntu 22.04's glibc has no frame pointers, so the crash report of an abort() cannot walk out
+          # of the C library to the applet's source line. That one check needs a newer host libc.
+          skip=()
+          [[ "${{ matrix.os }}" == ubuntu-22.04* ]] && skip=(-E '^applet\.crash\.abort$')
+          RUN_SLOW_TESTS=1 ctest --test-dir build -j 4 --output-on-failure "${skip[@]}"
