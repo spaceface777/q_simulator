@@ -1,4 +1,6 @@
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <unistd.h>
 
@@ -83,6 +85,16 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
+	// testing::TempDir(), and with it CaptureStdout() and CaptureStderr(), falls back to /tmp/ when
+	// neither TEST_TMPDIR nor TMPDIR is set. Windows has no /tmp, but the standard library also finds
+	// the temporary directory through TMP and TEMP.
+	if (std::getenv("TEST_TMPDIR") == nullptr && std::getenv("TMPDIR") == nullptr) {
+		std::error_code error;
+		const auto      directory = std::filesystem::temp_directory_path(error);
+		if (!error) {
+			::setenv("TEST_TMPDIR", directory.string().c_str(), 0);
+		}
+	}
 	::testing::InitGoogleTest(&argc, argv);
 	::testing::UnitTest::GetInstance()->listeners().Append(new CapturingListener);
 	return RUN_ALL_TESTS();
