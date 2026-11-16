@@ -11,6 +11,7 @@
 #include "../../src/platform/platform.h"
 #include "../../src/settings.h"
 #include "../../src/world/world.h"
+#include "../capture.h"
 
 namespace {
 
@@ -443,16 +444,16 @@ TEST_F(PlatformTest, PrintsApplicationDiagnosticsOnlyWhenTheirNetworkDeliveryArr
 									 platform::ModuleTime{sent_tick, sent_tick})
 					.has_value());
 
-	testing::internal::CaptureStdout();
+	capture::start_stdout();
 	manager->advance(sent_tick + net::Config{}.fixed_delay_ms - 1);
-	EXPECT_EQ(testing::internal::GetCapturedStdout(), "");
+	EXPECT_EQ(capture::stop_stdout(), "");
 
-	testing::internal::CaptureStdout();
+	capture::start_stdout();
 	manager->advance(sent_tick + net::Config{}.fixed_delay_ms);
-	EXPECT_EQ(testing::internal::GetCapturedStdout(), "[Pico 1]   [application] first\r\n"
-													  "[Pico 1]   [application] \n"
-													  "[Pico 1]   [application] second\n"
-													  "[Pico 1]   [application] third\n");
+	EXPECT_EQ(capture::stop_stdout(), "[Pico 1]   [application] first\r\n"
+									  "[Pico 1]   [application] \n"
+									  "[Pico 1]   [application] second\n"
+									  "[Pico 1]   [application] third\n");
 
 	const uint64_t panic_tick = 20;
 	ASSERT_TRUE(manager
@@ -461,9 +462,9 @@ TEST_F(PlatformTest, PrintsApplicationDiagnosticsOnlyWhenTheirNetworkDeliveryArr
 									 platform::ModuleTime{panic_tick, panic_tick})
 					.has_value());
 
-	testing::internal::CaptureStdout();
+	capture::start_stdout();
 	manager->advance(panic_tick + net::Config{}.fixed_delay_ms);
-	EXPECT_EQ(testing::internal::GetCapturedStdout(), "[ATC]      [application] fatal\n");
+	EXPECT_EQ(capture::stop_stdout(), "[ATC]      [application] fatal\n");
 
 	manager.reset();
 	settings::set_setting("network_packet_loss_ppm", 1'000'000);
@@ -473,9 +474,9 @@ TEST_F(PlatformTest, PrintsApplicationDiagnosticsOnlyWhenTheirNetworkDeliveryArr
 									 platform::ModuleTime{30, 30})
 					.has_value());
 
-	testing::internal::CaptureStdout();
+	capture::start_stdout();
 	manager->advance(30 + net::Config{}.fixed_delay_ms + 1);
-	EXPECT_EQ(testing::internal::GetCapturedStdout(), "");
+	EXPECT_EQ(capture::stop_stdout(), "");
 	EXPECT_TRUE(manager->logs(module::ModuleId{MODULE}).empty());
 }
 

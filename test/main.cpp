@@ -6,53 +6,9 @@
 
 #include <gtest/gtest.h>
 
+#include "capture.h"
+
 namespace {
-
-	class FileDescriptorCapture {
-	public:
-		explicit FileDescriptorCapture(int target) : target_(target) {}
-
-		~FileDescriptorCapture() {
-			if (saved_ >= 0) {
-				std::fflush(nullptr);
-				::dup2(saved_, target_);
-				::close(saved_);
-			}
-			if (stream_ != nullptr) {
-				std::fclose(stream_);
-			}
-		}
-
-		void start() {
-			std::fflush(nullptr);
-			saved_  = ::dup(target_);
-			stream_ = std::tmpfile();
-			GTEST_CHECK_(saved_ >= 0 && stream_ != nullptr && ::dup2(::fileno(stream_), target_) >= 0);
-		}
-
-		std::string stop() {
-			std::fflush(nullptr);
-			GTEST_CHECK_(saved_ >= 0 && stream_ != nullptr);
-			GTEST_CHECK_(::dup2(saved_, target_) >= 0);
-			::close(saved_);
-			saved_ = -1;
-
-			GTEST_CHECK_(std::fseek(stream_, 0, SEEK_SET) == 0);
-			std::string capture;
-			char        buffer[4096];
-			while (const std::size_t size = std::fread(buffer, 1, sizeof(buffer), stream_)) {
-				capture.append(buffer, size);
-			}
-			std::fclose(stream_);
-			stream_ = nullptr;
-			return capture;
-		}
-
-	private:
-		int   target_;
-		int   saved_  = -1;
-		FILE* stream_ = nullptr;
-	};
 
 	class CapturingListener : public ::testing::EmptyTestEventListener {
 	public:
@@ -85,9 +41,8 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
-	// testing::TempDir(), and with it CaptureStdout() and CaptureStderr(), falls back to /tmp/ when
-	// neither TEST_TMPDIR nor TMPDIR is set. Windows has no /tmp, but the standard library also finds
-	// the temporary directory through TMP and TEMP.
+	// testing::TempDir() falls back to /tmp/ when neither TEST_TMPDIR nor TMPDIR is set. Windows has
+	// no /tmp, but the standard library also finds the temporary directory through TMP and TEMP.
 	if (std::getenv("TEST_TMPDIR") == nullptr && std::getenv("TMPDIR") == nullptr) {
 		std::error_code error;
 		const auto      directory = std::filesystem::temp_directory_path(error);

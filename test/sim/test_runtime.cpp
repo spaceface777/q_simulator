@@ -16,6 +16,7 @@
 #include "../../src/ltl/parser.h"
 #include "../../src/module/module.h"
 #include "../../src/settings.h"
+#include "../capture.h"
 #include "scripted_image.h"
 
 namespace fs = std::filesystem;
@@ -516,20 +517,20 @@ TEST_F(RuntimeTest, WarnsOnlyAfterTenFramesOfSustainedPacingShortfall) {
 	test_app::Runtime runtime(7);
 	ASSERT_NO_THROW(runtime.start());
 
-	testing::internal::CaptureStderr();
+	capture::start_stderr();
 	for (int frame = 0; frame < 9; frame++) {
 		runtime.advance(std::chrono::milliseconds(100), 100.0, std::chrono::microseconds(1));
 	}
-	EXPECT_TRUE(testing::internal::GetCapturedStderr().empty());
+	EXPECT_TRUE(capture::stop_stderr().empty());
 
-	testing::internal::CaptureStderr();
+	capture::start_stderr();
 	runtime.advance(std::chrono::milliseconds(100), 100.0, std::chrono::microseconds(1));
-	EXPECT_NE(testing::internal::GetCapturedStderr().find("at least 5% below"), std::string::npos);
+	EXPECT_NE(capture::stop_stderr().find("at least 5% below"), std::string::npos);
 
 	// A continuing shortfall does not spam the same warning every frame.
-	testing::internal::CaptureStderr();
+	capture::start_stderr();
 	runtime.advance(std::chrono::milliseconds(100), 100.0, std::chrono::microseconds(1));
-	EXPECT_TRUE(testing::internal::GetCapturedStderr().empty());
+	EXPECT_TRUE(capture::stop_stderr().empty());
 
 	runtime.stop();
 }
