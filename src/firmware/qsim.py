@@ -98,8 +98,8 @@ def main() -> None:
             compile = [shell, compile[0].as_posix()]
             objcopy = [objcopy[0].with_name(objcopy[0].name + ".exe")]
         elif cosmopolitan:
-            compile.insert(0, "sh")
-            objcopy.insert(0, "sh")
+            compile.insert(0, "/bin/sh")
+            objcopy.insert(0, "/bin/sh")
         if output in [layout, simulator, *firmware] or debug in [layout, simulator, *firmware]:
             raise ValueError("output would overwrite an input")
 
@@ -137,7 +137,7 @@ def main() -> None:
                 symbols = scratch / "world.exe.dbg"
                 if "@CMAKE_HOST_SYSTEM_NAME@" == "Darwin" and arch == "aarch64":
                     subprocess.run([
-                        "sh", tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M",
+                        "/bin/sh", tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M",
                         tools / "ape-m1.c", "-o", world, symbols,
                     ], check=True)
                 embed_sdl3(world, toolchain, "@CMAKE_HOST_SYSTEM_NAME@", arch)

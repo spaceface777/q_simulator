@@ -45,8 +45,9 @@ target_compile_options(tests PRIVATE ${COMPILATION_FLAGS} ${test_compile_options
 
 if(QUERCUS_COSMOPOLITAN AND NOT CMAKE_HOST_WIN32 AND (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_HOST_APPLE))
     # These builds make tests.exe an APE file, which starts only through a shell outside Windows. On
-    # Linux arm64 it is ELF, which starts directly.
-    set(unit_emulator sh)
+    # Linux arm64 it is ELF, which starts directly. The system's shell: CMake starts it directly, and
+    # macOS cannot, when the toolchain's own sh (itself an APE file) comes first on PATH.
+    set(unit_emulator /bin/sh)
 endif()
 set(unit_suites "${CMAKE_CURRENT_BINARY_DIR}/unit_suites.cmake")
 if(NOT EXISTS "${unit_suites}")

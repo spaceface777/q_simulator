@@ -39,7 +39,7 @@ def main() -> None:
         parser.error("no scenarios found")
 
     settings = ["--settings", str(args.settings.resolve())] if args.settings else []
-    shell = [] if os.name == "nt" else ["sh"]
+    shell = [] if os.name == "nt" else ["/bin/sh"]
     outcomes = {}
     totals = {label: [] for label, _ in args.world}
     with tempfile.TemporaryDirectory() as scratch, args.output.open("w", newline="") as output:

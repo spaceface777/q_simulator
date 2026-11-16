@@ -62,7 +62,7 @@ def world_command(world: Path) -> list[str]:
     """Cosmopolitan worlds are APE files, which start through a shell outside Windows."""
     with world.open("rb") as stream:
         ape = stream.read(6) == b"MZqFpD"
-    return ["sh", str(world)] if ape and os.name != "nt" else [str(world)]
+    return ["/bin/sh", str(world)] if ape and os.name != "nt" else [str(world)]
 
 
 def layout_text(scenario: Path, applet: str, firmware_dir: Path) -> str:
