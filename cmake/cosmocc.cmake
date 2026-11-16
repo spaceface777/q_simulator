@@ -15,7 +15,10 @@ if(NOT COSMOCC_TOOLCHAIN_PATH)
         "or configure with -DQSIM_COSMOCC=OFF for a host-compiler build")
 endif()
 
-if(CMAKE_HOST_WIN32 OR CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+# The uname() system call, not CMAKE_HOST_SYSTEM_PROCESSOR: CMake finds that by running uname, which
+# macOS cannot start when the toolchain's own uname, an APE file, comes first on PATH.
+cmake_host_system_information(RESULT cosmocc_host_cpu QUERY OS_PLATFORM)
+if(CMAKE_HOST_WIN32 OR cosmocc_host_cpu MATCHES "^(x86_64|AMD64|amd64)$")
     set(cosmocc_arch x86_64)
 else()
     set(cosmocc_arch aarch64)
