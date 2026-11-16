@@ -81,11 +81,12 @@ endif()
 
 include(FetchContent)
 
+# Release archives rather than Git: the build then needs no git, which a minimal PATH lacks.
 FetchContent_Declare(
     googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.17.0
-    GIT_SHALLOW    TRUE
+    URL      https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz
+    URL_HASH SHA256=65fab701d9829d38cb77c14acdc431d2108bfdbf8979e40eb8ae567edf10b27c
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
@@ -96,9 +97,9 @@ target_compile_options(gtest PRIVATE ${test_compile_options})
 
 FetchContent_Declare(
     tomlplusplus
-    GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
-    GIT_TAG        v3.4.0
-    GIT_SHALLOW    TRUE
+    URL      https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz
+    URL_HASH SHA256=8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(tomlplusplus)
 

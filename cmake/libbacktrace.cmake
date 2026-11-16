@@ -2,8 +2,10 @@
 # build can use the system's loaded ELF objects, including PIE executables.
 FetchContent_Declare(
     libbacktrace
-    GIT_REPOSITORY https://github.com/ianlancetaylor/libbacktrace.git
-    GIT_TAG        ab3c042b8033efd5d396310f71cb3bc62885062b
+    # An archive rather than Git, like the other dependencies: the build needs no git.
+    URL      https://github.com/ianlancetaylor/libbacktrace/archive/ab3c042b8033efd5d396310f71cb3bc62885062b.tar.gz
+    URL_HASH SHA256=e6f8c0c31a9ea40f1e1e2716cb35e53fa5ac6c4baa1a418f7a43eaaf65e8fdf8
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(libbacktrace)
 
