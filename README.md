@@ -79,6 +79,7 @@ On Linux, the simulator also builds with the host compiler and host tools, witho
 Add `-DQSIM_COSMOCC=OFF` and use a separate build directory.
 Build its firmware with `q_sdk/qbuild sim --toolchain host`, which writes the objects to `out/host/`.
 A host-compiler build works with an upstream Zephyr release.
+Add `-DENABLE_SANITIZERS=ON` for the address and undefined behaviour sanitizers. A finding stops the program, so that the test fails.
 
 When you change the simulator core often, configure a separate build directory with `-DENABLE_LTO=OFF`.
 A rebuild after one core edit then takes about half the time, and the unit tests run at the same speed.

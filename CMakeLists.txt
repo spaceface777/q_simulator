@@ -71,10 +71,17 @@ if(ENABLE_DEBUG_CONTAINERS)
     list(APPEND COMPILATION_FLAGS -D_GLIBCXX_DEBUG)
 endif()
 
-option(ENABLE_SANITIZERS "Enable the address and undefined behaviour sanitizers" OFF)
+# The sanitizers need the host compiler's runtimes. Every finding stops the program, so that tests fail.
+option(ENABLE_SANITIZERS "Enable the address and undefined behaviour sanitizers (host compiler only)" OFF)
 if(ENABLE_SANITIZERS)
-    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
-    add_link_options(-fsanitize=address,undefined)
+    if(QUERCUS_COSMOPOLITAN)
+        message(FATAL_ERROR "The sanitizers need a host-compiler build: configure with -DQSIM_COSMOCC=OFF")
+    endif()
+    set(sanitizer_flags -fsanitize=address,undefined -fno-sanitize-recover=all)
+    add_compile_options(${sanitizer_flags} -fno-omit-frame-pointer -g)
+    add_link_options(${sanitizer_flags})
+    # qsim links worlds itself.
+    set(world_link_options ${sanitizer_flags})
 endif()
 
 # === Libraries ===

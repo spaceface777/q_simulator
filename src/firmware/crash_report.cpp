@@ -11,6 +11,14 @@
 #include <unistd.h>
 #endif
 
+#ifdef __SANITIZE_ADDRESS__
+// libbacktrace keeps what it reads of the debug information for the life of the process, and drops
+// some of it without freeing it. Everything it allocates goes through backtrace_alloc.
+extern "C" const char* __lsan_default_suppressions() {
+	return "leak:backtrace_alloc\n";
+}
+#endif
+
 namespace firmware::crash {
 	namespace {
 		const char* description(int signal) noexcept {

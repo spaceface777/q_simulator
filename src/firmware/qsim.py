@@ -117,6 +117,7 @@ def main() -> None:
             world = scratch / "world.exe"
             # Firmware objects are not position independent.
             options = ["-mtiny"] if cosmopolitan else ["-no-pie", "-ldl"]
+            options += [option for option in "@world_link_options@".split(";") if option]
             subprocess.run([
                 compile, *options, "-o", world, simulator,
                 scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread", "-lgcov",
