@@ -81,6 +81,7 @@ def main() -> None:
             output = output.with_name(output.name + ".exe")
         # A Cosmopolitan world keeps its symbols in a separate debug file.
         cosmopolitan = "@QUERCUS_COSMOPOLITAN@" == "ON"
+        coverage_runtime = [] if "@QSIM_LLVM_EVALUATION@" == "ON" else ["-lgcov"]
         debug = output.with_name(output.name + ".dbg")
         toolchain = Path("@COSMOCC_TOOLCHAIN_PATH@")
         tools = toolchain / "bin"
@@ -120,7 +121,7 @@ def main() -> None:
             options += [option for option in "@world_link_options@".split(";") if option]
             subprocess.run([
                 compile, *options, "-o", world, simulator,
-                scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread", "-lgcov",
+                scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread", *coverage_runtime,
             ], check=True)
             if cosmopolitan:
                 symbols = scratch / "world.exe.dbg"

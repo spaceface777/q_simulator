@@ -30,8 +30,11 @@ if(QUERCUS_COSMOPOLITAN)
 endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
 option(ENABLE_LTO "Enable LTO in optimized builds" ON)
-# The prelink below needs GCC's -flinker-output; other compilers build without LTO.
-if(ENABLE_LTO AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+option(QSIM_LLVM_EVALUATION "Evaluate the Linux Clang and LLD prelink" OFF)
+if(QSIM_LLVM_EVALUATION AND ENABLE_LTO AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(sim_lto $<$<CONFIG:Release>:-flto=full>)
+    set(prelink_lto -flto=full -fuse-ld=lld)
+elseif(ENABLE_LTO AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Only the core carries LTO bytecode. The qsim-core.o prelink below optimizes it once, and both
     # the world entry point and the tests link that result.
     set(sim_lto $<$<CONFIG:Release>:-flto=auto>)
@@ -201,7 +204,7 @@ if(QUERCUS_COSMOPOLITAN)
     set(world_toolchain cosmocc)
 else()
     set(prelink_cxx "${CMAKE_CXX_COMPILER}")
-    if(prelink_lto)
+    if(prelink_lto AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # Released GCC (up to at least 16.2) crashes in lto-partition.cc when it partitions a
         # relocatable link. Only the project's cosmocc carries the fix.
         set(prelink_partition -flto-partition=none)
