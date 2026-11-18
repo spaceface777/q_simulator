@@ -76,10 +76,13 @@ jobs:
             -DCURL_CA_BUNDLE:FILEPATH=/zip/usr/share/ssl/cert.pem \
             -DCMAKE_EXE_LINKER_FLAGS="$D/cacert.o $D/ftrace_env.o" > /dev/null
           make -j"$(nproc)" cmake > /dev/null
+          # The driver links an x86-64 ELF; package.sh makes an APE of each slice with apelink.
+          # Here one slice, and with apelink's symbol table (no -s), which --ftrace reads.
           mkdir -p "$RUNNER_TEMP/out"
-          cp bin/cmake* "$RUNNER_TEMP/out/"
+          "$T/bin/apelink" -l "$T/bin/ape-x86_64.elf" -o "$RUNNER_TEMP/out/cmake" bin/cmake
           ls -l "$RUNNER_TEMP/out"
           head -c 2 "$RUNNER_TEMP/out/cmake" | grep -q MZ
+          python3 -I -c 'import sys, zipfile; n = zipfile.ZipFile(sys.argv[1]).namelist(); print([x for x in n if "symtab" in x]); sys.exit(".symtab.amd64" not in n)' "$RUNNER_TEMP/out/cmake"
 
       - name: Check that each switch traces the download process
         run: |
