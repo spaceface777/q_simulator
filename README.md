@@ -31,7 +31,7 @@ git submodule update --init
 
 ### The cosmocc bundle
 
-The build uses the project's cosmocc bundle, release `2026.11.17-46` or later, on Linux, macOS and Windows.
+The build uses the project's cosmocc bundle, release `2026.11.18-54` or later, on Linux, macOS and Windows.
 The bundle has everything that the build runs: the compilers, CMake, Ninja, Python, west, git and a POSIX shell.
 Nothing else needs to be installed.
 Install the bundle with the installer of its release, as the [cosmocc README](https://gitlab.tue.nl/20223853/cosmopolitan-distribution-builder-test#installation-and-activation) describes.
@@ -45,6 +45,7 @@ Then activate it in each shell that builds the simulator:
 | PowerShell | `. $env:LOCALAPPDATA\cosmocc\activate.ps1` |
 
 CMake must be the bundle's CMake: the build finds the toolchain through it.
+The configure reads the bundle's release from its `BUILD_INFO` file and stops with an error for an older one.
 Install the bundle, Zephyr and this repository in directories without spaces in their paths.
 GCC's link time optimization and Zephyr's section names do not yet handle them.
 On Linux, if Wine or Mono is registered with `binfmt_misc` for Windows executables, also register the APE loader, as the cosmocc README describes.

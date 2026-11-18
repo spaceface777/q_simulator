@@ -21,8 +21,8 @@ concurrency:
 
 env:
   # The pinned cosmocc release, mirrored from its GitLab project. SHA256SUMS lists every asset.
-  COSMOCC_URL: https://github.com/spaceface777/q_simulator/releases/download/cosmocc-2026.11.17-46
-  COSMOCC_SUMS_SHA256: 942453f58f2b5b9a3365045e6c2bc07157a21e8d578a541b847e667f26136b88
+  COSMOCC_URL: https://github.com/spaceface777/q_simulator/releases/download/cosmocc-2026.11.18-54
+  COSMOCC_SUMS_SHA256: 4f4117f3da66b181d439715843857384be289caaf4a26b8bc3293b26a587f449
   ZEPHYR_COSMOCC: v4.5.0
   ZEPHYR_NATIVE: v4.4.1
   PYTHONUNBUFFERED: '1'
