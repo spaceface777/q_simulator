@@ -1,0 +1,378 @@
+Subject: Give drive-letter paths one spelling on Windows
+
+--- a/Source/cmCMakePath.cxx
++++ b/Source/cmCMakePath.cxx
+@@ -16,6 +16,8 @@
+ #include <cm/filesystem>
+ #include <cm/string_view>
+ 
++#include "cmsys/SystemTools.hxx"
++
+ #if defined(_WIN32)
+ #  include <cmext/string_view>
+ 
+@@ -119,6 +121,8 @@
+ #else
+   static_cast<void>(fmt);
+ #endif
++  // In a Cosmopolitan program on Windows, "D:/x" is "/D/x".
++  cmsys::SystemTools::ConvertToCosmoPath(path);
+   return path;
+ }
+ 
+--- a/Source/cmCacheManager.cxx
++++ b/Source/cmCacheManager.cxx
+@@ -103,6 +103,22 @@
+             e.SetProperty("HELPSTRING", helpString);
+           }
+           if (!this->ReadPropertyEntry(entryKey, e)) {
++#ifdef __COSMOPOLITAN__
++            // On Windows, a cache from a CMake without this conversion
++            // can hold "D:/x".  Give each path its one spelling.
++            if (e.Type == cmStateEnums::FILEPATH ||
++                e.Type == cmStateEnums::PATH) {
++              if (e.Value.find(';') != std::string::npos) {
++                cmList paths{ e.Value };
++                for (std::string& i : paths) {
++                  cmsys::SystemTools::ConvertToCosmoPath(i);
++                }
++                e.Value = paths.to_string();
++              } else {
++                cmsys::SystemTools::ConvertToCosmoPath(e.Value);
++              }
++            }
++#endif
+             e.Initialized = true;
+             this->Cache[entryKey] = e;
+           }
+--- a/Source/cmFileCommand.cxx
++++ b/Source/cmFileCommand.cxx
+@@ -69,6 +69,10 @@
+ 
+ #  include "cmCurl.h"
+ #  include "cmFileLockResult.h"
++#endif
++
++#ifdef __COSMOPOLITAN__
++extern "C" int const __hostos; // __hostos & 4 is the C library's IsWindows()
+ #endif
+ 
+ namespace {
+@@ -1639,7 +1643,10 @@
+ 
+ std::string ToNativePath(std::string const& path)
+ {
+-  auto const& outPath = cmSystemTools::ConvertToOutputPath(path);
++  // This CMake's native spelling is the C library's, also on Windows.
++  std::string cosmoPath = path;
++  cmsys::SystemTools::ConvertToCosmoPath(cosmoPath);
++  auto const& outPath = cmSystemTools::ConvertToOutputPath(cosmoPath);
+   if (outPath.size() > 1 && outPath.front() == '\"' &&
+       outPath.back() == '\"') {
+     return outPath.substr(1, outPath.size() - 2);
+@@ -1668,7 +1675,31 @@
+ #else
+   char pathSep = ':';
+ #endif
+-  std::vector<std::string> path = cmSystemTools::SplitString(args[1], pathSep);
++  std::vector<std::string> path;
++#ifdef __COSMOPOLITAN__
++  // In a Cosmopolitan program on Windows, a list can come from the C
++  // library ("/D/a:/D/b") or from a Windows program ("D:\a;D:\b").
++  // Split at both separators, but not at the colon of "D:/" or "D:\".
++  if (__hostos & 4) {
++    std::string const& in = args[1];
++    auto isDriveColon = [&in](std::string::size_type start,
++                              std::string::size_type i) -> bool {
++      char const c = in[start];
++      return i == start + 1 &&
++        (('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z')) &&
++        i + 1 < in.size() && (in[i + 1] == '/' || in[i + 1] == '\\');
++    };
++    std::string::size_type start = 0;
++    for (std::string::size_type i = 0; i <= in.size(); ++i) {
++      if (i == in.size() || in[i] == ';' ||
++          (in[i] == ':' && !isDriveColon(start, i))) {
++        path.emplace_back(in, start, i - start);
++        start = i + 1;
++      }
++    }
++  } else
++#endif
++    path = cmSystemTools::SplitString(args[1], pathSep);
+ 
+   std::string value = cmList::to_string(cmMakeRange(path).transform(convert));
+   status.GetMakefile().AddDefinition(args[2], value);
+--- a/Source/cmPathResolver.cxx
++++ b/Source/cmPathResolver.cxx
+@@ -18,6 +18,16 @@
+ #  include <cmsys/String.h>
+ #endif
+ 
++#include <cmsys/SystemTools.hxx>
++
++#ifdef __COSMOPOLITAN__
++// On Windows, the C library opens "//server/share/x" as a network path.
++extern "C" int const __hostos; // __hostos & 4 is the C library's IsWindows()
++#  define CM_NETWORK_ROOT
++#elif defined(_WIN32)
++#  define CM_NETWORK_ROOT
++#endif
++
+ #define MAX_SYMBOLIC_LINKS 32
+ 
+ namespace cm {
+@@ -53,6 +63,8 @@
+   POSIX,
+ #ifdef _WIN32
+   Drive,
++#endif
++#ifdef CM_NETWORK_ROOT
+   Network,
+ #endif
+ };
+@@ -99,6 +111,11 @@
+     return Root::Drive;
+   }
+   if (p.size() >= 3 && p[0] == '/' && p[1] == '/' && p[2] != '/') {
++    return Root::Network;
++  }
++#elif defined(__COSMOPOLITAN__)
++  if ((__hostos & 4) && p.size() >= 3 && p[0] == '/' && p[1] == '/' &&
++      p[2] != '/') {
+     return Root::Network;
+   }
+ #endif
+@@ -287,7 +304,10 @@
+ 
+     // The root is a drive letter.  The root '/' immediately follows.
+     root_slash = 2;
+-  } else if (root == Root::Network) {
++  }
++#endif
++#ifdef CM_NETWORK_ROOT
++  if (root == Root::Network) {
+     // The root is a network name.  Find the root '/' after it.
+     root_slash = P.find('/', 2);
+     if (root_slash == std::string::npos) {
+@@ -298,7 +318,7 @@
+ #endif
+ 
+   if (Policy::Existence == Options::Existence::Required
+-#ifdef _WIN32
++#ifdef CM_NETWORK_ROOT
+       && root != Root::Network
+ #endif
+   ) {
+@@ -468,6 +488,8 @@
+ {
+   P = std::move(in);
+   std::replace(P.begin(), P.end(), '\\', '/');
++  // In a Cosmopolitan program on Windows, "D:/x" is "/D/x".
++  cmsys::SystemTools::ConvertToCosmoPath(P);
+   for (;;) {
+     Control control = this->ResolvePath();
+     switch (control.tag) {
+--- a/Source/kwsys/SystemTools.cxx
++++ b/Source/kwsys/SystemTools.cxx
+@@ -190,6 +190,19 @@
+ 
+ #if !KWSYS_CXX_HAS_ENVIRON_IN_STDLIB_H
+ extern char** environ;
++#endif
++
++#ifdef __COSMOPOLITAN__
++// One executable runs on every system, so Windows is a run-time check.
++// The compiler does not define _COSMO_SOURCE, so libc/dce.h is not usable.
++extern "C" {
++extern int const __hostos; // __hostos & 4 is the C library's IsWindows()
++char __getcosmosdrive(void); // the drive that "/x" names on Windows
++}
++static bool CosmoIsWindows()
++{
++  return __hostos & 4;
++}
+ #endif
+ 
+ // getpwnam doesn't exist on Windows and Cray Xt3/Catamount
+@@ -2091,6 +2104,7 @@
+     [](char c1, char c2) -> bool { return c1 == '/' && c1 == c2; });
+   path.erase(uniqueEnd, path.end());
+ #endif
++  SystemTools::ConvertToCosmoPath(path);
+ 
+   // if there is a tilda ~ then replace it with HOME
+   if (path[0] == '~' && (path[1] == '/' || path[1] == '\0')) {
+@@ -2115,8 +2129,107 @@
+   if (size > 1 && path.back() == '/') {
+     if (!(size == 3 && path[1] == ':') && path[size - 2] != '/') {
+       path.resize(size - 1);
++    }
++  }
++}
++
++#ifdef __COSMOPOLITAN__
++namespace {
++bool CosmoIsLetter(char c)
++{
++  return ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
++}
++
++char CosmoUpper(char c)
++{
++  return ('a' <= c && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
++}
++
++// Directory <rest> ("" or "/...") of a drive, as __mkunixpath() spells it.
++std::string CosmoDrivePath(char drive, std::string const& rest)
++{
++  drive = CosmoUpper(drive);
++  if (drive == CosmoUpper(__getcosmosdrive())) {
++    // "/x" names the system drive, unless x is one letter: "/d" is drive D.
++    bool letter = rest.size() >= 2 && CosmoIsLetter(rest[1]) &&
++      (rest.size() == 2 || rest[2] == '/');
++    if (!letter) {
++      return rest.empty() ? std::string("/") : rest;
++    }
++  }
++  return std::string(1, '/') + drive + rest;
++}
++
++// The working directory of a drive, as Windows finds it for "D:x": the
++// current directory if it is on that drive, else the "=D:" variable that
++// cmd.exe keeps, else the root of the drive.
++std::string CosmoDriveDirectory(char drive)
++{
++  std::string cwd = SystemTools::GetCurrentWorkingDirectory();
++  char cwdDrive = __getcosmosdrive();
++  if (cwd.size() >= 2 && cwd[0] == '/' && CosmoIsLetter(cwd[1]) &&
++      (cwd.size() == 2 || cwd[2] == '/')) {
++    cwdDrive = cwd[1];
++  }
++  if (CosmoUpper(cwdDrive) == CosmoUpper(drive)) {
++    return cwd;
++  }
++  for (char** e = environ; e && *e; ++e) {
++    char const* v = *e;
++    if (v[0] == '=' && CosmoUpper(v[1]) == CosmoUpper(drive) &&
++        v[2] == ':' && v[3] == '=' && CosmoIsLetter(v[4]) && v[5] == ':' &&
++        (v[6] == '/' || v[6] == '\\')) {
++      std::string dir = v + 4;
++      SystemTools::ConvertToCosmoPath(dir);
++      return dir;
++    }
++  }
++  return CosmoDrivePath(drive, "");
++}
++}
++#endif
++
++void SystemTools::ConvertToCosmoPath(std::string& path)
++{
++#ifdef __COSMOPOLITAN__
++  if (path.size() < 2 || !CosmoIsWindows()) {
++    return;
++  }
++
++  // Windows file names cannot contain '\'.  The C library reads it as '/'.
++  std::replace(path.begin(), path.end(), '\\', '/');
++
++  // "//?/D:/x" and "//./D:/x" are "D:/x" without the length limit.
++  if (path.size() >= 6 && path[0] == '/' && path[1] == '/' &&
++      (path[2] == '?' || path[2] == '.') && path[3] == '/' &&
++      CosmoIsLetter(path[4]) && path[5] == ':') {
++    path.erase(0, 4);
++  }
++
++  if (CosmoIsLetter(path[0]) && path[1] == ':') {
++    if (path.size() > 2 && path[2] == '/') {
++      // "D:/x" is absolute.
++      path = CosmoDrivePath(path[0], path.substr(2));
++    } else if (path.size() == 2 || path[2] != ':') {
++      // "D:x" is relative to the working directory of drive D.
++      // ("A::B" is a target name, not a path.)
++      std::string dir = CosmoDriveDirectory(path[0]);
++      if (path.size() > 2) {
++        if (dir.back() != '/') {
++          dir += '/';
++        }
++        dir.append(path, 2, std::string::npos);
++      }
++      path = std::move(dir);
+     }
++  } else if (path[0] == '/' && CosmoIsLetter(path[1]) &&
++             (path.size() == 2 || path[2] == '/')) {
++    // "/d/x" is another spelling of "/D/x", and "/c/x" of "/x".
++    path = CosmoDrivePath(path[1], path.substr(2));
+   }
++#else
++  static_cast<void>(path);
++#endif
+ }
+ 
+ #ifdef _WIN32
+@@ -3320,9 +3433,27 @@
+ 
+ namespace {
+ 
+-std::string CollapseFullPathImpl(std::string const& in_path,
++std::string CollapseFullPathImpl(std::string const& in_path_arg,
+                                  std::string const* in_base)
+ {
++#ifdef __COSMOPOLITAN__
++  std::string cosmo_path;
++  std::string cosmo_base;
++  bool const cosmo = CosmoIsWindows();
++  if (cosmo) {
++    cosmo_path = in_path_arg;
++    SystemTools::ConvertToCosmoPath(cosmo_path);
++    if (in_base) {
++      cosmo_base = *in_base;
++      SystemTools::ConvertToCosmoPath(cosmo_base);
++      in_base = &cosmo_base;
++    }
++  }
++  std::string const& in_path = cosmo ? cosmo_path : in_path_arg;
++#else
++  std::string const& in_path = in_path_arg;
++#endif
++
+   // Collect the output path components.
+   std::vector<std::string> out_components;
+ 
+@@ -4018,6 +4149,17 @@
+     return false;
+   }
+ #endif
++#ifdef __COSMOPOLITAN__
++  // On Windows, accept the Windows spellings that ConvertToCosmoPath turns
++  // into "/D/x", so that no caller prefixes them with a base directory.
++  // Callers then pass them through CollapseFullPath or ConvertToUnixSlashes.
++  if (len >= 2 && CosmoIsWindows() &&
++      ((CosmoIsLetter(in_name[0]) && in_name[1] == ':' &&
++        in_name[2] != ':') ||
++       in_name[0] == '\\')) {
++    return true;
++  }
++#endif
+ #if !defined(_WIN32)
+   if (in_name[0] == '~') {
+     return true;
+--- a/Source/kwsys/SystemTools.hxx.in
++++ b/Source/kwsys/SystemTools.hxx.in
+@@ -261,6 +261,15 @@
+    */
+   static void ConvertToUnixSlashes(std::string& path);
+ 
++  /**
++   * In a Cosmopolitan program that runs on Windows, give a Windows path
++   * ("D:/x", "D:\x", "D:x", "//?/D:/x", "/d/x") the spelling that the C
++   * library's getcwd() uses ("/D/x", or "/x" on the system drive), so
++   * that each file has one spelling.  Elsewhere, and for other paths,
++   * do nothing.  ConvertToUnixSlashes and CollapseFullPath call this.
++   */
++  static void ConvertToCosmoPath(std::string& path);
++
+ #ifdef _WIN32
+   /** Calls Encoding::ToWindowsExtendedPath.  */
+   static std::wstring ConvertToWindowsExtendedPath(std::string const&);

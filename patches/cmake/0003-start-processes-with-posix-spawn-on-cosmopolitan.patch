@@ -1,0 +1,125 @@
+Subject: Start processes with posix_spawn on Cosmopolitan
+
+--- a/Utilities/cmlibuv/src/unix/process.c
++++ b/Utilities/cmlibuv/src/unix/process.c
+@@ -56,10 +56,21 @@
+ #  define POSIX_SPAWN_SETSID 1024
+ # endif
+ 
++#elif defined(__COSMOPOLITAN__)
++  /* Windows has no fork(): Cosmopolitan emulates it by copying the process.
++   * posix_spawn with POSIX_SPAWN_USEVFORK starts the program directly. */
++# define UV_USE_COSMO_POSIX_SPAWN
++# include <spawn.h>
++# include <paths.h>
++extern char **environ;
+ #else
+ extern char **environ;
+ #endif
+ 
++#if defined(UV_USE_APPLE_POSIX_SPAWN) || defined(UV_USE_COSMO_POSIX_SPAWN)
++# define UV_USE_POSIX_SPAWN
++#endif
++
+ #if defined(__linux__) || \
+     defined(__GNU__)
+ # include <grp.h>
+@@ -465,7 +476,7 @@
+ }
+ 
+ 
+-#if defined(UV_USE_APPLE_POSIX_SPAWN)
++#if defined(UV_USE_POSIX_SPAWN)
+ typedef struct uv__posix_spawn_fncs_tag {
+   struct {
+     int (*addchdir_np)(const posix_spawn_file_actions_t *, const char *);
+@@ -479,13 +490,22 @@
+ 
+ 
+ static void uv__spawn_init_posix_spawn_fncs(void) {
++#if defined(UV_USE_COSMO_POSIX_SPAWN)
++  posix_spawn_fncs.file_actions.addchdir_np =
++    (int (*)(const posix_spawn_file_actions_t *, const char *))
++      posix_spawn_file_actions_addchdir_np;
++#else
+   /* Try to locate all non-portable functions at runtime */
+   posix_spawn_fncs.file_actions.addchdir_np =
+     dlsym(RTLD_DEFAULT, "posix_spawn_file_actions_addchdir_np");
++#endif
+ }
+ 
+ 
+ static void uv__spawn_init_can_use_setsid(void) {
++#if defined(UV_USE_COSMO_POSIX_SPAWN)
++  posix_spawn_can_use_setsid = 1;
++#else
+   int which[] = {CTL_KERN, KERN_OSRELEASE};
+   unsigned major;
+   unsigned minor;
+@@ -502,6 +522,7 @@
+     return;
+ 
+   posix_spawn_can_use_setsid = (major >= 19);  /* macOS Catalina */
++#endif
+ }
+ 
+ 
+@@ -548,7 +569,13 @@
+    *    spawn-sigmask in attributes
+    * 4) POSIX_SPAWN_SETSID: Make the process a new session leader if a detached
+    *    session was requested. */
++#if defined(UV_USE_COSMO_POSIX_SPAWN)
++  /* Cosmopolitan has no POSIX_SPAWN_CLOEXEC_DEFAULT: the child inherits the
++   * descriptors without FD_CLOEXEC, as in the fork/exec flow. */
++  flags = POSIX_SPAWN_USEVFORK |
++#else
+   flags = POSIX_SPAWN_CLOEXEC_DEFAULT |
++#endif
+           POSIX_SPAWN_SETSIGDEF |
+           POSIX_SPAWN_SETSIGMASK;
+   if (options->flags & UV_PROCESS_DETACHED) {
+@@ -666,8 +693,35 @@
+       }
+     }
+ 
++#if defined(UV_USE_COSMO_POSIX_SPAWN)
++    if (fd == use_fd) {
++      /* An inherited descriptor in place: clear FD_CLOEXEC in the child, as
++       * the fork/exec flow does, by a round trip through a spare number.
++       * dup2() of a descriptor onto itself would keep the flag. */
++      int r = fcntl(fd, F_GETFD);
++      if (r == -1) {
++        err = errno;
++      } else if (r & FD_CLOEXEC) {
++        int spare = stdio_count;
++        for (fd2 = 0; fd2 < stdio_count; fd2++) {
++          if (pipes[fd2][1] == spare) {
++            spare++;
++            fd2 = -1;
++          }
++        }
++        err = posix_spawn_file_actions_adddup2(actions, fd, spare);
++        if (err == 0)
++          err = posix_spawn_file_actions_adddup2(actions, spare, fd);
++        if (err == 0)
++          err = posix_spawn_file_actions_addclose(actions, spare);
++      } else {
++        err = 0;
++      }
++    }
++#else
+     if (fd == use_fd)
+         err = posix_spawn_file_actions_addinherit_np(actions, fd);
++#endif
+     else
+         err = posix_spawn_file_actions_adddup2(actions, use_fd, fd);
+     assert(err != ENOSYS);
+@@ -917,7 +971,7 @@
+   int exec_errorno;
+   ssize_t r;
+ 
+-#if defined(UV_USE_APPLE_POSIX_SPAWN)
++#if defined(UV_USE_POSIX_SPAWN)
+   uv_once(&posix_spawn_init_once, uv__spawn_init_posix_spawn);
+ 
+   /* Special child process spawn case for macOS Big Sur (11.0) onwards
