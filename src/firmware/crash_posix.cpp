@@ -45,7 +45,9 @@ namespace firmware::crash {
 		thread_local char*    host_random_state = nullptr;
 		alignas(uint32_t) thread_local char scratch_random_state[128];
 		alignas(16) thread_local char signal_stack[128 * 1024];
-		alignas(16) thread_local char resume_stack[4096];
+		// resume() needs little more than siglongjmp, but under AddressSanitizer the interceptor of
+		// siglongjmp runs on it too, and reports there. 4 KiB overflowed into other thread locals.
+		alignas(16) thread_local char resume_stack[64 * 1024];
 		std::once_flag        installed;
 		struct sigaction      previous[NSIG];
 		int                   probe[2] = {-1, -1};
