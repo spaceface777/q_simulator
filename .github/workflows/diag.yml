@@ -218,8 +218,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/keep"
           total() { ls $1-*.log | wc -l; }
           direct_failed=0 chain_failed=0
-          for f in direct-*.log; do grep -q '^RESULT 0' "$f" || { direct_failed=$((direct_failed + 1)); cp "$f" "$RUNNER_TEMP/keep/"; }; done
-          for f in chain-*.log; do grep -q 'CHAIN-FAILED' "$f" && { chain_failed=$((chain_failed + 1)); cp "$f" "$RUNNER_TEMP/keep/"; }; done
+          # (bash -e: if statements, so that a log without a failure does not end the step)
+          for f in direct-*.log; do
+            if ! grep -q '^RESULT 0' "$f"; then direct_failed=$((direct_failed + 1)); cp "$f" "$RUNNER_TEMP/keep/"; fi
+          done
+          for f in chain-*.log; do
+            if grep -q 'CHAIN-FAILED' "$f"; then chain_failed=$((chain_failed + 1)); cp "$f" "$RUNNER_TEMP/keep/"; fi
+          done
           summary="${{ matrix.variant }} ${{ matrix.os }} ${{ matrix.shell }}: cmake -P failed $direct_failed of $(total direct), FetchContent failed $chain_failed of $(total chain)"
           echo "::notice::$summary"
           echo "$summary" > "$RUNNER_TEMP/keep/summary.txt"
@@ -227,15 +232,15 @@ jobs:
           # download process: a trace of connect() (strace) or of curl's functions (ftrace).
           cp direct-1.log chain-1.log "$RUNNER_TEMP/keep/" 2>/dev/null || true
           fail=0
-          if [ "$LOOP_STRACE" = 1 ]; then
-            for f in direct-1.log chain-1.log; do grep -q 'connect(' "$f" || { echo "::error::$f: STRACE=1 did not reach the download"; fail=1; }; done
-          fi
-          if [ "$LOOP_FTRACE" = 1 ]; then
-            for f in direct-1.log chain-1.log; do grep -q 'Curl_' "$f" || { echo "::error::$f: QS_FTRACE=1 did not reach the download"; fail=1; }; done
-          fi
+          for f in direct-1.log chain-1.log; do
+            if [ "$LOOP_STRACE" = 1 ] && ! grep -q 'connect(' "$f"; then echo "::error::$f: STRACE=1 did not reach the download"; fail=1; fi
+            if [ "$LOOP_FTRACE" = 1 ] && ! grep -q 'Curl_' "$f"; then echo "::error::$f: QS_FTRACE=1 did not reach the download"; fail=1; fi
+          done
           for f in "$RUNNER_TEMP"/keep/direct-*.log "$RUNNER_TEMP"/keep/chain-*.log; do
-            grep -q 'RESULT 0' "$f" 2>/dev/null && continue
-            echo "--- $f"; grep -aE 'connect|Connect|bind\(|RESULT|CHAIN-FAILED' "$f" | head -20
+            [ -f "$f" ] || continue
+            if [ "$(basename "$f")" = direct-1.log ] && grep -q '^RESULT 0' "$f"; then continue; fi
+            if [ "$(basename "$f")" = chain-1.log ] && ! grep -q 'CHAIN-FAILED' "$f"; then continue; fi
+            echo "--- $f"; grep -aE 'connect|Connect|bind\(|RESULT|CHAIN-FAILED' "$f" | head -20 || true
           done
           exit $fail
 
