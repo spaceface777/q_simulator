@@ -5,7 +5,8 @@ name: Winsock connect diagnostic
 # (cmake -P) and as the simulator's configure does (FetchContent: cmake, ninja, cmake -P), and
 # keeps the logs of the failures. Variants: the CMake of release 46 and of release 54, and a
 # CMake built with release 54's toolchain and its normal (not tiny) libc, which can trace system
-# calls (STRACE=1), function calls (QS_FTRACE=1, see ftrace_env.c), or both.
+# calls (STRACE=1), function calls (QS_FTRACE=1, see ftrace_env.c), or both: release
+# cosmocc-2026.11.18-54-tracing-cmake, from build-tracing-cmake.yml.
 
 on: push
 
@@ -16,115 +17,8 @@ env:
   MIRROR: https://github.com/spaceface777/q_simulator/releases/download
 
 jobs:
-  build:
-    name: Build and check the tracing CMake
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      SUMS_54: 4f4117f3da66b181d439715843857384be289caaf4a26b8bc3293b26a587f449
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - name: Install cosmocc 2026.11.18-54
-        run: |
-          for handler in /proc/sys/fs/binfmt_misc/*; do
-            if grep -qs '^magic 4d5a' "$handler"; then echo 0 | sudo tee "$handler" > /dev/null; fi
-          done
-          mkdir -p "$RUNNER_TEMP/release" && cd "$RUNNER_TEMP/release"
-          u=$MIRROR/cosmocc-2026.11.18-54
-          curl -fsSL --remote-name-all "$u/SHA256SUMS" "$u/cosmocc.tar.xz" "$u/bsdtar" "$u/install.sh"
-          sha256sum --check <<< "$SUMS_54  SHA256SUMS"
-          sha256sum --check --ignore-missing SHA256SUMS
-          sh install.sh --archive cosmocc.tar.xz --bsdtar bsdtar --dir "$RUNNER_TEMP/cosmocc" --no-home-loader
-          echo "T=$RUNNER_TEMP/cosmocc" >> "$GITHUB_ENV"
-
-      - name: Get the sources
-        run: |
-          mkdir -p "$RUNNER_TEMP/src" && cd "$RUNNER_TEMP/src"
-          get() { curl -fsSL -o "$1" "$2" && sha256sum --check <<< "$3  $1"; }
-          get cmake.tar.gz https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5.tar.gz a0c54c88abb8078dd8eccadb717fc6bb194bf18e7d44c86309910288886e04e2
-          get openssl.tar.gz https://github.com/openssl/openssl/releases/download/openssl-4.1.0/openssl-4.1.0.tar.gz 50c17baf54cb008f6ce42d50deb4b28050a1aad711636cabd4b241c7e90cc2fd
-          get cacert.pem https://curl.se/ca/cacert-2026-11-05.pem 427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285
-          mkdir cmake openssl
-          tar -C cmake --strip-components=1 -xzf cmake.tar.gz
-          tar -C openssl --strip-components=1 -xzf openssl.tar.gz
-          for p in "$GITHUB_WORKSPACE"/patches/cmake/*.patch; do patch -d cmake -p1 < "$p"; done
-
-      - name: Build
-        run: |
-          # As tools/cmake.sh in the cosmocc repository, with release 54 for the seed toolchain,
-          # and without -mtiny, whose libc leaves out --strace. CMake gets -O2: the driver makes
-          # functions traceable (-fpatchable-function-entry) unless it optimizes for size. OpenSSL
-          # keeps -Os, which leaves its cryptography out of function call traces.
-          S=$RUNNER_TEMP/src D=$RUNNER_TEMP/deps
-          mkdir -p "$D" "$RUNNER_TEMP/openssl-build" "$RUNNER_TEMP/cmake-build"
-          export CC=$T/bin/x86_64-unknown-cosmo-cc CXX=$T/bin/x86_64-unknown-cosmo-c++
-          export AR=$T/bin/x86_64-unknown-cosmo-ar NM=$T/bin/x86_64-unknown-cosmo-nm
-          export RANLIB=$T/bin/x86_64-linux-cosmo-ranlib STRIP=$T/bin/x86_64-unknown-cosmo-strip
-          (cd "$RUNNER_TEMP/openssl-build" && CFLAGS=-Os "$S/openssl/Configure" linux-x86_64 \
-            no-shared no-asm no-dso no-async no-secure-memory no-tests no-docs \
-            --prefix="$D" --libdir=lib --openssldir=/zip/usr/share/ssl && make -j"$(nproc)" install_sw > /dev/null)
-          "$T/bin/zipobj" -a x86_64 -N usr/share/ssl/cert.pem -o "$D/cacert.o" "$S/cacert.pem"
-          "$CC" -O2 -c -o "$D/ftrace_env.o" "$GITHUB_WORKSPACE/ftrace_env.c"
-          cd "$RUNNER_TEMP/cmake-build"
-          CFLAGS=-O2 CXXFLAGS=-O2 cmake -S "$S/cmake" -B . -DCMAKE_BUILD_TYPE= -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_FIND_ROOT_PATH="$T;$D" -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
-            -DBUILD_TESTING=OFF -DCMAKE_USE_OPENSSL=ON -DOPENSSL_ROOT_DIR="$D" \
-            -DCURL_CA_BUNDLE:FILEPATH=/zip/usr/share/ssl/cert.pem \
-            -DCMAKE_EXE_LINKER_FLAGS="$D/cacert.o $D/ftrace_env.o" > /dev/null
-          make -j"$(nproc)" cmake > /dev/null
-          # The driver links an x86-64 ELF; package.sh makes an APE of each slice with apelink.
-          # Here one slice, and with apelink's symbol table (no -s), which --ftrace reads.
-          mkdir -p "$RUNNER_TEMP/out"
-          "$T/bin/apelink" -l "$T/bin/ape-x86_64.elf" -o "$RUNNER_TEMP/out/cmake" bin/cmake
-          ls -l "$RUNNER_TEMP/out"
-          head -c 2 "$RUNNER_TEMP/out/cmake" | grep -q MZ
-          python3 -I -c 'import sys, zipfile; n = zipfile.ZipFile(sys.argv[1]).namelist(); print([x for x in n if "symtab" in x]); sys.exit(".symtab.amd64" not in n)' "$RUNNER_TEMP/out/cmake"
-
-      - name: Check that each switch traces the download process
-        run: |
-          # The release's CMake in a copy of the bundle, then the tracing one in its place.
-          cp -a "$T" "$RUNNER_TEMP/traced"
-          cp "$RUNNER_TEMP/out/"cmake* "$RUNNER_TEMP/traced/bin/"
-          export PATH="$RUNNER_TEMP/traced/bin:$PATH"
-          cmake --version | head -1
-          cd "$RUNNER_TEMP"
-          direct() { cmake "-DOUT=$RUNNER_TEMP/x.html" -P "$GITHUB_WORKSPACE/dl.cmake" > "$1" 2>&1; grep -q '^RESULT 0' "$1"; }
-          chain() { cmake -S "$GITHUB_WORKSPACE/chain" -B "$RUNNER_TEMP/chain-$2" -G Ninja -DFETCHCONTENT_QUIET=OFF > "$1" 2>&1; }
-          report() { printf '%-22s %9s lines, connect() %6s, Curl_ %7s\n' "$1" "$(wc -l < "$1")" "$(grep -c 'connect(' "$1")" "$(grep -c 'Curl_' "$1")"; }
-          fail=0
-          need() { grep -q "$2" "$1" || { echo "::error::$1 has no $2"; fail=1; }; }
-          none() { ! grep -q "$2" "$1" || { echo "::error::$1 has $2 without its switch"; fail=1; }; }
-          direct plain.log;                     chain plain-chain.log 0
-          STRACE=1 direct strace.log;           STRACE=1 chain strace-chain.log 1
-          QS_FTRACE=1 direct ftrace.log;        QS_FTRACE=1 chain ftrace-chain.log 2
-          STRACE=1 QS_FTRACE=1 direct both.log; STRACE=1 QS_FTRACE=1 chain both-chain.log 3
-          for f in *.log; do report "$f"; done
-          none plain.log 'connect(';  none plain-chain.log 'connect('
-          none plain.log 'Curl_';     none plain-chain.log 'Curl_'
-          need strace.log 'connect('; need strace-chain.log 'connect('
-          need ftrace.log 'Curl_';    need ftrace-chain.log 'Curl_'
-          need both.log 'connect(';   need both-chain.log 'connect('
-          need both.log 'Curl_';      need both-chain.log 'Curl_'
-          # The connect() in the chain comes from its cmake -P, not from the configure: show
-          # the process IDs that traced connect() and Curl_ next to the configure's own.
-          echo "--- strace-chain: first lines, then the connect() lines"
-          head -5 strace-chain.log; grep 'connect(' strace-chain.log | head -5
-          echo "--- ftrace-chain: Curl_ lines"
-          grep 'Curl_' ftrace-chain.log | head -5
-          exit $fail
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tracing-cmake
-          path: ${{ runner.temp }}/out/
-
   connect:
     name: ${{ matrix.variant }} ${{ matrix.os }} ${{ matrix.shell }}
-    needs: [build]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -160,17 +54,15 @@ jobs:
           ./install.ps1
           "COSMOCC_DIR=$env:COSMOCC_DIR" >> $env:GITHUB_ENV
 
-      - uses: actions/download-artifact@v4
-        if: env.TRACING == '1'
-        with:
-          name: tracing-cmake
-          path: ${{ runner.temp }}/tracing
-
       - name: Put the tracing CMake in the bundle
         if: env.TRACING == '1'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # Built and checked by build-tracing-cmake.yml (run 44324270007).
+          New-Item -ItemType Directory "$env:RUNNER_TEMP\tracing" | Out-Null
+          Invoke-WebRequest -UseBasicParsing -Uri "$env:MIRROR/cosmocc-2026.11.18-54-tracing-cmake/cmake" -OutFile "$env:RUNNER_TEMP\tracing\cmake"
+          if ((Get-FileHash -Algorithm SHA256 "$env:RUNNER_TEMP\tracing\cmake").Hash -ne '938C599B92A1D9603E3700D8F2D1B86B0F4BF2B2F8119ACD416CEE720D10461A') { throw 'checksum mismatch: tracing cmake' }
           # bin\cmake.exe is a hard link to bin\cmake: replace both names.
           $bin = "$env:COSMOCC_DIR\bin"
           foreach ($name in 'cmake', 'cmake.exe') {
