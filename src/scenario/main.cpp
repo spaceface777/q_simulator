@@ -25,13 +25,7 @@
 #include "../util.h"
 #include "../visualization/visualization.h"
 
-#define QSIM_STRING(text)       #text
-#define QSIM_EXPANDED_STRING(x) QSIM_STRING(x)
-
 namespace {
-
-	// The build defines APP_VERSION as a bare version number.
-	constexpr const char* VERSION = QSIM_EXPANDED_STRING(APP_VERSION);
 
 	// Simulated time granted per iteration.
 	constexpr std::chrono::microseconds SLICE{50000};
@@ -100,7 +94,7 @@ namespace {
 				return std::nullopt;
 			}
 			if (argument == "-v" || argument == "--version") {
-				std::cout << "Quercus Airport Simulation scenario runner version " << VERSION << std::endl;
+				std::cout << "Quercus Airport Simulation scenario runner version " << APP_VERSION << std::endl;
 				return std::nullopt;
 			}
 			if (argument == "-s" || argument == "--settings") {

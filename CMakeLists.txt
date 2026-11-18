@@ -237,9 +237,7 @@ add_library(world_entry OBJECT
 target_link_libraries(world_entry PRIVATE core_interface)
 target_include_directories(world_entry SYSTEM PRIVATE "${QSIM_SDL3_INCLUDE_DIR}")
 target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
-# The version is a bare number, which main.cpp stringizes: cosmocc's programs on Windows do not yet pass
-# on an argument with a double quote intact (-DAPP_VERSION="1.0.0").
-target_compile_definitions(world_entry PRIVATE APP_VERSION=${PROJECT_VERSION} ${world_definitions})
+target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}" ${world_definitions})
 
 add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/qsim.o"
     COMMAND "${prelink_cxx}" -nostdlib -r -o "${CMAKE_BINARY_DIR}/qsim.o"
