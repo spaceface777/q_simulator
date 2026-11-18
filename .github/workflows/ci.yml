@@ -95,16 +95,15 @@ jobs:
           for handler in /proc/sys/fs/binfmt_misc/*; do
             if grep -qs '^magic 4d5a' "$handler"; then echo 0 | sudo tee "$handler" > /dev/null; fi
           done
-          mkdir -p "$RUNNER_TEMP/mirror/release" && cd "$RUNNER_TEMP/mirror/release"
+          mkdir -p "$RUNNER_TEMP/release" && cd "$RUNNER_TEMP/release"
           curl --fail --location --silent --show-error --remote-name-all \
             "$COSMOCC_URL/SHA256SUMS" "$COSMOCC_URL/cosmocc.tar.xz" "$COSMOCC_URL/bsdtar" "$COSMOCC_URL/install.sh"
           # macOS's sha256sum lacks the GNU options.
           sha256=(sha256sum); [[ "$RUNNER_OS" == macOS ]] && sha256=(shasum -a 256)
           "${sha256[@]}" --check <<< "$COSMOCC_SUMS_SHA256  SHA256SUMS"
           "${sha256[@]}" --check --ignore-missing SHA256SUMS
-          # The installer, not --archive: only when it downloads the release itself does it fall back to
-          # the release's bsdtar where the system's xz is too old for the archive (Ubuntu 22.04).
-          COSMOCC_URL="file://$RUNNER_TEMP/mirror" sh install.sh --version release --dir "$RUNNER_TEMP/cosmocc"
+          # The release's bsdtar unpacks where the system's xz is too old for the archive (Ubuntu 22.04).
+          sh install.sh --archive cosmocc.tar.xz --bsdtar bsdtar --dir "$RUNNER_TEMP/cosmocc"
           echo "COSMOCC_DIR=$RUNNER_TEMP/cosmocc" >> "$GITHUB_ENV"
 
       - name: Install cosmocc
