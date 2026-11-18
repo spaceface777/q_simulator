@@ -2,7 +2,8 @@ name: Simulator CI
 
 # cosmocc: every runner image installs the pinned cosmocc bundle and puts only the bundle on PATH. The
 # bundle's git, west, CMake, Ninja and Python then fetch and patch Zephyr, build the simulator, the
-# test applets and their worlds, and run the whole ctest suite, from bash, cmd or PowerShell.
+# test applets and their worlds, and run the whole ctest suite, from bash, cmd or PowerShell. The
+# bundle, the source, the build and Zephyr are all in directories with spaces in their names.
 # native: every Ubuntu image builds with the host compiler, host tools and upstream Zephyr, without
 # anything from cosmocc, and runs the suite plainly and with the address and undefined behaviour
 # sanitizers.
@@ -59,12 +60,10 @@ jobs:
           - { os: windows-2022, shell: cmd }
           - { os: windows-2025, shell: pwsh }
     env:
-      # Not yet in directories with spaces in their names: GCC's lto-wrapper does not quote the
-      # compiler's path, Zephyr names sections after source paths, which GCC does not quote, and the
-      # native simulator's makefile takes paths for words.
-      QS_SOURCE: source
-      QS_BUILD: build
-      QS_ZEPHYR: zephyrproject
+      QS_COSMOCC: cosmo cc
+      QS_SOURCE: q sim
+      QS_BUILD: build dir
+      QS_ZEPHYR: zephyr project
     defaults:
       run:
         shell: bash
@@ -94,8 +93,8 @@ jobs:
           "${sha256[@]}" --check <<< "$COSMOCC_SUMS_SHA256  SHA256SUMS"
           "${sha256[@]}" --check --ignore-missing SHA256SUMS
           # The release's bsdtar unpacks where the system's xz is too old for the archive (Ubuntu 22.04).
-          sh install.sh --archive cosmocc.tar.xz --bsdtar bsdtar --dir "$RUNNER_TEMP/cosmocc"
-          echo "COSMOCC_DIR=$RUNNER_TEMP/cosmocc" >> "$GITHUB_ENV"
+          sh install.sh --archive cosmocc.tar.xz --bsdtar bsdtar --dir "$RUNNER_TEMP/$QS_COSMOCC"
+          echo "COSMOCC_DIR=$RUNNER_TEMP/$QS_COSMOCC" >> "$GITHUB_ENV"
 
       - name: Install cosmocc
         if: runner.os == 'Windows'
@@ -114,7 +113,7 @@ jobs:
           Move-Item bsdtar bsdtar.exe
           $env:COSMOCC_ARCHIVE = "$env:RUNNER_TEMP\cosmocc.tar.xz"
           $env:COSMOCC_BSDTAR = "$env:RUNNER_TEMP\bsdtar.exe"
-          $env:COSMOCC_DIR = "$env:RUNNER_TEMP\cosmocc"
+          $env:COSMOCC_DIR = "$env:RUNNER_TEMP\$env:QS_COSMOCC"
           ./install.ps1
           "COSMOCC_DIR=$env:COSMOCC_DIR" >> $env:GITHUB_ENV
 

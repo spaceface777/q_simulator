@@ -46,8 +46,6 @@ Then activate it in each shell that builds the simulator:
 
 CMake must be the bundle's CMake: the build finds the toolchain through it.
 The configure reads the bundle's release from its `BUILD_INFO` file and stops with an error for an older one.
-Install the bundle, Zephyr and this repository in directories without spaces in their paths.
-GCC's link time optimization and Zephyr's section names do not yet handle them.
 On Linux, if Wine or Mono is registered with `binfmt_misc` for Windows executables, also register the APE loader, as the cosmocc README describes.
 
 Get Zephyr v4.5.0 and apply the SDK's patch, which adds the cosmocc toolchain:
