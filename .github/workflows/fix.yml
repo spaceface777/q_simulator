@@ -1,0 +1,69 @@
+name: Check the connect fix
+
+# tests/socket/connect_test.c from cosmocc-build, three ways, with release 54's toolchain:
+#   release   its libc as released: expected to fail
+#   patched   linked with patch 0026's connect-nt.c and getsockname.c ({} for {0})
+#   flag      linked with the unpatched files built with -fzero-init-padding-bits=unions, the
+#             default that lib.sh's --with-specs gives every compile
+
+on: push
+
+permissions:
+  contents: read
+
+env:
+  MIRROR: https://github.com/spaceface777/q_simulator/releases/download
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install cosmocc 2026.11.18-54
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:RUNNER_TEMP
+          foreach ($file in 'cosmocc.tar.xz', 'bsdtar', 'install.ps1') {
+            Invoke-WebRequest -UseBasicParsing -Uri "$env:MIRROR/cosmocc-2026.11.18-54/$file" -OutFile $file
+          }
+          Move-Item bsdtar bsdtar.exe
+          $env:COSMOCC_ARCHIVE = "$env:RUNNER_TEMP\cosmocc.tar.xz"
+          $env:COSMOCC_BSDTAR = "$env:RUNNER_TEMP\bsdtar.exe"
+          $env:COSMOCC_DIR = "$env:RUNNER_TEMP\cosmocc"
+          ./install.ps1
+          "COSMOCC_DIR=$env:COSMOCC_DIR" >> $env:GITHUB_ENV
+
+      - name: Build and run the three variants
+        shell: pwsh
+        run: |
+          . "$env:COSMOCC_DIR\activate.ps1" --path=replace
+          $inc = "-I$env:COSMOCC_DIR\include"
+          function Cc { & x86_64-unknown-cosmo-cc @args; if ($LASTEXITCODE) { exit 1 } }
+          function Ape($elf, $exe) { & apelink -l "$env:COSMOCC_DIR\bin\ape-x86_64.elf" -o $exe $elf; if ($LASTEXITCODE) { exit 1 } }
+          Cc -std=gnu23 -O2 -D_COSMO_SOURCE $inc -c -o p-connect.o fix/patched/connect-nt.c
+          Cc -std=gnu23 -O2 -D_COSMO_SOURCE $inc -c -o p-getsockname.o fix/patched/getsockname.c
+          Cc -std=gnu23 -O2 -D_COSMO_SOURCE -fzero-init-padding-bits=unions $inc -c -o f-connect.o fix/original/connect-nt.c
+          Cc -std=gnu23 -O2 -D_COSMO_SOURCE -fzero-init-padding-bits=unions $inc -c -o f-getsockname.o fix/original/getsockname.c
+          Cc -O2 -o release.elf fix/connect_test.c
+          Cc -O2 -o patched.elf fix/connect_test.c p-connect.o p-getsockname.o
+          Cc -O2 -o flag.elf fix/connect_test.c f-connect.o f-getsockname.o
+          foreach ($v in 'release', 'patched', 'flag') { Ape "$v.elf" "$v.exe" }
+          $results = @{}
+          foreach ($v in 'release', 'patched', 'flag') {
+            "== $v"
+            & ".\$v.exe"
+            $results[$v] = $LASTEXITCODE
+          }
+          "release exit $($results['release']) (expected 1), patched exit $($results['patched']) (expected 0), flag exit $($results['flag']) (expected 0)"
+          if ($results['release'] -ne 1 -or $results['patched'] -ne 0 -or $results['flag'] -ne 0) { exit 1 }
+          exit 0
