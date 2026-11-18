@@ -1,0 +1,76 @@
+name: Winsock connect reproducer
+
+# conn.c does what CMake's curl does before a download: cosmo's getaddrinfo (its UDP resolver),
+# then a non-blocking TCP socket, TCP_NODELAY and connect(). With STRACE=1, every download of the
+# bundle's tracing CMake failed in that connect() with EADDRNOTAVAIL (diag-cmake.yml.off, run
+# 44327018596). Does this reproduce it, and does it need the resolver or the implicit bind?
+
+on: push
+
+permissions:
+  contents: read
+
+env:
+  MIRROR: https://github.com/spaceface777/q_simulator/releases/download
+
+jobs:
+  repro:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install cosmocc 2026.11.18-54
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:RUNNER_TEMP
+          foreach ($file in 'cosmocc.tar.xz', 'bsdtar', 'install.ps1') {
+            Invoke-WebRequest -UseBasicParsing -Uri "$env:MIRROR/cosmocc-2026.11.18-54/$file" -OutFile $file
+          }
+          Move-Item bsdtar bsdtar.exe
+          $env:COSMOCC_ARCHIVE = "$env:RUNNER_TEMP\cosmocc.tar.xz"
+          $env:COSMOCC_BSDTAR = "$env:RUNNER_TEMP\bsdtar.exe"
+          $env:COSMOCC_DIR = "$env:RUNNER_TEMP\cosmocc"
+          ./install.ps1
+          "COSMOCC_DIR=$env:COSMOCC_DIR" >> $env:GITHUB_ENV
+
+      - name: Build conn.exe
+        shell: pwsh
+        run: |
+          . "$env:COSMOCC_DIR\activate.ps1" --path=replace
+          # the normal libc (not -mtiny), which STRACE=1 needs; an APE, as package.sh links them
+          x86_64-unknown-cosmo-cc -O2 -Wall -o conn.elf conn.c
+          if ($LASTEXITCODE) { exit 1 }
+          apelink -l "$env:COSMOCC_DIR\bin\ape-x86_64.elf" -o conn.exe conn.elf
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Run
+        shell: pwsh
+        run: |
+          . "$env:COSMOCC_DIR\activate.ps1" --path=replace
+          New-Item -ItemType Directory "$env:RUNNER_TEMP\logs" | Out-Null
+          foreach ($strace in '', '1') {
+            $env:STRACE = $strace
+            foreach ($mode in 'nodns', 'dns', 'bind') {
+              $log = "$env:RUNNER_TEMP\logs\$mode-strace$strace.log"
+              .\conn.exe $mode 20 *> $log
+              $result = Select-String -Path $log -Pattern '^RESULT' | Select-Object -Last 1
+              "STRACE=$strace $result" | Tee-Object -Append "$env:RUNNER_TEMP\logs\summary.txt"
+              Select-String -Path $log -Pattern 'connect .*: (?!ok)' | Select-Object -First 3 | ForEach-Object { "    $($_.Line)" }
+            }
+          }
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repro-${{ matrix.os }}
+          path: ${{ runner.temp }}/logs/
