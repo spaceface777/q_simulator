@@ -3,11 +3,12 @@
 get_filename_component(cosmocc_bin "${CMAKE_COMMAND}" DIRECTORY)
 get_filename_component(COSMOCC_TOOLCHAIN_PATH "${cosmocc_bin}" DIRECTORY)
 # Each release from 2026.11.18-54 on names itself in the first line of its BUILD_INFO:
-# "# cosmocc <date>-<number>". The build needs release 54 or later.
-set(cosmocc_min_release 54)
+# "# cosmocc <date>-<number>". The build needs release 64 or later, whose connect() works on
+# Windows: earlier releases bound the socket to an address of stack garbage first.
+set(cosmocc_min_release 64)
 set(cosmocc_build_info "${COSMOCC_TOOLCHAIN_PATH}/BUILD_INFO")
 if(NOT EXISTS "${cosmocc_build_info}")
-    message(FATAL_ERROR "cosmocc builds run under the CMake of a cosmocc bundle, release 2026.11.18-54 or later, "
+    message(FATAL_ERROR "cosmocc builds run under the CMake of a cosmocc bundle, release 2026.11.18-64 or later, "
         "not ${CMAKE_COMMAND}, which has no ${cosmocc_build_info}. "
         "Install a current release, activate it (see README.md) and configure again, "
         "or configure with -DQSIM_COSMOCC=OFF for a host-compiler build.")
