@@ -36,6 +36,9 @@ jobs:
     needs: [sdl3]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
+    # The bundle cannot connect to servers under Windows on Arm's x64 emulation yet, so CMake cannot
+    # fetch the simulator's dependencies there (item 7 of the cosmocc handoff). Those jobs only report.
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -55,8 +58,8 @@ jobs:
         include:
           - { os: windows-2022, shell: cmd }
           - { os: windows-2025, shell: pwsh }
-          - { os: windows-11-arm, shell: cmd }
-          - { os: windows-11-vs2026-arm, shell: pwsh }
+          - { os: windows-11-arm, shell: cmd, experimental: true }
+          - { os: windows-11-vs2026-arm, shell: pwsh, experimental: true }
     env:
       # Not yet in directories with spaces in their names: GCC's lto-wrapper does not quote the
       # compiler's path, Zephyr names sections after source paths, which GCC does not quote, and the
