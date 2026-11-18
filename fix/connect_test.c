@@ -92,9 +92,14 @@ int main(void) {
                    from.sin_addr.s_addr != htonl(INADDR_LOOPBACK) ||
                    !from.sin_port))
         err = EADDRNOTAVAIL;  // bound to something other than ours
-      int peer = accept(server, 0, 0);
-      if (peer != -1)
-        close(peer);
+      if (!err) {  // a failed connect() left nothing to accept
+        struct pollfd p = {.fd = server, .events = POLLIN};
+        if (poll(&p, 1, 10000) == 1) {
+          int peer = accept(server, 0, 0);
+          if (peer != -1)
+            close(peer);
+        }
+      }
     }
     char what[96];
     snprintf(what, sizeof(what), "%s connect() from an unbound socket%s",

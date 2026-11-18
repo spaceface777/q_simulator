@@ -61,8 +61,9 @@ jobs:
           $results = @{}
           foreach ($v in 'release', 'patched', 'flag') {
             "== $v"
-            & ".\$v.exe"
-            $results[$v] = $LASTEXITCODE
+            $proc = Start-Process -FilePath ".\$v.exe" -NoNewWindow -PassThru -RedirectStandardOutput "$v.out"
+            if (-not $proc.WaitForExit(300000)) { $proc.Kill(); "TIMEOUT"; $results[$v] = 'timeout' } else { $results[$v] = $proc.ExitCode }
+            Get-Content "$v.out"
           }
           "release exit $($results['release']) (expected 1), patched exit $($results['patched']) (expected 0), flag exit $($results['flag']) (expected 0)"
           if ($results['release'] -ne 1 -or $results['patched'] -ne 0 -or $results['flag'] -ne 0) { exit 1 }
