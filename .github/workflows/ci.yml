@@ -53,12 +53,12 @@ jobs:
           - macos-26
           - xcode-27
         shell: [bash]
-        # Not yet Windows on Arm (windows-11-arm with cmd, windows-11-vs2026-arm with PowerShell): under its
-        # x64 emulation the bundle's CMake cannot connect to servers (a garbage local address), so it
-        # cannot fetch the simulator's dependencies, and downloads hang until the job times out.
+        # Windows on Arm runs the bundle's x86-64 programs under emulation.
         include:
           - { os: windows-2022, shell: cmd }
           - { os: windows-2025, shell: pwsh }
+          - { os: windows-11-arm, shell: cmd }
+          - { os: windows-11-vs2026-arm, shell: pwsh }
     env:
       QS_COSMOCC: cosmo cc
       QS_SOURCE: q sim
