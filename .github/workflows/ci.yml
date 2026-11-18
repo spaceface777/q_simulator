@@ -53,8 +53,8 @@ jobs:
           - xcode-27
         shell: [bash]
         # Not yet Windows on Arm (windows-11-arm with cmd, windows-11-vs2026-arm with PowerShell): under its
-        # x64 emulation the bundle cannot connect to servers, so CMake cannot fetch the simulator's
-        # dependencies, and downloads hang until the job times out (item 7 of the cosmocc handoff).
+        # x64 emulation the bundle's CMake cannot connect to servers (a garbage local address), so it
+        # cannot fetch the simulator's dependencies, and downloads hang until the job times out.
         include:
           - { os: windows-2022, shell: cmd }
           - { os: windows-2025, shell: pwsh }
@@ -76,15 +76,6 @@ jobs:
         with:
           path: ${{ env.QS_SOURCE }}
           submodules: true
-          persist-credentials: false
-
-      # The bundle's git cannot connect to GitHub on Windows yet (release 46), so Zephyr comes from
-      # here everywhere. The bundle's git and west patch it and set up its workspace.
-      - uses: actions/checkout@v5
-        with:
-          repository: zephyrproject-rtos/zephyr
-          ref: ${{ env.ZEPHYR_COSMOCC }}
-          path: ${{ env.QS_ZEPHYR }}/zephyr
           persist-credentials: false
 
       - name: Install cosmocc
@@ -126,6 +117,36 @@ jobs:
           $env:COSMOCC_DIR = "$env:RUNNER_TEMP\cosmocc"
           ./install.ps1
           "COSMOCC_DIR=$env:COSMOCC_DIR" >> $env:GITHUB_ENV
+
+      # Zephyr comes from the bundle's git, as README.md describes. Should that clone fail, the job takes
+      # Zephyr from actions/checkout to run the rest, and fails at the end.
+      - name: Get Zephyr with the bundle's git
+        id: zephyr-bash
+        if: runner.os != 'Windows'
+        continue-on-error: true
+        run: |
+          . "$COSMOCC_DIR/activate" --path=replace
+          git clone --depth 1 --branch "$ZEPHYR_COSMOCC" https://github.com/zephyrproject-rtos/zephyr \
+            "$GITHUB_WORKSPACE/$QS_ZEPHYR/zephyr"
+
+      - name: Get Zephyr with the bundle's git
+        id: zephyr-pwsh
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          . "$env:COSMOCC_DIR\activate.ps1" --path=replace
+          git clone --depth 1 --branch $env:ZEPHYR_COSMOCC https://github.com/zephyrproject-rtos/zephyr `
+            "$env:GITHUB_WORKSPACE\$env:QS_ZEPHYR\zephyr"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - uses: actions/checkout@v5
+        if: steps.zephyr-bash.outcome == 'failure' || steps.zephyr-pwsh.outcome == 'failure'
+        with:
+          repository: zephyrproject-rtos/zephyr
+          ref: ${{ env.ZEPHYR_COSMOCC }}
+          path: ${{ env.QS_ZEPHYR }}/zephyr
+          persist-credentials: false
 
       - name: Select the SDL3 platform
         run: |
@@ -192,6 +213,12 @@ jobs:
           # Only the unit tests until the bundle can build Zephyr on Windows: it upper-cases environment
           # variable names, so Kconfig misses $srctree (items 8 and 9 of the cosmocc handoff).
           Run ctest --test-dir $build -j 4 --output-on-failure -L unit
+
+      - name: Fail if the bundle's git could not clone Zephyr
+        if: steps.zephyr-bash.outcome == 'failure' || steps.zephyr-pwsh.outcome == 'failure'
+        run: |
+          echo "::error::The bundle's git could not clone Zephyr; the job took it from actions/checkout."
+          exit 1
 
   native:
     name: native${{ matrix.sanitize && ', sanitizers' || '' }} (${{ matrix.os }})
