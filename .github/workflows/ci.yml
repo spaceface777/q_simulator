@@ -77,24 +77,34 @@ jobs:
           submodules: true
           persist-credentials: false
 
+      # The bundle's git cannot connect to GitHub on Windows yet (release 46), so Zephyr comes from
+      # here everywhere. The bundle's git and west patch it and set up its workspace.
+      - uses: actions/checkout@v5
+        with:
+          repository: zephyrproject-rtos/zephyr
+          ref: ${{ env.ZEPHYR_COSMOCC }}
+          path: ${{ env.QS_ZEPHYR }}/zephyr
+          persist-credentials: false
+
       - name: Install cosmocc
         if: runner.os != 'Windows'
         run: |
-          cd "$RUNNER_TEMP"
+          # Some Linux images hand every MZ file, and so every APE program, to Mono through
+          # binfmt_misc. Turn such handlers off: the bundle's programs start through its APE loader.
+          for handler in /proc/sys/fs/binfmt_misc/*; do
+            if grep -qs '^magic 4d5a' "$handler"; then echo 0 | sudo tee "$handler" > /dev/null; fi
+          done
+          mkdir -p "$RUNNER_TEMP/mirror/release" && cd "$RUNNER_TEMP/mirror/release"
           curl --fail --location --silent --show-error --remote-name-all \
-            "$COSMOCC_URL/SHA256SUMS" "$COSMOCC_URL/cosmocc.tar.xz" "$COSMOCC_URL/install.sh"
+            "$COSMOCC_URL/SHA256SUMS" "$COSMOCC_URL/cosmocc.tar.xz" "$COSMOCC_URL/bsdtar" "$COSMOCC_URL/install.sh"
           # macOS's sha256sum lacks the GNU options.
           sha256=(sha256sum); [[ "$RUNNER_OS" == macOS ]] && sha256=(shasum -a 256)
           "${sha256[@]}" --check <<< "$COSMOCC_SUMS_SHA256  SHA256SUMS"
           "${sha256[@]}" --check --ignore-missing SHA256SUMS
-          sh install.sh --archive cosmocc.tar.xz --dir "$RUNNER_TEMP/cosmocc"
+          # The installer, not --archive: only when it downloads the release itself does it fall back to
+          # the release's bsdtar where the system's xz is too old for the archive (Ubuntu 22.04).
+          COSMOCC_URL="file://$RUNNER_TEMP/mirror" sh install.sh --version release --dir "$RUNNER_TEMP/cosmocc"
           echo "COSMOCC_DIR=$RUNNER_TEMP/cosmocc" >> "$GITHUB_ENV"
-          # Some Linux images hand every MZ file to Mono through binfmt_misc. Register the APE loader for
-          # APE's more specific magic, which the kernel then checks first.
-          if [[ "$RUNNER_OS" == Linux && ! -e /proc/sys/fs/binfmt_misc/APE ]]; then
-            sudo cp "$RUNNER_TEMP/cosmocc/bin/ape-$(uname -m).elf" /usr/bin/ape
-            sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
-          fi
 
       - name: Install cosmocc
         if: runner.os == 'Windows'
@@ -136,8 +146,7 @@ jobs:
         if: matrix.shell == 'bash'
         run: |
           . "$COSMOCC_DIR/activate" --path=replace
-          export ZEPHYR_BASE="$RUNNER_TEMP/$QS_ZEPHYR/zephyr"
-          git clone --quiet --depth 1 --branch "$ZEPHYR_COSMOCC" https://github.com/zephyrproject-rtos/zephyr "$ZEPHYR_BASE"
+          export ZEPHYR_BASE="$GITHUB_WORKSPACE/$QS_ZEPHYR/zephyr"
           git -C "$ZEPHYR_BASE" apply "$GITHUB_WORKSPACE/$QS_SOURCE/q_sdk/patches/zephyr-$ZEPHYR_COSMOCC-cosmocc.patch"
           (cd "$ZEPHYR_BASE/.." && west init -l zephyr)
           sdl3=()
@@ -151,11 +160,11 @@ jobs:
         if: matrix.shell == 'cmd'
         shell: cmd
         run: |
-          call "%COSMOCC_DIR%\activate.bat" --path=replace
-          set "ZEPHYR_BASE=%RUNNER_TEMP%\%QS_ZEPHYR%\zephyr"
+          rem Quoted: activate.bat passes its arguments through for /f, which splits them at "=".
+          call "%COSMOCC_DIR%\activate.bat" "--path=replace"
+          set "ZEPHYR_BASE=%GITHUB_WORKSPACE%\%QS_ZEPHYR%\zephyr"
           set "SOURCE=%GITHUB_WORKSPACE%\%QS_SOURCE%"
           set "BUILD=%RUNNER_TEMP%\%QS_BUILD%"
-          git clone --quiet --depth 1 --branch %ZEPHYR_COSMOCC% https://github.com/zephyrproject-rtos/zephyr "%ZEPHYR_BASE%" || exit /b 1
           git -C "%ZEPHYR_BASE%" apply "%SOURCE%\q_sdk\patches\zephyr-%ZEPHYR_COSMOCC%-cosmocc.patch" || exit /b 1
           pushd "%ZEPHYR_BASE%\.." || exit /b 1
           west init -l zephyr || exit /b 1
@@ -170,10 +179,9 @@ jobs:
         run: |
           function Run { & $args[0] $args[1..($args.Count - 1)]; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
           . "$env:COSMOCC_DIR\activate.ps1" --path=replace
-          $env:ZEPHYR_BASE = "$env:RUNNER_TEMP\$env:QS_ZEPHYR\zephyr"
+          $env:ZEPHYR_BASE = "$env:GITHUB_WORKSPACE\$env:QS_ZEPHYR\zephyr"
           $source = "$env:GITHUB_WORKSPACE\$env:QS_SOURCE"
           $build = "$env:RUNNER_TEMP\$env:QS_BUILD"
-          Run git clone --quiet --depth 1 --branch $env:ZEPHYR_COSMOCC https://github.com/zephyrproject-rtos/zephyr $env:ZEPHYR_BASE
           Run git -C $env:ZEPHYR_BASE apply "$source\q_sdk\patches\zephyr-$env:ZEPHYR_COSMOCC-cosmocc.patch"
           Push-Location "$env:ZEPHYR_BASE\.."
           Run west init -l zephyr

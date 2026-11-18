@@ -58,6 +58,8 @@ git -C ~/zephyrproject/zephyr apply "$PWD/q_sdk/patches/zephyr-v4.5.0-cosmocc.pa
 export ZEPHYR_BASE=~/zephyrproject/zephyr
 ```
 
+On Windows, the bundle's git cannot connect to servers yet: clone Zephyr with another git, then apply the patch and run `west init` with the bundle.
+
 Build the firmware objects of the test applets, as you would build any other Core 1 application.
 
 ```sh
