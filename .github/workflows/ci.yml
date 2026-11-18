@@ -160,10 +160,7 @@ jobs:
         if: matrix.shell == 'cmd'
         shell: cmd
         run: |
-          rem activate.bat passes its arguments through for /f, which splits --path=replace at the "=":
-          rem run what it runs, with the "=" escaped.
-          for /f "usebackq delims=" %%L in (`"%COSMOCC_DIR%\bin\cosmocc-env.exe" activate cmd --path^=replace`) do %%L
-          west --version || exit /b 1
+          call "%COSMOCC_DIR%\activate.bat" --path=replace || exit /b 1
           set "ZEPHYR_BASE=%GITHUB_WORKSPACE%\%QS_ZEPHYR%\zephyr"
           set "SOURCE=%GITHUB_WORKSPACE%\%QS_SOURCE%"
           set "BUILD=%RUNNER_TEMP%\%QS_BUILD%"
