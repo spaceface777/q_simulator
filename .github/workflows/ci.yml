@@ -163,7 +163,7 @@ jobs:
           rem activate.bat passes its arguments through for /f, which splits --path=replace at the "=":
           rem run what it runs, with the "=" escaped.
           for /f "usebackq delims=" %%L in (`"%COSMOCC_DIR%\bin\cosmocc-env.exe" activate cmd --path^=replace`) do %%L
-          where west || exit /b 1
+          west --version || exit /b 1
           set "ZEPHYR_BASE=%GITHUB_WORKSPACE%\%QS_ZEPHYR%\zephyr"
           set "SOURCE=%GITHUB_WORKSPACE%\%QS_SOURCE%"
           set "BUILD=%RUNNER_TEMP%\%QS_BUILD%"
@@ -173,7 +173,9 @@ jobs:
           popd
           cmake -S "%SOURCE%" -B "%BUILD%" -G Ninja "-DQSIM_SDL3_ASSETS=%RUNNER_TEMP%\sdl3" || exit /b 1
           cmake --build "%BUILD%" || exit /b 1
-          ctest --test-dir "%BUILD%" -j 4 --output-on-failure || exit /b 1
+          rem Only the unit tests until the bundle can build Zephyr on Windows: it upper-cases environment
+          rem variable names, so Kconfig misses $srctree (items 8 and 9 of the cosmocc handoff).
+          ctest --test-dir "%BUILD%" -j 4 --output-on-failure -L unit || exit /b 1
 
       - name: Build and test (PowerShell)
         if: matrix.shell == 'pwsh'
@@ -190,7 +192,9 @@ jobs:
           Pop-Location
           Run cmake -S $source -B $build -G Ninja "-DQSIM_SDL3_ASSETS=$env:RUNNER_TEMP\sdl3"
           Run cmake --build $build
-          Run ctest --test-dir $build -j 4 --output-on-failure
+          # Only the unit tests until the bundle can build Zephyr on Windows: it upper-cases environment
+          # variable names, so Kconfig misses $srctree (items 8 and 9 of the cosmocc handoff).
+          Run ctest --test-dir $build -j 4 --output-on-failure -L unit
 
   native:
     name: native${{ matrix.sanitize && ', sanitizers' || '' }} (${{ matrix.os }})

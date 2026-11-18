@@ -58,7 +58,7 @@ git -C ~/zephyrproject/zephyr apply "$PWD/q_sdk/patches/zephyr-v4.5.0-cosmocc.pa
 export ZEPHYR_BASE=~/zephyrproject/zephyr
 ```
 
-On Windows, the bundle's git cannot connect to servers yet: clone Zephyr with another git, then apply the patch and run `west init` with the bundle.
+On Windows, release 46 builds the simulator and passes its unit tests, but cannot build Zephyr applications yet: Zephyr's Kconfig does not find its `srctree` variable. Its git cannot connect to servers either.
 
 Build the firmware objects of the test applets, as you would build any other Core 1 application.
 
