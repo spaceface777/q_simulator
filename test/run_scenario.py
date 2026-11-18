@@ -20,6 +20,7 @@ import argparse
 import contextlib
 import os
 from pathlib import Path
+import platform
 import re
 import shlex
 import shutil
@@ -53,16 +54,9 @@ def scratch_directory():
                 shutil.rmtree(directory)
                 break
             except PermissionError:
-                if os.name != "nt" or attempt == 49:
+                if platform.system() != "Windows" or attempt == 49:
                     raise
                 time.sleep(0.2)
-
-
-def world_command(world: Path) -> list[str]:
-    """Cosmopolitan worlds are APE files, which start through a shell outside Windows."""
-    with world.open("rb") as stream:
-        ape = stream.read(6) == b"MZqFpD"
-    return ["/bin/sh", str(world)] if ape and os.name != "nt" else [str(world)]
 
 
 def layout_text(scenario: Path, applet: str, firmware_dir: Path) -> str:
@@ -121,7 +115,7 @@ def main() -> None:
         subprocess.run([sys.executable, args.qsim, "build", layout, "-o", world], check=True)
         # A GUI run extracts SDL3 into the cache, so keep it out of the user's.
         env = {**os.environ, "XDG_CACHE_HOME": str(work / "cache"), "LOCALAPPDATA": str(work / "cache")}
-        result = subprocess.run([*world_command(world), "scenario.toml", *extra], cwd=scenario, env=env,
+        result = subprocess.run([world, "scenario.toml", *extra], cwd=scenario, env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
                                 timeout=300)
 

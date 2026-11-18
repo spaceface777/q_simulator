@@ -82,24 +82,12 @@ def main() -> None:
         # A Cosmopolitan world keeps its symbols in a separate debug file.
         cosmopolitan = "@QUERCUS_COSMOPOLITAN@" == "ON"
         debug = output.with_name(output.name + ".dbg")
-        toolchain = Path(os.getenv("COSMOCC_TOOLCHAIN_PATH", "@COSMOCC_TOOLCHAIN_PATH@"))
+        toolchain = Path("@COSMOCC_TOOLCHAIN_PATH@")
         tools = toolchain / "bin"
         arch = "@CMAKE_SYSTEM_PROCESSOR@"
         simulator = Path(__file__).resolve().with_name("qsim.o")
-        # cosmocc's compiler driver is a shell script, and its binary tools are APE executables,
-        # which start through a shell outside Windows and by their .exe name on Windows.
-        compile = [Path("@world_cxx@")]
-        objcopy = [Path("@world_objcopy@")]
-        if cosmopolitan and os.name == "nt":
-            # The toolchain's sh (or bash, in releases without its POSIX userland) runs the driver.
-            shell = toolchain / "posix" / "bin" / "sh.exe"
-            if not shell.exists():
-                shell = tools / "bash.exe"
-            compile = [shell, compile[0].as_posix()]
-            objcopy = [objcopy[0].with_name(objcopy[0].name + ".exe")]
-        elif cosmopolitan:
-            compile.insert(0, "/bin/sh")
-            objcopy.insert(0, "/bin/sh")
+        compile = Path("@world_cxx@")
+        objcopy = Path("@world_objcopy@")
         if output in [layout, simulator, *firmware] or debug in [layout, simulator, *firmware]:
             raise ValueError("output would overwrite an input")
 
@@ -114,7 +102,7 @@ def main() -> None:
             (scratch / "firmware_digests").write_bytes(b"".join(digests[image] for image in firmware))
             for name in ("layout.toml", "firmware_digests"):
                 subprocess.run([
-                    *objcopy, "-I", "binary",
+                    objcopy, "-I", "binary",
                     "-O", {"aarch64": "elf64-littleaarch64", "x86_64": "elf64-x86-64"}[arch],
                     "-B", {"aarch64": "aarch64", "x86_64": "i386:x86-64"}[arch],
                     "--rename-section", ".data=.rodata,alloc,load,readonly,data,contents",
@@ -122,7 +110,7 @@ def main() -> None:
                 ], cwd=scratch, check=True)
             # Objects from different toolchains have different ABIs, so they must not share a world.
             for image in [simulator, *dict.fromkeys(firmware)]:
-                subprocess.run([*objcopy, "-O", "binary", "--only-section=.qsim_toolchain", image, "marker"],
+                subprocess.run([objcopy, "-O", "binary", "--only-section=.qsim_toolchain", image, "marker"],
                                cwd=scratch, check=True)
                 if (marker := (scratch / "marker").read_bytes().rstrip(b"\0").decode()) != "@world_toolchain@":
                     raise ValueError(f"{image} is from the {marker or 'unknown'} toolchain, not @world_toolchain@")
@@ -130,15 +118,17 @@ def main() -> None:
             # Firmware objects are not position independent.
             options = ["-mtiny"] if cosmopolitan else ["-no-pie", "-ldl"]
             subprocess.run([
-                *compile, *options, "-o", world, simulator,
+                compile, *options, "-o", world, simulator,
                 scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread", "-lgcov",
             ], check=True)
             if cosmopolitan:
                 symbols = scratch / "world.exe.dbg"
-                if "@CMAKE_HOST_SYSTEM_NAME@" == "Darwin" and arch == "aarch64":
+                if arch == "aarch64":
+                    # The AArch64 driver links ELF: make it an Actually Portable Executable, which
+                    # also runs on macOS.
                     subprocess.run([
-                        "/bin/sh", tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M",
-                        tools / "ape-m1.c", "-o", world, symbols,
+                        tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M", tools / "ape-m1.c",
+                        "-o", world, symbols,
                     ], check=True)
                 embed_sdl3(world, toolchain, "@CMAKE_HOST_SYSTEM_NAME@", arch)
                 os.replace(symbols, debug)

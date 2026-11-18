@@ -10,18 +10,18 @@ Each check builds its worlds from applet scenario layouts, like run_scenario.py 
 """
 
 import argparse
-import ctypes
 import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import signal
 import subprocess
 import sys
 import time
 import zipfile
 
-from run_scenario import layout_text, scratch_directory, world_command
+from run_scenario import layout_text, scratch_directory
 
 APPLETS = Path(__file__).resolve().parent / "applets"
 SKIPPED = 77
@@ -43,7 +43,7 @@ class Worlds:
         return world
 
     def run(self, world: Path, *args: object) -> subprocess.CompletedProcess:
-        return subprocess.run([*world_command(world), *map(str, args)], cwd=self.work, env=self.env,
+        return subprocess.run([world, *map(str, args)], cwd=self.work, env=self.env,
                               capture_output=True, text=True, errors="replace", timeout=300)
 
     def expect(self, world: Path, args: list[object], code: int, *messages: str) -> subprocess.CompletedProcess:
@@ -128,6 +128,8 @@ def gui_available(world: Path) -> bool:
     if zipfile.is_zipfile(world):
         with zipfile.ZipFile(world) as archive:
             return any(name.startswith("sdl3/") for name in archive.namelist())
+    import ctypes  # Only host-compiler worlds get here, under the host's Python: the bundle's has no ctypes.
+
     try:
         ctypes.CDLL("libSDL3.so.0")
     except OSError:
@@ -139,7 +141,7 @@ def run_until_interrupted(worlds: Worlds, world: Path, args: list[object], ready
     """Start a GUI run, wait until ready(log) or for the given seconds, then send Ctrl+C."""
     log = worlds.work / "gui.log"
     with log.open("w") as output:
-        process = subprocess.Popen([*world_command(world), *map(str, args)], cwd=worlds.work,
+        process = subprocess.Popen([world, *map(str, args)], cwd=worlds.work,
                                    env={**worlds.env, "SDL_VIDEODRIVER": "dummy"}, stdout=output,
                                    stderr=output, start_new_session=True)
         try:
@@ -159,7 +161,7 @@ def run_until_interrupted(worlds: Worlds, world: Path, args: list[object], ready
 
 
 def check_gui(worlds: Worlds) -> None:
-    if os.name == "nt":
+    if platform.system() == "Windows":
         raise SystemExit(SKIPPED)
     world = worlds.build("idle", "tub_arrivals")
     if not gui_available(world):

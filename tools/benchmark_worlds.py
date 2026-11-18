@@ -4,7 +4,6 @@
 import argparse
 import csv
 import json
-import os
 from pathlib import Path
 import re
 import statistics
@@ -39,7 +38,6 @@ def main() -> None:
         parser.error("no scenarios found")
 
     settings = ["--settings", str(args.settings.resolve())] if args.settings else []
-    shell = [] if os.name == "nt" else ["/bin/sh"]
     outcomes = {}
     totals = {label: [] for label, _ in args.world}
     with tempfile.TemporaryDirectory() as scratch, args.output.open("w", newline="") as output:
@@ -70,7 +68,7 @@ def main() -> None:
                 for scenario, path, seed in prepared:
                     start = time.perf_counter()
                     result = subprocess.run(
-                        [*shell, str(Path(world).resolve()), *settings, *seed, "--quiet", str(path)],
+                        [str(Path(world).resolve()), *settings, *seed, "--quiet", str(path)],
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=180,
                     )
                     elapsed = time.perf_counter() - start

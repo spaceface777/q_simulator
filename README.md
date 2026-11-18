@@ -29,8 +29,35 @@ Initialize the SDK submodule.
 git submodule update --init
 ```
 
-Use the Zephyr checkout in the [P2 prerequisites](docs/COSMOPOLITAN_P2.md#prerequisites), with the project cosmocc release `2026.11.14-23` or later.
-Earlier releases crash when they partition the simulator's LTO link.
+### The cosmocc bundle
+
+The build uses the project's cosmocc bundle, release `2026.11.17-46` or later, on Linux, macOS and Windows.
+The bundle has everything that the build runs: the compilers, CMake, Ninja, Python, west, git and a POSIX shell.
+Nothing else needs to be installed.
+Install the bundle with the installer of its release, as the [cosmocc README](https://gitlab.tue.nl/20223853/cosmopolitan-distribution-builder-test#installation-and-activation) describes.
+Then activate it in each shell that builds the simulator:
+
+| Shell | Command |
+|---|---|
+| bash, zsh | `. ~/.local/share/cosmocc/activate` |
+| fish | `source ~/.local/share/cosmocc/activate.fish` |
+| cmd | `%LOCALAPPDATA%\cosmocc\activate.bat` |
+| PowerShell | `. $env:LOCALAPPDATA\cosmocc\activate.ps1` |
+
+CMake must be the bundle's CMake: the build finds the toolchain through it.
+Install the bundle, Zephyr and this repository in directories without spaces in their paths.
+GCC's link time optimization and Zephyr's section names do not yet handle them.
+On Linux, if Wine or Mono is registered with `binfmt_misc` for Windows executables, also register the APE loader, as the cosmocc README describes.
+
+Get Zephyr v4.5.0 and apply the SDK's patch, which adds the cosmocc toolchain:
+
+```sh
+git clone --depth 1 --branch v4.5.0 https://github.com/zephyrproject-rtos/zephyr ~/zephyrproject/zephyr
+git -C ~/zephyrproject/zephyr apply "$PWD/q_sdk/patches/zephyr-v4.5.0-cosmocc.patch"
+(cd ~/zephyrproject && west init -l zephyr)
+export ZEPHYR_BASE=~/zephyrproject/zephyr
+```
+
 Build the firmware objects of the test applets, as you would build any other Core 1 application.
 
 ```sh
@@ -40,15 +67,16 @@ cd ../..
 ```
 
 Configure and build the simulator. The build uses cosmocc by default.
-CMake finds the toolchain through `COSMOCC_TOOLCHAIN_PATH`, a `cosmocc` on `PATH`, or `/opt/cosmocc`.
-Ninja is recommended but not required.
 
 ```sh
 cmake -S . -B build -G Ninja
 cmake --build build
 ```
 
-For a Linux build with the host compiler, add `-DQSIM_COSMOCC=OFF` and use a separate build directory.
+### Host-compiler builds
+
+On Linux, the simulator also builds with the host compiler and host tools, without anything from cosmocc.
+Add `-DQSIM_COSMOCC=OFF` and use a separate build directory.
 Build its firmware with `q_sdk/qbuild sim --toolchain host`, which writes the objects to `out/host/`.
 A host-compiler build works with an upstream Zephyr release.
 

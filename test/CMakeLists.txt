@@ -43,18 +43,12 @@ target_compile_options(tests PRIVATE ${COMPILATION_FLAGS} ${test_compile_options
 # ctest names every test by its group: unit.<suite>, world.<check> and applet.<applet>.<scenario>.
 # Select a group with -L unit, -L world or -L applet, and single tests with -R.
 
-if(QUERCUS_COSMOPOLITAN AND NOT CMAKE_HOST_WIN32 AND (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_HOST_APPLE))
-    # These builds make tests.exe an APE file, which starts only through a shell outside Windows. On
-    # Linux arm64 it is ELF, which starts directly. The system's shell: CMake starts it directly, and
-    # macOS cannot, when the toolchain's own sh (itself an APE file) comes first on PATH.
-    set(unit_emulator /bin/sh)
-endif()
 set(unit_suites "${CMAKE_CURRENT_BINARY_DIR}/unit_suites.cmake")
 if(NOT EXISTS "${unit_suites}")
     file(WRITE "${unit_suites}" "add_test(unit.NOT_BUILT \"${CMAKE_COMMAND}\" -E false)\n")
 endif()
 add_custom_command(TARGET tests POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" "-DEMULATOR=${unit_emulator}" "-DEXECUTABLE=$<TARGET_FILE:tests>"
+    COMMAND "${CMAKE_COMMAND}" "-DEXECUTABLE=$<TARGET_FILE:tests>"
         "-DOUTPUT=${unit_suites}" -P "${CMAKE_CURRENT_SOURCE_DIR}/unit_suites.cmake"
     VERBATIM)
 set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${unit_suites}")
@@ -66,6 +60,11 @@ set(applets_dir "${CMAKE_SOURCE_DIR}/test/applets")
 if(QUERCUS_COSMOPOLITAN)
     set(applet_toolchain cosmocc)
     set(firmware_dir "${applets_dir}/out")
+    # The applets build with the bundle's west, CMake and Ninja, also when it is not activated.
+    set(script_environment ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:${COSMOCC_TOOLCHAIN_PATH}/posix/bin"
+        "PATH=path_list_prepend:${COSMOCC_TOOLCHAIN_PATH}/bin"
+        "COSMOCC_TOOLCHAIN_PATH=set:${COSMOCC_TOOLCHAIN_PATH}")
 else()
     set(applet_toolchain host)
     set(firmware_dir "${applets_dir}/out/host")
@@ -73,14 +72,15 @@ endif()
 add_test(NAME applet.build
     COMMAND "${Python3_EXECUTABLE}" "${applets_dir}/q_sdk/qbuild" sim --toolchain ${applet_toolchain}
     WORKING_DIRECTORY "${applets_dir}")
-set_tests_properties(applet.build PROPERTIES FIXTURES_SETUP applets LABELS applet TIMEOUT 3600)
+set_tests_properties(applet.build PROPERTIES FIXTURES_SETUP applets LABELS applet TIMEOUT 3600
+    ${script_environment})
 
 foreach(check repeatability command_line gui)
     add_test(NAME world.${check}
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_worlds.py"
             "${CMAKE_BINARY_DIR}/qsim" "${firmware_dir}" ${check})
     set_tests_properties(world.${check} PROPERTIES FIXTURES_REQUIRED applets LABELS world
-        SKIP_RETURN_CODE 77)
+        SKIP_RETURN_CODE 77 ${script_environment})
 endforeach()
 
 file(GLOB scenarios LIST_DIRECTORIES true CONFIGURE_DEPENDS "${applets_dir}/*/scenarios/*")
@@ -94,5 +94,6 @@ foreach(scenario IN LISTS scenarios)
     add_test(NAME applet.${applet}.${scenario_name}
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_scenario.py"
             "${CMAKE_BINARY_DIR}/qsim" "${firmware_dir}" "${scenario}")
-    set_tests_properties(applet.${applet}.${scenario_name} PROPERTIES FIXTURES_REQUIRED applets LABELS applet)
+    set_tests_properties(applet.${applet}.${scenario_name} PROPERTIES FIXTURES_REQUIRED applets LABELS applet
+        ${script_environment})
 endforeach()

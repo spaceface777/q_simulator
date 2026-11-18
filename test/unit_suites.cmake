@@ -1,7 +1,7 @@
 # Registers one ctest test for each GoogleTest suite of the unit test executable, as unit.<suite>.
 # The tests target runs this after each link, so new suites need no reconfigure.
-# Inputs: EMULATOR (optional launcher), EXECUTABLE, OUTPUT (the ctest include file to write).
-execute_process(COMMAND ${EMULATOR} "${EXECUTABLE}" --gtest_list_tests
+# Inputs: EXECUTABLE, OUTPUT (the ctest include file to write).
+execute_process(COMMAND "${EXECUTABLE}" --gtest_list_tests
     OUTPUT_VARIABLE listing RESULT_VARIABLE result)
 if(NOT result EQUAL 0)
     message(FATAL_ERROR "Could not list the unit tests: ${result}")
@@ -11,7 +11,7 @@ string(REGEX MATCHALL "(^|\n)[^ \n#][^ \n]*\\." suites "${listing}")
 set(content "")
 foreach(suite IN LISTS suites)
     string(REGEX REPLACE "^\n?(.*)\\.$" "\\1" suite "${suite}")
-    string(APPEND content "add_test([=[unit.${suite}]=] ${EMULATOR} [=[${EXECUTABLE}]=] [=[--gtest_filter=${suite}.*]=])\n"
+    string(APPEND content "add_test([=[unit.${suite}]=] [=[${EXECUTABLE}]=] [=[--gtest_filter=${suite}.*]=])\n"
         "set_tests_properties([=[unit.${suite}]=] PROPERTIES LABELS unit)\n")
 endforeach()
 file(WRITE "${OUTPUT}" "${content}")

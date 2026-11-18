@@ -19,13 +19,13 @@ set(COMPILATION_FLAGS -Wall -Wextra -Werror)
 if(QUERCUS_COSMOPOLITAN)
     # GCC 16 can't tell that libc++'s hash table only reads its bucket hash when it has buckets :((
     list(APPEND COMPILATION_FLAGS -Wno-error=maybe-uninitialized)
-    if(CMAKE_HOST_APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-        # The AArch64 driver emits ELF. Wrap each executable for the Apple Silicon loader.
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+        # The AArch64 driver links ELF. Make each executable an Actually Portable Executable, which
+        # also runs on macOS. The driver keeps the ELF of a *.exe output in *.exe.dbg. A list item
+        # is one more command, which both the Ninja and Makefile generators support.
         set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
-        # The driver keeps the ELF of a *.exe output in *.exe.dbg. A list item is one more command,
-        # which both the Ninja and Makefile generators support.
         list(APPEND CMAKE_CXX_LINK_EXECUTABLE
-            "sh \"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
+            "\"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
     endif()
 endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
@@ -181,10 +181,6 @@ set_source_files_properties(src/firmware/crash_posix.cpp PROPERTIES
 # the tests link this object.
 if(QUERCUS_COSMOPOLITAN)
     set(prelink_cxx "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-g++")
-    if(CMAKE_HOST_WIN32)
-        # Windows finds the toolchain's programs under their *.exe names.
-        string(APPEND prelink_cxx .exe)
-    endif()
     # GCC can't prove libc++'s impossible std::string growth path unreachable, and warns about it.
     set(prelink_warnings -Wno-alloc-size-larger-than)
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
