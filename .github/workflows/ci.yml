@@ -191,9 +191,7 @@ jobs:
           popd
           cmake -S "%SOURCE%" -B "%BUILD%" -G Ninja "-DQSIM_SDL3_ASSETS=%RUNNER_TEMP%\sdl3" || exit /b 1
           cmake --build "%BUILD%" || exit /b 1
-          rem Only the unit tests until the bundle can build Zephyr on Windows: it upper-cases environment
-          rem variable names, so Kconfig misses $srctree (items 8 and 9 of the cosmocc handoff).
-          ctest --test-dir "%BUILD%" -j 4 --output-on-failure -L unit || exit /b 1
+          ctest --test-dir "%BUILD%" -j 4 --output-on-failure || exit /b 1
 
       - name: Build and test (PowerShell)
         if: matrix.shell == 'pwsh'
@@ -210,9 +208,7 @@ jobs:
           Pop-Location
           Run cmake -S $source -B $build -G Ninja "-DQSIM_SDL3_ASSETS=$env:RUNNER_TEMP\sdl3"
           Run cmake --build $build
-          # Only the unit tests until the bundle can build Zephyr on Windows: it upper-cases environment
-          # variable names, so Kconfig misses $srctree (items 8 and 9 of the cosmocc handoff).
-          Run ctest --test-dir $build -j 4 --output-on-failure -L unit
+          Run ctest --test-dir $build -j 4 --output-on-failure
 
       - name: Fail if the bundle's git could not clone Zephyr
         if: steps.zephyr-bash.outcome == 'failure' || steps.zephyr-pwsh.outcome == 'failure'
