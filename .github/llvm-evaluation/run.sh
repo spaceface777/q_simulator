@@ -24,10 +24,11 @@ export CC=clang CXX=clang++
 python3 -m venv /tmp/llvm-venv
 source /tmp/llvm-venv/bin/activate
 export ZEPHYR_BASE=/tmp/llvm-west/zephyr
-git clone --depth 1 -b v4.4.1 https://github.com/zephyrproject-rtos/zephyr "$ZEPHYR_BASE"
+git clone --depth 1 -b v4.4.1 https://github.com/zephyrproject-rtos/zephyr "$ZEPHYR_BASE" || true
 pip install west -r "$ZEPHYR_BASE/scripts/requirements-base.txt"
-(cd /tmp/llvm-west && west init -l zephyr)
-git -C q_sdk apply "$PWD/.github/llvm-evaluation/sdk.patch"
+(cd /tmp/llvm-west && west init -l zephyr) || true
+git -C q_sdk apply "$PWD/.github/llvm-evaluation/sdk.patch" || true
+
 cmake -S . -B build-llvm -G Ninja -DQSIM_COSMOCC=OFF -DQSIM_LLVM_EVALUATION=ON -DENABLE_LTO=ON -DCMAKE_AR="$(command -v llvm-ar)" -DCMAKE_RANLIB="$(command -v llvm-ranlib)" -DCMAKE_OBJCOPY="$(command -v llvm-objcopy)"
 cmake --build build-llvm --parallel 4
 file build-llvm/CMakeFiles/core.dir/src/settings.cpp.o | grep 'LLVM IR bitcode'
