@@ -1,0 +1,258 @@
+# Toolchain port log
+
+Discoveries, tests, hypotheses, outcomes and planned experiments for the move from the GCC-based
+cosmocc bundle (release 2026.11.18-64) to the clang/lld one (2026.11.21-122 and later). Newest
+entries at the end of each section.
+
+## Starting point (2026-11-22)
+
+- Simulator branch `experiment/linux-llvm` (bffecdd), q_sdk `llvm-toolchain` (ecacaad). Work goes
+  on `cosmocc-clang` in both.
+- Bundle 122 (`~/.local/share/cosmocc`): one multicall `bin/llvm` (clang 22.1.8, lld, llvm
+  binutils, llvm-profdata). Tool names: `<arch>-unknown-cosmo-{cc,c++,ar,ranlib,objcopy,ld,nm,...}`
+  are all links to it. Gone: every `<arch>-linux-cosmo-*` name (gcc, g++, gcc-ar, objcopy, ld.bfd),
+  gcov, libgcov. Present: `ld.lld`, `llvm-*`, compiler-rt's profile runtime for both cosmo targets.
+- clang's Cosmopolitan toolchain (cosmocc-build `patches/llvm/0007`) applies the ABI from the
+  triple `<arch>-unknown-linux-cosmo` (x18/x28 reserved, TLS helpers, no red zone, -fportcosmo),
+  also inside LTO code generation. So nothing outside the compiler needs the ABI flags any more.
+- The driver links with lld and runs fixupobj; for `.com`/`.exe` outputs it makes an APE, on
+  both architectures (to verify for aarch64: the old GCC driver left ELF there, hence apelink calls
+  in CMakeLists.txt and assemble.py).
+- The bundle's Python is `sys.platform == "cosmo"`, starts APE files directly, has no ctypes.
+- cosmocc-build has two "consumer" proposals (`patches/consumers/*.patch`); this tree already
+  has the qsim.py half (no `/bin/sh`), the rest is in test/ and tools/.
+- quercus-train-suite (`../../cosmopolitan-upgrade/quercus-train-suite`, branch weighted-parts)
+  carries a working clang port of this tree, the SDK and the Zephyr patch (commits adfedce,
+  fbbedcc, afcabaf), used to PGO-train the bundle's LLVM. Its 46 tests passed with the seed
+  toolchain. That port is the starting point here; it still has leftovers (GCC branches next to
+  clang ones, a linker-script rewrite in assemble.py, an explicit apelink step).
+
+## Test hosts
+
+- MacBook Air M1 (macOS 27, arm64): cosmo builds; Docker (arm64 Linux containers).
+- MiniPC (N100, Ubuntu, x86_64): cosmo and native builds.
+- GitHub Actions mirror (spaceface777/q_simulator) for Windows and the full matrix.
+
+## Baseline with 122 (2026-11-22)
+
+- The train-suite port, applied as is, built and passed 47/47 on macOS arm64 after one fix: the
+  122 driver includes `libc/integral/normalize.inc` in `-E` too, so preprocessing the runner's
+  linker script as C (`-x c -E -P`) emitted typedefs and lld failed ("unknown directive:
+  typedef"). `-nostdinc` keeps it out (`-nostdlibinc` too; `-ffreestanding` and `-undef` don't).
+  TOOLCHAIN: arguably `-E` of a non-C input shouldn't get it; any project that preprocesses
+  linker scripts with the cosmo driver hits this.
+- Local-only: macOS `/tmp` is a symlink to `/private/tmp`. With ZEPHYR_BASE under `/tmp`, Zephyr
+  computes `..`-relative library names and CMake rejects them. Use `/private/tmp`.
+
+## What 122 does and doesn't do (probes in /tmp/qsx)
+
+- `x86_64-unknown-cosmo-c++ -o x.exe` makes an APE; `aarch64-unknown-cosmo-c++ -o x.exe` makes a
+  stripped ELF (+ `x.exe.dbg`), as the GCC driver did. The project still runs apelink itself for
+  aarch64 (CMakeLists.txt's link rule, qsim.py). TOOLCHAIN: if the aarch64 driver ran apelink
+  for `.exe`/`.com` like the x86-64 one, both calls go away.
+- UBSan works on cosmo: cosmo libc has its own `__ubsan_handle_*` runtime, which stops with
+  status 99. ASan: no runtime (`__asan_init` undefined). -> ENABLE_SANITIZERS now means UBSan on
+  cosmo builds, ASan+UBSan on host builds.
+- Coverage: `--coverage` (gcov) is broken in 122: the driver doesn't link
+  `libclang_rt.profile.a` (it has the `llvm_gcda_*` functions), and with it linked by hand no
+  `.gcda` appears. Source-based coverage (`-fprofile-instr-generate -fcoverage-mapping`) works and
+  writes `.profraw`. There is no `llvm-cov` in the bundle to report it, and no gcov any more.
+  TOOLCHAIN: add `llvm-cov` to the multicall (LLVM_TOOL_LLVM_COV_BUILD). -> ENABLE_COVERAGE is
+  source-based on both builds now.
+- The bundle's CMake reports `CMAKE_HOST_UNIX` true and `CMAKE_HOST_APPLE` false on macOS (it's
+  a Cosmopolitan program), so Zephyr's "POSIX arch only on Linux" check passes on every host.
+  It reports the Apple silicon CPU as `arm64`, which Zephyr's posix arch maps to 32-bit arm:
+  qbuild passes `NATIVE_TARGET_HOST=aarch64` there. TOOLCHAIN: report `aarch64` (as Linux does)
+  and that line goes.
+- CMake finds llvm-ar, llvm-ranlib and llvm-objcopy by itself from the compiler's name: the
+  toolchain file only names the two compilers (and the bundle's Python, which macOS's
+  FindPython would otherwise pass over for a framework Python).
+
+## Decisions (user, 2026-11-22)
+
+- clang + lld everywhere, host builds too. No GCC paths anywhere.
+- Only bundle 122 matters: no version checks, no compatibility with older bundles.
+- Remove code. Where something works only with significant new code, flag it instead.
+- CI installs the bundle with its own install.sh / install.ps1.
+- Out-of-process firmware (`out/<app>.exe`, `lockstep_transport.c`) deleted: the simulator only
+  runs firmware in-process. That took assemble.py's lld linker-script rewrite (`INSERT AFTER
+  .data` -> `.rodata`, for the APE loader's segment overlap check) and its apelink step with it.
+- Endgame: no Zephyr patch, the bundle behaves like a host clang.
+
+## Unpatched Zephyr (2026-11-22)
+
+- Stock Zephyr v4.5.0 with its own `host/llvm` variant, `CONFIG_LLVM_USE_LLD=y`, and the
+  bundle's clang first on PATH builds the applets; assemble.py links them; 47/47 pass on macOS
+  arm64. The bundle's clang defaults to `<arch>-unknown-linux-cosmo`, which gives Zephyr's code
+  the cosmo ABI and headers with no toolchain definition at all.
+- So the whole q_sdk Zephyr patch (517 lines) is gone. Hunk by hunk:
+  - `cmake/toolchain/cosmocc/*`, FindHostTools, twister: not needed (host/llvm).
+  - arch/posix "Linux only": not needed (bundle CMake, above).
+  - nsi_errno.c non-const map: not needed; clang's -fportcosmo copes.
+  - GCC LTO (`-flinker-output=nolto-rel`, `externally_visible`), lld `partial_linking`: gone with GCC.
+  - check_init_priorities `.dbg` suffix, the NSI Makefile's drive-letter/space rules: only for
+    `zephyr.exe`, which nothing builds (`CONFIG_BUILD_OUTPUT_EXE=n`).
+  - clang `compiler_set_linker_properties` for native libraries: not needed with host/llvm.
+  - `natsim_linker_script.ld` INPUT_SECTION_FLAGS: not needed with lld (to watch).
+  - timer_model CLOCK_MONOTONIC_RAW fallback: real-time pacing is off in the SDK config; to
+    check on Intel macOS in CI.
+  - nsi_compile_options/nsi_sources one per line: assemble.py falls back to the make variables,
+    which split at blanks; fine without spaces.
+- What unpatched Zephyr costs, both upstream Zephyr limits, both good upstream contributions:
+  1. Paths with spaces: Zephyr's own command lines don't quote `-imacros autoconf.h`, `-Map`,
+     `-L`, `undef_system_defines.h`, `-T`. A Zephyr or application path with a space fails.
+  2. LTO of a native library: Kconfig `LTO depends on !NATIVE_LIBRARY`. GCC's `ld -r` keeps
+     bitcode, lld's generates code, so LTO could be allowed with lld. Until then: no firmware
+     LTO (QUERCUS_LTO, `--no-lto`, no_lto.conf removed). The runner had LTO only with it too.
+     OPTIMIZATION.md measured whole-world LTO at about 3% on the router suite (sim + firmware);
+     the simulator keeps its own LTO. To measure: firmware-only share.
+
+## Linux (Docker arm64, 2026-11-22)
+
+- Native builds need LLVM >= 21. lld 18, 19 and 20 (Ubuntu 24.04's, and apt.llvm.org's) crash
+  with SIGSEGV in `LinkerScript::addOrphanSections()` on `ld.lld -r zephyr.elf`, i.e. relinking
+  Zephyr's own relocatable output (lld's too), with or without a script, debug info or
+  `.llvm_addrsig`. lld 21.1.8 (Ubuntu 26.04) and the bundle's 22.1.8 are fine. Not bisected
+  further: the fix is in a released LLVM. Ubuntu 22.04/24.04 take LLVM 21 from apt.llvm.org.
+- Those images' libstdc++ is too old for the C++23 that the simulator uses (CI used GCC 14 from
+  the toolchain PPA for it); apt.llvm.org's libc++ avoids GCC there: CXXFLAGS=-stdlib=libc++.
+  That showed that qsim.py's world links didn't get CMAKE_CXX_FLAGS / CMAKE_EXE_LINKER_FLAGS:
+  they do now, as CMake's own links do.
+- clang caught a real bug: `abs(float)` in visualization.cpp resolved to the integer abs with
+  glibc's headers (-Wabsolute-value). Now `std::abs`.
+- ASan's LeakSanitizer flagged libbacktrace (DWARF 5 file name strings that no line entry
+  keeps). The build had chosen libbacktrace's malloc allocator (alloc.c, read.c); upstream's
+  POSIX default (mmap.c, mmapio.c) has no such report and is the plainer config.
+- Ubuntu packages clang's sanitizer runtimes apart: `libclang-rt-dev`.
+- Stock nsi_config writes `NSI_CC := <launcher> <compiler>` unquoted, so a bundle in a directory
+  with a space (`/opt/cosmo cc`, and `%LOCALAPPDATA%` under a user name with one) split.
+  assemble.py takes CMAKE_C_COMPILER and CMAKE_OBJCOPY from the application's CMakeCache.txt.
+- Results, unpatched Zephyr v4.5.0: 26.04 clang 21 native 47/47; 26.04 ASan+UBSan 47/47;
+  24.04 apt.llvm.org 21 + libc++ 47/47; 24.04 cosmo (only the bundle, installed with
+  install.sh --archive into `/opt/cosmo cc`, PATH replaced) 47/47.
+
+## x86_64 and the other configurations (2026-11-22)
+
+- MiniPC (N100, Ubuntu 26.04 host; no Docker without sudo): cosmo with only the bundle
+  (install.sh --archive into `~/qs-port/w/cosmo cc`, PATH replaced) 47/47; native clang 21
+  47/47. The host has clang 21 but no lld: `apt download lld-21 liblld-21` + `dpkg -x` into the
+  scratch directory, no root.
+- macOS arm64, cosmo, -DENABLE_SANITIZERS=ON (UBSan through cosmo libc's runtime): 47/47.
+
+## CI (2026-11-22)
+
+- The cosmocc jobs install with the release's own installers, piped from the GitHub mirror:
+  `curl $COSMOCC_URL/$COSMOCC_VERSION/install.sh | sh -s -- --version ... --dir ...`, and
+  `irm .../install.ps1 | iex` with COSMOCC_URL/VERSION/DIR in the environment. The installers
+  fetch `$COSMOCC_URL/<version>/cosmocc.tar.xz` (and `bsdtar` where the system's tar can't unpack
+  xz 5.4 archives), so the mirror's release tag must be the bare version (`2026.11.21-122`), and
+  it holds cosmocc.tar.xz, bsdtar, install.sh and install.ps1. Earlier mirrors were tagged
+  `cosmocc-<version>`. No checksum step: the installers don't take one.
+- No Zephyr patch: clone upstream v4.5.0 with the bundle's git and `west init -l`. The
+  actions/checkout fallback for a failed clone is gone. Zephyr and the source checkout are in
+  directories without spaces (Zephyr's limit); the bundle and the build directory keep theirs.
+- `runner.temp` isn't available in job-level `env`: a first pwsh step writes COSMOCC_DIR, BUILD
+  and ZEPHYR_BASE with Join-Path, so each OS gets its own separators.
+- format-check runs in the cosmocc bash jobs with the bundle's clang-format 22 (the native jobs
+  no longer pip-install clang-format).
+- native: 26.04 takes the distro's clang 21, lld, libc++ and compiler-rt; 22.04 and 24.04 take
+  LLVM 21 from apt.llvm.org (llvm.sh) for lld. CXXFLAGS=-stdlib=libc++ everywhere native, so no
+  GCC 14 PPA. Zephyr v4.5.0 for native too (was v4.4.1): one version.
+- .gitlab-ci.yml: CC=clang CXX=clang++. NOT VERIFIED: the course image (q_vm_builder/ci) must
+  have clang and lld 21 or later.
+
+## Coverage and PGO on cosmo (macOS arm64, 2026-11-22)
+
+- ENABLE_COVERAGE (source-based): 47/47 pass; 70 profiles in `build/coverage/` (tests.exe and
+  every world, `%m-%p` names). Reported with the bundle's llvm-profdata (Homebrew LLVM 23's
+  can't read 22's raw profile format 10, but reads the indexed merge) and Homebrew's llvm-cov:
+  80.7% of regions in `src/` over the unit, world and applet tests.
+- PGO, exactly as docs/OPTIMIZATION.md now says: train, run the route scenario, copy the world's
+  profile to `build_sim/conveyor/pgo/`, USE on both sides (both compile with `-fprofile-use`),
+  the optimized world passes the scenario. The profile has firmware functions (main,
+  z_impl_k_sleep_ticks, nsi_hws_*) without `CONFIG_STATIC_INIT_GNU` (pgo.conf, which GCC needed
+  for its counter constructors): removed. Firmware TRAIN creates `pgo/` so that the copy works.
+- Not run locally: world.gui with SDL3 assets (CI downloads them), Windows, Intel macOS.
+
+## Open items
+
+TOOLCHAIN (cosmocc-build), each removes code here:
+- aarch64 driver: make `.exe`/`.com` outputs APEs (apelink -l ape-aarch64.elf -M ape-m1.c) as
+  the x86-64 driver does. Removes CMakeLists.txt's extra link command and qsim.py's apelink call.
+- Report `aarch64`, not `arm64`, as the machine on Apple silicon (CMake's host processor, and
+  uname). Removes qbuild's NATIVE_TARGET_HOST line.
+- `--coverage`: link libclang_rt.profile.a, and find out why no .gcda appears; or decide that
+  source-based coverage is the only kind. Ship `llvm-cov` in the multicall for reports.
+- `-E` of a linker script gets normalize.inc (assemble.py's `-nostdinc`).
+- `-pthread` is "unused during compilation" at the cosmo driver's links (warning only).
+
+UPSTREAM ZEPHYR (each a small, self-contained PR):
+- Quote paths in command lines (imacros autoconf.h, zephyr_stdint.h, undef_system_defines.h,
+  -Map, -L, natsim's -T, nsi_config's NSI_CC/NSI_AR/NSI_OBJCOPY). Then CI can put Zephyr and the
+  checkout back in directories with spaces.
+- Allow CONFIG_LTO with NATIVE_LIBRARY when the linker generates code in a relocatable link
+  (lld). Then firmware LTO comes back as one Kconfig line.
+
+PLANNED / NOT DONE:
+- Publish the GitHub mirror release `2026.11.21-122` (cosmocc.tar.xz, bsdtar, install.sh,
+  install.ps1) that ci.yml's installers read. Needs the user's OK. Then run the whole matrix.
+- Measure what firmware LTO was worth on the router suite, now that it's gone.
+- pico2 with upstream Zephyr's `llvm` variant and the bundle (the train suite did it with a
+  Zephyr SDK stand-in and the hal_rpi_pico ACLE patch): not part of this repo's CI.
+- Bisect lld <= 20's crash only if someone needs LLVM 18-20 hosts.
+- coro.c's `CORO_X18`/`CORO_X28`: clang warns about reserved registers in a clobber list at
+  every LTO link under cosmo; a host compiler must be told. Kept (from the train suite).
+
+## Build and link timings (2026-11-22)
+
+Cosmo, clean, ccache off, dependencies pre-downloaded (/private/tmp/qs-scripts/bench.sh). Mac:
+M1, 8 jobs, a scratch copy with the aarch64 apelink steps restored (122 lacks the driver fix).
+MiniPC: N100, 4 jobs, the tree as is (x86-64).
+
+| step | M1 | N100 |
+|---|---:|---:|
+| configure | 1.8 s | 0.8 s |
+| qsim.o from clean, ThinLTO | 24.4 s | 33.0 s |
+| ...of which the qsim-core.o prelink | 5.6 s | 7.8 s |
+| qsim.o from clean, no LTO | 21.8 s | 32.2 s |
+| tests.exe on top | 25.3 s | 36.4 s |
+| 4 test applets, clean (qbuild sim) | 63.2 s | 49.9 s |
+| one applet after a one-file edit | 1.5 s | (12.6 s before the fix below) |
+| world link, 1 / 5 / 10 / 20 / 24 modules | 0.36 / 0.38 / 0.44 / 0.51 / 0.58 s | 0.24 / 0.23 / 0.27 / 0.29 / 0.32 s |
+| world size, 1 / 24 modules | 2.0 / 4.9 MiB | 1.9 / 4.4 MiB |
+| PGO TRAIN qsim.o, clean | 20.3 s | 34.3 s |
+| training run (all 16 applet scenarios) | 33.5 s | 30.8 s |
+| PGO USE qsim.o rebuild | 14.0 s | 32.5 s |
+
+- World links are medians of 5. Per module about 10 ms (M1, which also runs apelink) and 3.5 ms
+  (N100); the rest is Python, the objcopy calls and the driver.
+- The training run is bound by the scenarios' own wall-clock limits (watchdog and timeout
+  scenarios), not by CPU.
+- Two-stage clean build (applets, TRAIN, training, USE) against today's (applets, qsim.o):
+  ~131 s vs ~88 s on the M1, ~147 s vs ~83 s on the N100.
+- REGRESSION FOUND AND FIXED: qbuild compared the cached ZEPHYR_TOOLCHAIN_VARIANT with
+  "host/llvm", but Zephyr caches "host" (it splits off the compiler). Every incremental qbuild
+  reconfigured Zephyr, about 10 s (12.5-15.7 s for a one-file edit); now 1.5-1.7 s.
+
+## Process transport remnants (2026-11-22)
+
+- Missed in the first pass: q_sdk's `lockstep_shm.h` (199 lines) was still there. The in-process
+  path only used its mailbox (`quercus_mailbox_t`, the slot/capacity constants, the helpers).
+  The rest served the deleted process transport: the control block and barrier words, segments,
+  runahead/selective grants and certificates, futex banks, `QUERCUS_SHM_ABI`, the
+  `QSIM_CTRL_FD`/`QSIM_MBOX_FD`/`QSIM_MODULE_ID` environment names. The mailbox moved into
+  `sim_instance.h`, the image ABI that uses it, byte for byte (4 slots, 4088 bytes); the header is
+  gone. `quercus_mailbox_used` was only used by append: inlined.
+- `MT_TICK`/`MT_ACK` ("lockstep-only") in rpc_wire.h: nothing sent them; gone, with frame.cpp's
+  `MT_ACK` status case. The decoder never range-checked types.
+- inprocess_backend.h sized its instance table with `QUERCUS_MODULE_TABLE_SIZE`; it uses the
+  simulator's own `MODULE_TABLE_SIZE` (256, src/defs.h) now.
+- Docs: PROTOCOL.md described the barrier, runahead and certificates; it describes the
+  per-grant mailboxes now. Both PlantUML diagrams showed the process architecture
+  (`childsync::*`, "lockstep adapter", "starts as process"): redrawn for in-process worlds.
+  rpc.c's boot log said "bound to shared sync transport": "bound to the simulator".
+- Tested: MiniPC x86_64, cosmo 122 47/47 and native clang 21 47/47. macOS arm64 is waiting for
+  the toolchain round 2 release (above): with 122, its arm64 builds fail by design since the
+  NATIVE_TARGET_HOST and apelink workarounds were removed. Docker's VM disk is full (a 45 GB
+  volume in use and a stopped 6.3 GB debian:trixie-slim container, neither from this work), so
+  no arm64 Linux run this time.
