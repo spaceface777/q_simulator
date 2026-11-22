@@ -32,10 +32,10 @@ if(NOT QUERCUS_COSMOPOLITAN)
 endif()
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/libbacktrace/config.h" CONTENT "${backtrace_config}")
 
-set(backtrace_sources alloc.c atomic.c dwarf.c elf.c fileline.c posix.c read.c sort.c state.c)
+set(backtrace_sources atomic.c dwarf.c elf.c fileline.c mmap.c mmapio.c posix.c sort.c state.c)
 list(TRANSFORM backtrace_sources PREPEND "${libbacktrace_SOURCE_DIR}/")
 set_source_files_properties(${backtrace_sources} PROPERTIES COMPILE_OPTIONS -w
     INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/libbacktrace;${libbacktrace_SOURCE_DIR}"
     COMPILE_DEFINITIONS _GNU_SOURCE)
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/libbacktrace/backtrace-supported.h" CONTENT
-    "#define BACKTRACE_SUPPORTED 1\n#define BACKTRACE_USES_MALLOC 1\n#define BACKTRACE_SUPPORTS_THREADS 1\n#define BACKTRACE_SUPPORTS_DATA 1\n")
+    "#define BACKTRACE_SUPPORTED 1\n#define BACKTRACE_USES_MALLOC 0\n#define BACKTRACE_SUPPORTS_THREADS 1\n#define BACKTRACE_SUPPORTS_DATA 1\n")
