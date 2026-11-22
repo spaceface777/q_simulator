@@ -394,3 +394,30 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   messaging.bin: 58,668 bytes (bundle), 68,876 (SDK LLVM, its picolibc with unrolled mem* and
   unwind tables), 58,296 (SDK GCC 14.3). Clean qbuild with ccache emptied: 22 s bundle, 25 s
   SDK GCC.
+
+## First CI run on 124 (run 45080642948, 2026-11-22)
+
+- Passed (47/47 each, world.gui really run with SDL3 where it ran): cosmocc on all six Ubuntu
+  images, macos-15, macos-26 and xcode-27 (Apple silicon); native on all six; both sanitizer jobs.
+- Failed, all in the bundle's own tools, which passed on release 64 (run 44375419708):
+  - macos-15-intel, macos-26-intel: `west init -l zephyr` (the bundle's Python) segfaults
+    (exit 139), right after the bundle's git cloned Zephyr.
+  - windows-2022, windows-2025, windows-11-arm, windows-11-vs2026-arm (cmd and pwsh): the step
+    exits 1 with no message right after the bundle's git finishes checking out Zephyr: either
+    git clone's status or west init. TOOLCHAIN: to reproduce on Windows (or Wine) with 124.
+- The q_sdk submodule fetch needs the branch on the course GitLab
+  (2irr70-capstone-quercus-airport/system/q_sdk): the worktree's q_sdk `origin` is a local path.
+
+## Coverage: "16 functions have mismatched data"
+
+- 3 in tests.exe's mapping, 13 in qsim.o's; all one-line accessors defined in headers
+  (Queue::size, Runtime::world, Observation::revision, ...). tests.exe's and the worlds'
+  profiles agree on every hash but `main` (two different mains, expected). Building the tests at
+  -O0 like the core changes nothing. Not explained yet; those accessors lose their counts.
+- ROOT CAUSE of the Intel macOS and Windows failures (2026-11-23): one bug, the bundle's Python
+  crashing at start. CPython's mimalloc reads its thread id with `__builtin_thread_pointer()`,
+  which clang lowered to a raw `%fs:0` for the cosmo target (patch 0006 only covered TLS
+  variables). Confirmed on the runners with a throwaway diagnostic workflow (Windows: exit
+  0xC0000005; Intel macOS: segfault in mi_heap_main_init) and under Rosetta. Fixed in
+  cosmocc-build dbddddc (0006 lowers the intrinsic through __get_tls_<reg> too), tested with a
+  local LLVM build. Needs a new release; nothing to change here.
