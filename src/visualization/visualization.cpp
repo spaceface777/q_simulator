@@ -45,6 +45,14 @@ namespace visualization {
 		return x * unit_;
 	}
 
+	// The labels' pixel size, which follows the modules' (fit_layout() sets it), and an offset
+	// for them, given at size 2.
+	static int label_scale_ = 2;
+
+	static float label(float offset) {
+		return offset * label_scale_ / 2;
+	}
+
 	static bool running_ = false;
 
 	static SDL_Window*   window_   = nullptr;
@@ -198,6 +206,7 @@ namespace visualization {
 		unit_                 = fitted * static_cast<float>(settings::get_setting<double>("scale"));
 		origin_x_             = (width - content_w * unit_) / 2;
 		origin_y_             = (height - content_h * unit_) / 2;
+		label_scale_          = std::clamp(static_cast<int>(std::lround(unit_ * 4)), 1, 5);
 	}
 
 	static void render_led(int module_x, int module_y, module::LedColor color, settings::ModuleAngle rotation) {
@@ -238,9 +247,9 @@ namespace visualization {
 		}
 
 		if (settings::get_setting<bool>("debug")) {
-			draw_number(renderer_, x + 5, y + 10, color.r(), 2);
-			draw_number(renderer_, x + 5, y + 25, color.g(), 2);
-			draw_number(renderer_, x + 5, y + 40, color.b(), 2);
+			draw_number(renderer_, x + label(5), y + label(10), color.r(), label_scale_);
+			draw_number(renderer_, x + label(5), y + label(25), color.g(), label_scale_);
+			draw_number(renderer_, x + label(5), y + label(40), color.b(), label_scale_);
 		}
 
 		sdl.SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 150);
@@ -323,7 +332,7 @@ namespace visualization {
 		sdl.SDL_RenderRect(renderer_, &belt);
 
 		if (is_running && speed.raw() != 0) {
-			if (settings::get_setting<bool>("debug")) draw_number(renderer_, belt_x, belt_y, speed.raw(), 2);
+			if (settings::get_setting<bool>("debug")) draw_number(renderer_, belt_x, belt_y, speed.raw(), label_scale_);
 
 			sdl.SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
 			double step             = 20.0;
@@ -403,7 +412,7 @@ namespace visualization {
 
 		// Animation lines
 		if (is_running && speed.raw() != 0) {
-			if (settings::get_setting<bool>("debug")) draw_number(renderer_, belt_x, belt_y, speed.raw(), 2);
+			if (settings::get_setting<bool>("debug")) draw_number(renderer_, belt_x, belt_y, speed.raw(), label_scale_);
 
 			sdl.SDL_SetRenderDrawColor(renderer_, 144, 238, 144, 150);
 			double step             = 20.0;
@@ -538,7 +547,8 @@ namespace visualization {
 		SDL_FRect pivot_rect = {x1 - 4.f, y1 - 4.f, 8, 8};
 		sdl.SDL_RenderFillRect(renderer_, &pivot_rect);
 		sdl.SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-		if (settings::get_setting<bool>("debug")) draw_number(renderer_, x1 - 12, y1 - 8, angle.raw(), 2);
+		if (settings::get_setting<bool>("debug"))
+			draw_number(renderer_, x1 - label(12), y1 - label(8), angle.raw(), label_scale_);
 	}
 
 	struct RenderedTub {
@@ -674,8 +684,9 @@ namespace visualization {
 		}
 
 		sdl.SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-		draw_number(renderer_, x - 4, y - 6, id, 2);
-		if (settings::get_setting<bool>("debug")) draw_number(renderer_, x - 4, y + 5, progress, 1);
+		draw_number(renderer_, x - label(4), y - label(6), id, label_scale_);
+		if (settings::get_setting<bool>("debug"))
+			draw_number(renderer_, x - label(4), y + label(5), progress, std::max(1, label_scale_ / 2));
 	}
 
 	static void render_tubs(const world::State& world) {
@@ -716,14 +727,14 @@ namespace visualization {
 		sdl.SDL_RenderRect(renderer_, &bg);
 
 		sdl.SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-		draw_number(renderer_, x + 5, y + 5, module_id.raw(), 2);
+		draw_number(renderer_, x + label(5), y + label(5), module_id.raw(), label_scale_);
 
 		if (module_settings.type == "security") {
-			draw_string(renderer_, x + 5, y + bg.h - 15, "sec", 2);
+			draw_string(renderer_, x + label(5), y + bg.h - label(15), "sec", label_scale_);
 		} else if (module_settings.type == "storage") {
-			draw_string(renderer_, x + 5, y + bg.h - 15, "str", 2);
+			draw_string(renderer_, x + label(5), y + bg.h - label(15), "str", label_scale_);
 		} else if (module_settings.type == "quarantine") {
-			draw_string(renderer_, x + 5, y + bg.h - 15, "qr", 2);
+			draw_string(renderer_, x + label(5), y + bg.h - label(15), "qr", label_scale_);
 		}
 
 		const module::BeltSpeed big_belt_speed   = module->big_belt_speed();
