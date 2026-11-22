@@ -5,7 +5,7 @@
 
 TEST(ModuleTypesTest, ModuleId) {
 	EXPECT_THROW(module::ModuleId{0}, std::out_of_range);
-	EXPECT_THROW(module::ModuleId{static_cast<uint8_t>(MAX_MODULES)}, std::out_of_range);
+	EXPECT_NO_THROW(module::ModuleId{static_cast<uint8_t>(MAX_MODULES - 1)});
 
 	{
 		const module::ModuleId mid;

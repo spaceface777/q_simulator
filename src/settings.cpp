@@ -129,7 +129,7 @@ namespace settings {
 
 				const auto coordinate = [&](std::size_t axis) {
 					const auto value = pos->get(axis)->value_exact<int64_t>();
-					util::require(value && *value >= 0 && *value <= 10,
+					util::require(value && *value >= 0 && *value <= UINT8_MAX,
 								  "Invalid value for attribute 'pos' of module " + std::to_string(id));
 					return static_cast<uint8_t>(*value);
 				};

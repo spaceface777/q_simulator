@@ -297,12 +297,28 @@ TEST_F(SettingsTest, ParseSettingsInvalidModuleBottom) {
 	write_layout(R"(
 [module.1]
 active = true
-neighbors = [0, 25, 0]
+neighbors = [0, 256, 0]
 pos = [0, 0]
 angle = 0
 )");
 
 	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::out_of_range);
+}
+
+TEST_F(SettingsTest, ParseSettingsHighModuleIdAndPosition) {
+	write_layout(R"(
+[module.254]
+active = true
+neighbors = [0, 0, 0]
+pos = [255, 120]
+angle = 0
+)");
+
+	EXPECT_NO_THROW(settings::parse_settings(temp_settings_path, layout));
+	const settings::ModuleSettings module = settings::get_module_settings(module::ModuleId(254));
+	EXPECT_TRUE(module.active);
+	EXPECT_EQ(255, module.x);
+	EXPECT_EQ(120, module.y);
 }
 
 // Out-of-range values must not wrap around into valid ones.

@@ -7,7 +7,7 @@
 #include <cstdint>
 
 // Routing module ids run from 1 to MAX_MODULES - 1.
-inline constexpr uint8_t MAX_MODULES = 25;
+inline constexpr uint8_t MAX_MODULES = 255;
 
 // The platform accepts CMD_SET_FLIGHT_SCHEDULE only from this id.
 inline constexpr uint8_t TOWER_MODULE_ID = 255;

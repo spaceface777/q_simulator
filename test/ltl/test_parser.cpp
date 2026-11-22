@@ -501,7 +501,7 @@ TEST(LtlChecker, RejectsInvalidPredicateArguments) {
 
 TEST(LtlChecker, RejectsOutOfRangeEntities) {
 	EXPECT_NE(error_from("prop p = present(tub(0));").find("tub id must be between 1 and 255"), std::string::npos);
-	EXPECT_NE(error_from("prop p = module(25).rfid_active;").find("module id must be between 1 and 24"),
+	EXPECT_NE(error_from("prop p = module(256).rfid_active;").find("module id must be between 1 and 254"),
 			  std::string::npos);
 }
 

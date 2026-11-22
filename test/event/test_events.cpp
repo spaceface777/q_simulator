@@ -171,7 +171,7 @@ TEST_F(EventsTest, RejectsUnknownStartingPositionAndInvalidIds) {
 	write("[tub.first]\n" + tub(1.5, 0));
 	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 	std::string invalid_module = tub();
-	invalid_module.replace(invalid_module.find("module = 1"), 10, "module = 25");
+	invalid_module.replace(invalid_module.find("module = 1"), 10, "module = 255");
 	write("[tub.first]\n" + invalid_module);
 	EXPECT_THROW((void)events::parse_scenario(path), std::invalid_argument);
 }

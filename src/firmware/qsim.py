@@ -16,7 +16,7 @@ def images(layout: Path, contents: bytes) -> list[Path]:
     modules = data.get("module", {})
     if not isinstance(modules, dict):
         raise ValueError("module must be a table")
-    module_ids = {str(i) for i in range(1, 25)} | {"255"}
+    module_ids = {str(i) for i in range(1, 255)} | {"255"}
     result = []
     for key, module in sorted(modules.items(), key=lambda entry: int(entry[0])):
         if key not in module_ids:
