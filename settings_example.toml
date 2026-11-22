@@ -112,6 +112,6 @@ servo_module_offset_sd_ms = 50.0
 # time twice. Set to 0 for a servo that does.
 servo_movement_jitter_sd_ms = 50.0
 
-# The scale of the simulation overview.
+# The zoom of the simulation overview: 1.0 fits the layout in the window.
 # Must be between 0.25 and 5.0.
 scale = 1.0

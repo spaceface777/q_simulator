@@ -2,6 +2,7 @@
 
 #include "visualization.h"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iomanip>
@@ -23,15 +24,25 @@
 
 namespace visualization {
 
-	static constexpr float SCALING_FACTOR = 0.7;
-
 	static constexpr float BELT_FACTOR = 0.4;
 
-	static float scale = 1.0;
+	// Layout units: a module is 180 wide, with 20 between modules and around the layout.
+	static constexpr float MODULE_UNITS = 180;
+	static constexpr float MARGIN_UNITS = 20;
+	// The fitted layout keeps a module at most this many pixels wide, and clear of the toolbar.
+	static constexpr float MAX_MODULE_PIXELS = 250;
+	static constexpr float TOOLBAR_PIXELS    = 70;
 
-	// Scales a constant by the current scale setting.
+	// Pixels per layout unit, and where the layout's top left corner goes: fit_layout() sets them.
+	static float   unit_     = 1;
+	static float   origin_x_ = 0;
+	static float   origin_y_ = 0;
+	static uint8_t first_x_  = 0;
+	static uint8_t first_y_  = 0;
+
+	// Converts layout units to pixels.
 	float scale_within_module(float x) {
-		return x * SCALING_FACTOR * scale;
+		return x * unit_;
 	}
 
 	static bool running_ = false;
@@ -150,11 +161,43 @@ namespace visualization {
 	}
 
 	static void get_module_coords(module::ModuleId id, float& x, float& y) {
-		const float                    margin   = scale_within_module(20);
 		const settings::ModuleSettings settings = settings::get_module_settings(id);
+		const float                    pitch    = MODULE_UNITS + MARGIN_UNITS;
 
-		x = margin + settings.x * (scale_within_module(180) + margin);
-		y = margin + settings.y * (scale_within_module(180) + margin);
+		x = origin_x_ + scale_within_module(MARGIN_UNITS + (settings.x - first_x_) * pitch);
+		y = origin_y_ + scale_within_module(MARGIN_UNITS + (settings.y - first_y_) * pitch);
+	}
+
+	// Fits the active modules' bounding box into the window above the toolbar, centred, whatever
+	// the positions' offset. The scale setting zooms from there.
+	static void fit_layout() {
+		uint8_t last_x = 0, last_y = 0;
+		first_x_ = first_y_ = UINT8_MAX;
+		for (uint8_t i = 1; i < MAX_MODULES; ++i) {
+			const settings::ModuleSettings settings = settings::get_module_settings(module::ModuleId{i});
+			if (!settings.active) continue;
+			first_x_ = std::min(first_x_, settings.x);
+			first_y_ = std::min(first_y_, settings.y);
+			last_x   = std::max(last_x, settings.x);
+			last_y   = std::max(last_y, settings.y);
+		}
+		if (first_x_ > last_x) first_x_ = first_y_ = last_x = last_y = 0;
+
+		int   output_w = 0, output_h = 0;
+		float render_scale_x = 1, render_scale_y = 1;
+		if (!sdl.SDL_GetCurrentRenderOutputSize(renderer_, &output_w, &output_h) ||
+			!sdl.SDL_GetRenderScale(renderer_, &render_scale_x, &render_scale_y))
+			return;
+		const float width  = output_w / render_scale_x;
+		const float height = std::max(1.0f, output_h / render_scale_y - TOOLBAR_PIXELS);
+
+		const float pitch     = MODULE_UNITS + MARGIN_UNITS;
+		const float content_w = (last_x - first_x_ + 1) * pitch + MARGIN_UNITS;
+		const float content_h = (last_y - first_y_ + 1) * pitch + MARGIN_UNITS;
+		const float fitted    = std::min({width / content_w, height / content_h, MAX_MODULE_PIXELS / MODULE_UNITS});
+		unit_                 = fitted * static_cast<float>(settings::get_setting<double>("scale"));
+		origin_x_             = (width - content_w * unit_) / 2;
+		origin_y_             = (height - content_h * unit_) / 2;
 	}
 
 	static void render_led(int module_x, int module_y, module::LedColor color, settings::ModuleAngle rotation) {
@@ -766,7 +809,6 @@ namespace visualization {
 			return;
 		}
 
-		scale                     = settings::get_setting<double>("scale");
 		const float display_scale = sdl.SDL_GetWindowDisplayScale(window_);
 		if (display_scale > 0 && !sdl.SDL_SetRenderScale(renderer_, display_scale, display_scale))
 			throw std::runtime_error(std::string("Could not scale the SDL renderer: ") + sdl.SDL_GetError());
@@ -820,6 +862,7 @@ namespace visualization {
 
 		sdl.SDL_SetRenderDrawColor(renderer_, 30, 30, 30, 255);
 		sdl.SDL_RenderClear(renderer_);
+		fit_layout();
 
 		for (uint8_t i = 1; i < MAX_MODULES; ++i) {
 			const auto mid = module::ModuleId{i};
