@@ -2,7 +2,7 @@ const path = require('path');
 const vscode = require('vscode');
 
 const languageId = 'simulation-ltlf';
-const defaultModuleIds = [...Array.from({ length: 24 }, (_, index) => index + 1), 255];
+const defaultModuleIds = [...Array.from({ length: 254 }, (_, index) => index + 1), 255];
 
 function activate(context) {
   const diagnostics = vscode.languages.createDiagnosticCollection('ltlf');

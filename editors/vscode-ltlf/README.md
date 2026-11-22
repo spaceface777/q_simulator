@@ -22,7 +22,7 @@ code --install-extension simulation-ltlf-0.1.2.vsix
 
 ## Type-checking environment
 
-By default, type checking considers routing module IDs 1 through 24 and tower module 255 available. Set `ltlf.moduleIds` in VS Code settings to the IDs from the selected layout for exact module-existence diagnostics.
+By default, type checking considers routing module IDs 1 through 254 and tower module 255 available. Set `ltlf.moduleIds` in VS Code settings to the IDs from the selected layout for exact module-existence diagnostics.
 
 ## Rebuilding the validator
 
