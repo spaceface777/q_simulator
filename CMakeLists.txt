@@ -22,13 +22,6 @@ set(COMPILATION_FLAGS -Wall -Wextra -Werror)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
 # Every link, the prelinks' and the worlds' (qsim.py) too.
 set(link_options -fuse-ld=lld)
-if(QUERCUS_COSMOPOLITAN AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    # The AArch64 driver links ELF, and keeps it in *.exe.dbg. Make each executable an Actually
-    # Portable Executable, which also runs on macOS. A list item is one more command.
-    set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
-    list(APPEND CMAKE_CXX_LINK_EXECUTABLE
-        "\"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
-endif()
 
 # Only the core carries LTO bitcode. The qsim-core.o prelink below generates its code once, and
 # both the world entry point and the tests link it.

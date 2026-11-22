@@ -83,7 +83,6 @@ def main() -> None:
         cosmopolitan = "@QUERCUS_COSMOPOLITAN@" == "ON"
         debug = output.with_name(output.name + ".dbg")
         toolchain = Path("@COSMOCC_TOOLCHAIN_PATH@")
-        tools = toolchain / "bin"
         arch = "@CMAKE_SYSTEM_PROCESSOR@"
         simulator = Path(__file__).resolve().with_name("qsim.o")
         compile = Path("@CMAKE_CXX_COMPILER@")
@@ -124,16 +123,8 @@ def main() -> None:
                 scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread",
             ], check=True)
             if cosmopolitan:
-                symbols = scratch / "world.exe.dbg"
-                if arch == "aarch64":
-                    # The AArch64 driver links ELF: make it an Actually Portable Executable, which
-                    # also runs on macOS.
-                    subprocess.run([
-                        tools / "apelink", "-l", tools / "ape-aarch64.elf", "-M", tools / "ape-m1.c",
-                        "-o", world, symbols,
-                    ], check=True)
                 embed_sdl3(world, toolchain, "@CMAKE_HOST_SYSTEM_NAME@", arch)
-                os.replace(symbols, debug)
+                os.replace(scratch / "world.exe.dbg", debug)
             os.replace(world, output)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"qsim: {error}\n")
