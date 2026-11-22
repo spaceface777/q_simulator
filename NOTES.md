@@ -339,3 +339,58 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   label_scale_ = clamp(round(unit_ * 4), 1, 5), offsets scaled from their size-2 values. Sizes:
   1 module 5, router18 3 (was 2), 10x5 2, 16x16 1 (no longer crowded). Native 26.04 with SDL3:
   47/47, world.gui run. (`debug` can't be set from a settings file: always starts off.)
+
+## Pico 2 with upstream Zephyr (2026-11-22)
+
+- The user's experiment: Zephyr SDK 1.0.1's cmake/ files copied to /tmp/zephyr-sdk-cosmo-proxy,
+  `llvm/bin` a link to the bundle's bin, ZEPHYR_TOOLCHAIN_VARIANT=zephyr/llvm. It works.
+- Not needed: Zephyr 4.5's own `host/llvm` variant sets the bare-metal triples for Arm
+  (armv8m.main-none-eabi for the RP2350's M33) too. With LLVM_TOOLCHAIN_PATH = the bundle,
+  CONFIG_LLVM_USE_LLD and CONFIG_COMPILER_RT_RTLIB (the bundle has no libgcc), `qbuild pico
+  messaging` gave a zephyr.bin byte-identical to the proxy build. Same target, CPU and float ABI
+  flags; the .config differs only in toolchain-name, rtlib and linker symbols. 15 s clean on M1.
+- Zephyr needs LLVM_TOOLCHAIN_PATH: generic.cmake globs it for picolibc.h (TOOLCHAIN_HAS_PICOLIBC),
+  and compiler/clang/target.cmake globs `${LLVM_TOOLCHAIN_PATH}/picolibc.cfg` whenever
+  CONFIG_PICOLIBC is on. Passing -DTOOLCHAIN_HAS_PICOLIBC=ON instead left the path empty, so
+  that glob walked `/`, the whole disk (configure "hung" at 60% CPU). UPSTREAM ZEPHYR: skip those
+  globs when LLVM_TOOLCHAIN_PATH is empty. The bundle has no picolibc.cfg: clang selects the
+  picolibc variant through lib/clang-runtimes/multilib.yaml.
+- qbuild: both targets use host/llvm with lld and LLVM_TOOLCHAIN_PATH=$COSMOCC_TOOLCHAIN_PATH
+  (which also pins the toolchain to the bundle rather than the first clang on PATH). Pico adds
+  CONFIG_COMPILER_RT_RTLIB. `--toolchain host` now applies to Pico too: no variant at all, so
+  Zephyr finds the installed Zephyr SDK (GNU arm-zephyr-eabi): 26 s clean, out/host/, nothing
+  from cosmocc. Without an activated bundle and without `--toolchain host`, qbuild stops with
+  "activate the cosmocc bundle, or build with --toolchain host", also for a configured tree
+  (before, the host's CMake tried to start the bundle's ninja: "exec format error").
+- qbuild accepts application paths (`messaging/`), as tab completion writes them.
+- Board: `rpi_pico2/rp2350a/m33` (Zephyr 4.5 no longer expands `//m33` early enough), and the
+  overlay deletes the board's `partitions` node (both from the user's working tree, as in the
+  train suite's bcfcdfa).
+- TOOLCHAIN idea: if activation also exported LLVM_TOOLCHAIN_PATH, Zephyr would read it itself
+  (zephyr_get) and qbuild's line would go.
+
+## Release 124, amd64 package (2026-11-22)
+
+- Taken from pipeline #200994's build cache (`pkg-amd64.tar.xz`, wrapping cosmocc-amd64.tar.xz),
+  installed with cosmocc-build's dist/install.sh --archive on the MiniPC, PATH replaced.
+  `# cosmocc 2026.11.22-124`. Full suite on the current tree (with every change that needs 124:
+  no apelink calls, no NATIVE_TARGET_HOST, the bundle's llvm-cov): 47/47. Clean simulator build
+  76 s on the N100.
+- README's coverage steps verbatim: 70 profiles, HTML report with the bundle's llvm-cov,
+  80.0% of regions in src/. llvm-cov warns "16 functions have mismatched data": probably header
+  functions compiled differently in tests.exe and in the world entry point (which defines
+  _COSMO_SOURCE, the tests don't). TO CHECK.
+
+## Release 124, published (2026-11-22)
+
+- `2026.11.22-124` released by pipeline #200993/#200994. Installed locally with its own
+  install.sh (replacing 122): clean simulator build 36 s on the M1, format-check, 47/47, and
+  `qbuild pico messaging` in 26 s with configure.
+- Mirrored to GitHub as release `2026.11.22-124` on spaceface777/q_simulator (pre-release):
+  cosmocc.tar.xz, bsdtar, install.sh, install.ps1, SHA256SUMS, checked against the GitLab
+  release's SHA256SUMS. The installers fetch only cosmocc.tar.xz and bsdtar from it.
+- Pico compile step (hyperfine, 10 runs, after configure, ccache off, M1): bundle clang 22
+  4.68 s +- 0.29, Zephyr SDK zephyr/llvm (clang 19) 4.69 s +- 0.32; peak memory 120 vs 139 MiB.
+  messaging.bin: 58,668 bytes (bundle), 68,876 (SDK LLVM, its picolibc with unrolled mem* and
+  unwind tables), 58,296 (SDK GCC 14.3). Clean qbuild with ccache emptied: 22 s bundle, 25 s
+  SDK GCC.
