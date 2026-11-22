@@ -23,7 +23,7 @@ concurrency:
 env:
   # The cosmocc release, mirrored from its GitLab project: the installers take it from here.
   COSMOCC_URL: https://github.com/spaceface777/q_simulator/releases/download
-  COSMOCC_VERSION: 2026.11.21-122
+  COSMOCC_VERSION: 2026.11.22-124
   ZEPHYR: v4.5.0
   PYTHONUNBUFFERED: '1'
 

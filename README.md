@@ -31,7 +31,7 @@ git submodule update --init
 
 ### The cosmocc bundle
 
-The build uses the project's cosmocc bundle, release `2026.11.21-122`, on Linux, macOS and Windows.
+The build uses the project's cosmocc bundle, release `2026.11.22-124`, on Linux, macOS and Windows.
 The bundle has everything that the build runs: clang and lld, CMake, Ninja, Python, west, git and a POSIX shell.
 Nothing else needs to be installed.
 Install the bundle with the installer of its release, as the [cosmocc README](https://gitlab.tue.nl/20223853/cosmopolitan-distribution-builder-test#installation-and-activation) describes.
