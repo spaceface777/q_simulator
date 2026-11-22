@@ -11,6 +11,9 @@
 #include "../../src/settings.h"
 #include "../../src/world/world.h"
 
+// The statistics describe a fleet the size of the course's airport, 24 modules, not every possible id.
+constexpr uint8_t FLEET_END = 25;
+
 // Checks that the simulated calibration population has the shape the physical bench measured.
 
 namespace {
@@ -63,7 +66,7 @@ namespace {
 		static std::vector<Calibration> population() {
 			std::vector<Calibration> drawn;
 			for (uint64_t seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
-				for (uint8_t id = 1; id < MAX_MODULES; id++) {
+				for (uint8_t id = 1; id < FLEET_END; id++) {
 					drawn.push_back(world::calibration_for(ModuleId{id}, seed));
 				}
 			}
@@ -159,16 +162,16 @@ TEST_F(CalibrationStatisticsTest, ModulesUnderOneSeedAreNotCloneOfEachOther) {
 	std::set<double>   idle_currents;
 	std::set<double>   idle_voltages;
 	std::set<double>   servo_offsets;
-	for (uint8_t id = 1; id < MAX_MODULES; id++) {
+	for (uint8_t id = 1; id < FLEET_END; id++) {
 		const Calibration calibration = world::calibration_for(ModuleId{id}, SEED);
 		idle_currents.insert(calibration.electrical.idle_current_a);
 		idle_voltages.insert(calibration.electrical.idle_voltage_v);
 		servo_offsets.insert(calibration.servo.module_offset_ms);
 	}
 
-	EXPECT_EQ(idle_currents.size(), MAX_MODULES - 1U);
-	EXPECT_EQ(idle_voltages.size(), MAX_MODULES - 1U);
-	EXPECT_EQ(servo_offsets.size(), MAX_MODULES - 1U);
+	EXPECT_EQ(idle_currents.size(), FLEET_END - 1U);
+	EXPECT_EQ(idle_voltages.size(), FLEET_END - 1U);
+	EXPECT_EQ(servo_offsets.size(), FLEET_END - 1U);
 }
 
 TEST_F(CalibrationStatisticsTest, ThereIsNoWayToAskForAPlatformOfIdenticalModules) {
@@ -190,7 +193,7 @@ TEST_F(CalibrationStatisticsTest, NoModuleIdIsSpecialAndModulesAreExchangeableAc
 	std::vector<double> top_speed_by_module;
 	std::vector<double> weak_rate_by_module;
 
-	for (uint8_t id = 1; id < MAX_MODULES; id++) {
+	for (uint8_t id = 1; id < FLEET_END; id++) {
 		std::vector<double> idle;
 		std::vector<double> top;
 		int                 weak = 0;
@@ -215,7 +218,7 @@ TEST_F(CalibrationStatisticsTest, NoModuleIdIsSpecialAndModulesAreExchangeableAc
 	for (uint64_t seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
 		uint8_t fastest = 1;
 		double  best    = 0.0;
-		for (uint8_t id = 1; id < MAX_MODULES; id++) {
+		for (uint8_t id = 1; id < FLEET_END; id++) {
 			const double top = top_speed_m_per_s(world::calibration_for(ModuleId{id}, seed).mechanical.big_belt, true);
 			if (top > best) {
 				best    = top;
@@ -232,7 +235,7 @@ TEST_F(CalibrationStatisticsTest, AWholeRunMayHaveNoWeakModulesOrNothingButWeakM
 	std::set<int> counts;
 	for (uint64_t seed = 0; seed < 10000; seed++) {
 		int weak = 0;
-		for (uint8_t id = 1; id < MAX_MODULES; id++) {
+		for (uint8_t id = 1; id < FLEET_END; id++) {
 			weak += world::calibration_for(ModuleId{id}, seed).mechanical.big_belt.weak_motor ? 1 : 0;
 		}
 		counts.insert(weak);
@@ -548,7 +551,7 @@ TEST_F(CalibrationStatisticsTest, TheSmallBeltBorrowsTheBigBeltsShapeAndTheProvi
 
 	const double ratio = world::calibration_config().small_to_big_belt_speed_ratio;
 
-	for (uint8_t id = 1; id < MAX_MODULES; id++) {
+	for (uint8_t id = 1; id < FLEET_END; id++) {
 		const Calibration calibration = world::calibration_for(ModuleId{id}, 8675309);
 		for (const double command : {30.0, 60.0, 100.0, -30.0, -60.0, -100.0}) {
 			const double big   = world::belt_speed_um_per_s(calibration.mechanical.big_belt, command);
@@ -566,7 +569,7 @@ TEST_F(CalibrationStatisticsTest, WeakMotorIsSampledIndependentlyForEachBelt) {
 	// belt's.
 	int both_weak = 0, only_big = 0, only_small = 0, neither = 0;
 	for (uint64_t seed = FIRST_SEED; seed < FIRST_SEED + SEEDS; seed++) {
-		for (uint8_t id = 1; id < MAX_MODULES; id++) {
+		for (uint8_t id = 1; id < FLEET_END; id++) {
 			const Calibration calibration = world::calibration_for(ModuleId{id}, seed);
 			const bool        big_weak    = calibration.mechanical.big_belt.weak_motor;
 			const bool        small_weak  = calibration.mechanical.small_belt.weak_motor;
@@ -598,7 +601,7 @@ TEST_F(CalibrationStatisticsTest, ASmallBeltMotorsWeaknessActuallyAttenuatesTheS
 
 	std::optional<Calibration> found;
 	for (uint64_t seed = FIRST_SEED; seed < FIRST_SEED + SEEDS && !found; seed++) {
-		for (uint8_t id = 1; id < MAX_MODULES; id++) {
+		for (uint8_t id = 1; id < FLEET_END; id++) {
 			const Calibration calibration = world::calibration_for(ModuleId{id}, seed);
 			if (calibration.mechanical.small_belt.weak_motor && !calibration.mechanical.big_belt.weak_motor) {
 				found = calibration;
@@ -704,7 +707,7 @@ TEST_F(CalibrationStatisticsTest, EachServoHasAPersistentOffsetOfItsOwn) {
 
 	std::vector<double> offsets;
 	std::set<int64_t>   sweep_times;
-	for (uint8_t id = 1; id < MAX_MODULES; id++) {
+	for (uint8_t id = 1; id < FLEET_END; id++) {
 		const Calibration calibration = world::calibration_for(ModuleId{id}, 4242);
 		offsets.push_back(calibration.servo.module_offset_ms);
 		const int64_t first  = world::servo_travel_ticks(calibration, 0.0, 180.0, 4242, ModuleId{id}, 0);
