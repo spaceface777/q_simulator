@@ -81,14 +81,14 @@ def main() -> None:
             output = output.with_name(output.name + ".exe")
         # A Cosmopolitan world keeps its symbols in a separate debug file.
         cosmopolitan = "@QUERCUS_COSMOPOLITAN@" == "ON"
-        coverage_runtime = [] if "@QSIM_LLVM_EVALUATION@" == "ON" else ["-lgcov"]
         debug = output.with_name(output.name + ".dbg")
         toolchain = Path("@COSMOCC_TOOLCHAIN_PATH@")
         tools = toolchain / "bin"
         arch = "@CMAKE_SYSTEM_PROCESSOR@"
         simulator = Path(__file__).resolve().with_name("qsim.o")
-        compile = Path("@world_cxx@")
-        objcopy = Path("@world_objcopy@")
+        compile = Path("@CMAKE_CXX_COMPILER@")
+        objcopy = Path("@CMAKE_OBJCOPY@")
+        object_toolchain = "cosmocc" if cosmopolitan else "host"
         if output in [layout, simulator, *firmware] or debug in [layout, simulator, *firmware]:
             raise ValueError("output would overwrite an input")
 
@@ -113,15 +113,15 @@ def main() -> None:
             for image in [simulator, *dict.fromkeys(firmware)]:
                 subprocess.run([objcopy, "-O", "binary", "--only-section=.qsim_toolchain", image, "marker"],
                                cwd=scratch, check=True)
-                if (marker := (scratch / "marker").read_bytes().rstrip(b"\0").decode()) != "@world_toolchain@":
-                    raise ValueError(f"{image} is from the {marker or 'unknown'} toolchain, not @world_toolchain@")
+                if (marker := (scratch / "marker").read_bytes().rstrip(b"\0").decode()) != object_toolchain:
+                    raise ValueError(f"{image} is from the {marker or 'unknown'} toolchain, not {object_toolchain}")
             world = scratch / "world.exe"
             # Firmware objects are not position independent.
-            options = ["-mtiny"] if cosmopolitan else ["-no-pie", "-ldl"]
+            options = ["-mtiny"] if cosmopolitan else ["-no-pie"]
             options += [option for option in "@world_link_options@".split(";") if option]
             subprocess.run([
                 compile, *options, "-o", world, simulator,
-                scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread", *coverage_runtime,
+                scratch / "layout.toml.o", scratch / "firmware_digests.o", *firmware, "-pthread",
             ], check=True)
             if cosmopolitan:
                 symbols = scratch / "world.exe.dbg"

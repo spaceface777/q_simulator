@@ -1,12 +1,15 @@
-cmake_minimum_required(VERSION 3.12.0)
+cmake_minimum_required(VERSION 3.20)
 
 # Build with cosmocc unless the configure names another toolchain file or asks for the host compiler.
-option(QSIM_COSMOCC "Build with the cosmocc toolchain (OFF: host compiler, Linux only)" ON)
+option(QSIM_COSMOCC "Build with the cosmocc toolchain (OFF: the host's clang and lld, Linux only)" ON)
 if(QSIM_COSMOCC AND NOT DEFINED CMAKE_TOOLCHAIN_FILE AND NOT DEFINED ENV{CMAKE_TOOLCHAIN_FILE})
     set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cosmocc.cmake" CACHE FILEPATH "Toolchain file")
 endif()
 
 project(simulation VERSION 1.0.0 LANGUAGES C CXX)
+if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "The simulator builds with clang and lld: configure with CC=clang CXX=clang++.")
+endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 23)
@@ -16,29 +19,23 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(COMPILATION_FLAGS -Wall -Wextra -Werror)
-if(QUERCUS_COSMOPOLITAN)
-    # GCC 16 can't tell that libc++'s hash table only reads its bucket hash when it has buckets :((
-    list(APPEND COMPILATION_FLAGS -Wno-error=maybe-uninitialized)
-    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-        # The AArch64 driver links ELF. Make each executable an Actually Portable Executable, which
-        # also runs on macOS. The driver keeps the ELF of a *.exe output in *.exe.dbg. A list item
-        # is one more command, which both the Ninja and Makefile generators support.
-        set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
-        list(APPEND CMAKE_CXX_LINK_EXECUTABLE
-            "\"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
-    endif()
-endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
+# Every link, the prelinks' and the worlds' (qsim.py) too.
+set(link_options -fuse-ld=lld)
+if(QUERCUS_COSMOPOLITAN AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    # The AArch64 driver links ELF, and keeps it in *.exe.dbg. Make each executable an Actually
+    # Portable Executable, which also runs on macOS. A list item is one more command.
+    set(cosmocc_bin "${COSMOCC_TOOLCHAIN_PATH}/bin")
+    list(APPEND CMAKE_CXX_LINK_EXECUTABLE
+        "\"${cosmocc_bin}/apelink\" -l \"${cosmocc_bin}/ape-aarch64.elf\" -M \"${cosmocc_bin}/ape-m1.c\" -o <TARGET> <TARGET>.dbg")
+endif()
+
+# Only the core carries LTO bitcode. The qsim-core.o prelink below generates its code once, and
+# both the world entry point and the tests link it.
 option(ENABLE_LTO "Enable LTO in optimized builds" ON)
-option(QSIM_LLVM_EVALUATION "Evaluate the Linux Clang and LLD prelink" OFF)
-if(QSIM_LLVM_EVALUATION AND ENABLE_LTO AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(sim_lto $<$<CONFIG:Release>:-flto=full>)
-    set(prelink_lto -flto=full -fuse-ld=lld)
-elseif(ENABLE_LTO AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    # Only the core carries LTO bytecode. The qsim-core.o prelink below optimizes it once, and both
-    # the world entry point and the tests link that result.
-    set(sim_lto $<$<CONFIG:Release>:-flto=auto>)
-    set(prelink_lto -flto=auto -flinker-output=nolto-rel)
+if(ENABLE_LTO)
+    set(sim_lto $<$<CONFIG:Release>:-flto=thin>)
+    set(prelink_lto -flto=thin)
 endif()
 
 # Test code and GoogleTest skip LTO and the expensive -O3 passes. -O1 keeps them cheap to compile
@@ -47,45 +44,54 @@ endif()
 # frames that the crash containment tests check.
 set(test_compile_options -O1 -g1)
 
+# A world writes one profile, of the simulator and its firmware: see docs/OPTIMIZATION.md.
 set(PGO OFF CACHE STRING "Simulator PGO mode: OFF, TRAIN or USE")
 set_property(CACHE PGO PROPERTY STRINGS OFF TRAIN USE)
 set(profile_dir "${CMAKE_BINARY_DIR}/pgo")
 if(PGO STREQUAL "TRAIN")
     set(profile_flags "-fprofile-generate=${profile_dir}" -fprofile-update=atomic)
-    link_libraries(gcov)
+    list(APPEND link_options -fprofile-generate)
 elseif(PGO STREQUAL "USE")
-    file(GLOB_RECURSE profiles "${profile_dir}/*.gcda")
+    file(GLOB profiles "${profile_dir}/*.profraw")
     if(NOT profiles)
-        message(FATAL_ERROR "No simulator PGO data. Build in TRAIN mode and run the training scenarios first.")
+        message(FATAL_ERROR "No simulator profile in ${profile_dir}. Build in TRAIN mode and run the training scenarios first.")
     endif()
-    set(profile_flags "-fprofile-use=${profile_dir}" -fprofile-correction -fprofile-partial-training)
-    # Training scenarios exercise the world entry point and core, not unit tests.
-    list(APPEND COMPILATION_FLAGS -Wno-error=missing-profile)
+    get_filename_component(compiler_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    find_program(LLVM_PROFDATA llvm-profdata HINTS "${compiler_dir}" REQUIRED)
+    execute_process(COMMAND "${LLVM_PROFDATA}" merge -o "${profile_dir}/default.profdata" ${profiles}
+        COMMAND_ERROR_IS_FATAL ANY)
+    set(profile_flags "-fprofile-use=${profile_dir}")
 elseif(NOT PGO STREQUAL "OFF")
     message(FATAL_ERROR "PGO must be OFF, TRAIN or USE")
 endif()
-if(profile_flags)
-    list(APPEND profile_flags "-fprofile-prefix-path=${CMAKE_BINARY_DIR}")
-endif()
 
 # Opt in to the checked build while chasing a bug, rather than paying for it on every run.
-option(ENABLE_DEBUG_CONTAINERS "Enable libstdc++ debug containers" OFF)
+option(ENABLE_DEBUG_CONTAINERS "Enable the C++ library's debug containers" OFF)
 if(ENABLE_DEBUG_CONTAINERS)
-    list(APPEND COMPILATION_FLAGS -D_GLIBCXX_DEBUG)
+    list(APPEND COMPILATION_FLAGS -D_GLIBCXX_DEBUG -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG)
 endif()
 
-# The sanitizers need the host compiler's runtimes. Every finding stops the program, so that tests fail.
-option(ENABLE_SANITIZERS "Enable the address and undefined behaviour sanitizers (host compiler only)" OFF)
+# Every finding stops the program, so that tests fail. Cosmopolitan Libc has no address sanitizer.
+option(ENABLE_SANITIZERS "Enable the address (host builds) and undefined behaviour sanitizers" OFF)
 if(ENABLE_SANITIZERS)
-    if(QUERCUS_COSMOPOLITAN)
-        message(FATAL_ERROR "The sanitizers need a host-compiler build: configure with -DQSIM_COSMOCC=OFF")
+    set(instrument_flags -fsanitize=undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    if(NOT QUERCUS_COSMOPOLITAN)
+        list(APPEND instrument_flags -fsanitize=address)
     endif()
-    set(sanitizer_flags -fsanitize=address,undefined -fno-sanitize-recover=all)
-    add_compile_options(${sanitizer_flags} -fno-omit-frame-pointer -g)
-    add_link_options(${sanitizer_flags})
-    # qsim links worlds itself.
-    set(world_link_options ${sanitizer_flags})
 endif()
+
+# Source-based coverage: each process writes its own profile to coverage/ (see README.md).
+option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
+if(ENABLE_COVERAGE)
+    list(APPEND instrument_flags -O0 "-fprofile-instr-generate=${CMAKE_BINARY_DIR}/coverage/%m-%p.profraw"
+        -fcoverage-mapping)
+endif()
+add_compile_options(${instrument_flags})
+list(APPEND link_options ${instrument_flags})
+add_link_options(${link_options})
+# qsim.py links worlds as CMake links executables.
+separate_arguments(world_link_options NATIVE_COMMAND "${CMAKE_CXX_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
+list(APPEND world_link_options ${link_options})
 
 # === Libraries ===
 
@@ -113,17 +119,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
-# === Options ===
-
-option(ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
-
-if(ENABLE_COVERAGE)
-    add_compile_options(-O0 -g --coverage)
-    add_link_options(--coverage)
-endif()
-
-
-
 # === Quercus SDK ===
 
 # The simulation is built against the same headers as the Core 1 applications, so that the
@@ -131,10 +126,6 @@ endif()
 # checkout elsewhere; by default the pinned submodule is used.
 set(QUERCUS_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/q_sdk"
     CACHE PATH "Path to a q_sdk checkout")
-# Build directories from before the SDK moved to the repository root still cache its old path.
-if(QUERCUS_SDK_ROOT STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/external/q_sdk")
-    set(QUERCUS_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/q_sdk" CACHE PATH "Path to a q_sdk checkout" FORCE)
-endif()
 
 if(NOT EXISTS "${QUERCUS_SDK_ROOT}/include/quercus/rpc_wire.h")
     message(FATAL_ERROR
@@ -189,34 +180,10 @@ set_source_files_properties(src/firmware/crash_posix.cpp PROPERTIES
 
 # Prelink the core into one relocatable object, so that its LTO work only runs once. Worlds and
 # the tests link this object.
-if(QUERCUS_COSMOPOLITAN)
-    set(prelink_cxx "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-g++")
-    # GCC can't prove libc++'s impossible std::string growth path unreachable, and warns about it.
-    set(prelink_warnings -Wno-alloc-size-larger-than)
-    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-        set(cosmocc_abi -ffixed-x18 -ffixed-x28 -fsigned-char)
-    else()
-        set(cosmocc_abi -mno-red-zone -mno-tls-direct-seg-refs)
-    endif()
-    set(world_cxx "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-unknown-cosmo-c++")
-    set(world_objcopy "${COSMOCC_TOOLCHAIN_PATH}/bin/${CMAKE_SYSTEM_PROCESSOR}-linux-cosmo-objcopy")
-    set(world_definitions _COSMO_SOURCE)
-    set(world_toolchain cosmocc)
-else()
-    set(prelink_cxx "${CMAKE_CXX_COMPILER}")
-    if(prelink_lto AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        # Released GCC (up to at least 16.2) crashes in lto-partition.cc when it partitions a
-        # relocatable link. Only the project's cosmocc carries the fix.
-        set(prelink_partition -flto-partition=none)
-    endif()
-    set(world_cxx "${CMAKE_CXX_COMPILER}")
-    set(world_objcopy "${CMAKE_OBJCOPY}")
-    set(world_toolchain host)
-endif()
 set(sim_core_object "${CMAKE_BINARY_DIR}/qsim-core.o")
 add_custom_command(OUTPUT "${sim_core_object}"
-    COMMAND "${prelink_cxx}" -nostdlib -r -O3 ${prelink_lto} ${prelink_partition} ${prelink_warnings}
-        ${profile_flags} ${cosmocc_abi} -o "${sim_core_object}" -Wl,--whole-archive $<TARGET_FILE:core> -Wl,--no-whole-archive
+    COMMAND "${CMAKE_CXX_COMPILER}" -nostdlib -r -O3 -fuse-ld=lld ${prelink_lto} -o "${sim_core_object}"
+        -Wl,--whole-archive $<TARGET_FILE:core> -Wl,--no-whole-archive
     DEPENDS core
     COMMAND_EXPAND_LISTS VERBATIM)
 add_custom_target(qsim-core DEPENDS "${sim_core_object}")
@@ -240,10 +207,10 @@ add_library(world_entry OBJECT
 target_link_libraries(world_entry PRIVATE core_interface)
 target_include_directories(world_entry SYSTEM PRIVATE "${QSIM_SDL3_INCLUDE_DIR}")
 target_compile_options(world_entry PRIVATE ${COMPILATION_FLAGS} ${profile_flags})
-target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}" ${world_definitions})
+target_compile_definitions(world_entry PRIVATE APP_VERSION="${PROJECT_VERSION}" _COSMO_SOURCE)
 
 add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/qsim.o"
-    COMMAND "${prelink_cxx}" -nostdlib -r -o "${CMAKE_BINARY_DIR}/qsim.o"
+    COMMAND "${CMAKE_CXX_COMPILER}" -nostdlib -r -fuse-ld=lld -o "${CMAKE_BINARY_DIR}/qsim.o"
         $<TARGET_OBJECTS:world_entry> "${sim_core_object}"
     DEPENDS world_entry $<TARGET_OBJECTS:world_entry> "${sim_core_object}"
     COMMAND_EXPAND_LISTS VERBATIM)

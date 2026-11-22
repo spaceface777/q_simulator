@@ -60,11 +60,6 @@ set(applets_dir "${CMAKE_SOURCE_DIR}/test/applets")
 if(QUERCUS_COSMOPOLITAN)
     set(applet_toolchain cosmocc)
     set(firmware_dir "${applets_dir}/out")
-    # The applets build with the bundle's west, CMake and Ninja, also when it is not activated.
-    set(script_environment
-        "PATH=path_list_prepend:${COSMOCC_TOOLCHAIN_PATH}/posix/bin"
-        "PATH=path_list_prepend:${COSMOCC_TOOLCHAIN_PATH}/bin"
-        "COSMOCC_TOOLCHAIN_PATH=set:${COSMOCC_TOOLCHAIN_PATH}")
 else()
     set(applet_toolchain host)
     set(firmware_dir "${applets_dir}/out/host")
@@ -73,7 +68,6 @@ add_test(NAME applet.build
     COMMAND "${Python3_EXECUTABLE}" "${applets_dir}/q_sdk/qbuild" sim --toolchain ${applet_toolchain}
     WORKING_DIRECTORY "${applets_dir}")
 set_tests_properties(applet.build PROPERTIES FIXTURES_SETUP applets LABELS applet TIMEOUT 3600)
-set(script_tests applet.build)
 
 foreach(check repeatability command_line gui)
     add_test(NAME world.${check}
@@ -81,7 +75,6 @@ foreach(check repeatability command_line gui)
             "${CMAKE_BINARY_DIR}/qsim" "${firmware_dir}" ${check})
     set_tests_properties(world.${check} PROPERTIES FIXTURES_REQUIRED applets LABELS world
         SKIP_RETURN_CODE 77)
-    list(APPEND script_tests world.${check})
 endforeach()
 
 file(GLOB scenarios LIST_DIRECTORIES true CONFIGURE_DEPENDS "${applets_dir}/*/scenarios/*")
@@ -96,7 +89,4 @@ foreach(scenario IN LISTS scenarios)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/run_scenario.py"
             "${CMAKE_BINARY_DIR}/qsim" "${firmware_dir}" "${scenario}")
     set_tests_properties(applet.${applet}.${scenario_name} PROPERTIES FIXTURES_REQUIRED applets LABELS applet)
-    list(APPEND script_tests applet.${applet}.${scenario_name})
 endforeach()
-# One argument per entry: set_tests_properties() would read the entries as more property names.
-set_property(TEST ${script_tests} PROPERTY ENVIRONMENT_MODIFICATION ${script_environment})
