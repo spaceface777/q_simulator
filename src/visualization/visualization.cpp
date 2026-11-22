@@ -484,7 +484,7 @@ namespace visualization {
 
 		// Draw thick line (width 4)
 		for (int i = -2; i <= 1; ++i) {
-			if (abs(x2 - x1) > abs(y2 - y1)) {
+			if (std::abs(x2 - x1) > std::abs(y2 - y1)) {
 				sdl.SDL_RenderLine(renderer_, x1, y1 + i, x2, y2 + i);
 			} else {
 				sdl.SDL_RenderLine(renderer_, x1 + i, y1, x2 + i, y2);
