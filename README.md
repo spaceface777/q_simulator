@@ -31,8 +31,8 @@ git submodule update --init
 
 ### The cosmocc bundle
 
-The build uses the project's cosmocc bundle, release `2026.11.18-64` or later, on Linux, macOS and Windows.
-The bundle has everything that the build runs: the compilers, CMake, Ninja, Python, west, git and a POSIX shell.
+The build uses the project's cosmocc bundle, release `2026.11.21-122`, on Linux, macOS and Windows.
+The bundle has everything that the build runs: clang and lld, CMake, Ninja, Python, west, git and a POSIX shell.
 Nothing else needs to be installed.
 Install the bundle with the installer of its release, as the [cosmocc README](https://gitlab.tue.nl/20223853/cosmopolitan-distribution-builder-test#installation-and-activation) describes.
 Then activate it in each shell that builds the simulator:
@@ -45,17 +45,18 @@ Then activate it in each shell that builds the simulator:
 | PowerShell | `. $env:LOCALAPPDATA\cosmocc\activate.ps1` |
 
 CMake must be the bundle's CMake: the build finds the toolchain through it.
-The configure reads the bundle's release from its `BUILD_INFO` file and stops with an error for an older one.
 On Linux, if Wine or Mono is registered with `binfmt_misc` for Windows executables, also register the APE loader, as the cosmocc README describes.
 
-Get Zephyr v4.5.0 and apply the SDK's patch, which adds the cosmocc toolchain:
+Get upstream Zephyr v4.5.0. Zephyr needs no changes: it builds the firmware with its own `host/llvm` toolchain, which is the bundle's clang once the bundle is activated.
 
 ```sh
 git clone --depth 1 --branch v4.5.0 https://github.com/zephyrproject-rtos/zephyr ~/zephyrproject/zephyr
-git -C ~/zephyrproject/zephyr apply "$PWD/q_sdk/patches/zephyr-v4.5.0-cosmocc.patch"
 (cd ~/zephyrproject && west init -l zephyr)
 export ZEPHYR_BASE=~/zephyrproject/zephyr
 ```
+
+Zephyr does not support spaces in the paths of Zephyr or of an application, which includes this repository.
+The bundle and the simulator's build directory can be anywhere.
 
 Build the firmware objects of the test applets, as you would build any other Core 1 application.
 
@@ -72,13 +73,13 @@ cmake -S . -B build -G Ninja
 cmake --build build
 ```
 
-### Host-compiler builds
+### Host builds
 
-On Linux, the simulator also builds with the host compiler and host tools, without anything from cosmocc.
-Add `-DQSIM_COSMOCC=OFF` and use a separate build directory.
+On Linux, the simulator also builds with the host's clang and lld, LLVM 21 or later, without anything from cosmocc.
+Configure with `CC=clang CXX=clang++` and `-DQSIM_COSMOCC=OFF`, in a separate build directory.
 Build its firmware with `q_sdk/qbuild sim --toolchain host`, which writes the objects to `out/host/`.
-A host-compiler build works with an upstream Zephyr release.
-Add `-DENABLE_SANITIZERS=ON` for the address and undefined behaviour sanitizers. A finding stops the program, so that the test fails.
+
+`-DENABLE_SANITIZERS=ON` adds the undefined behaviour sanitizer, and in host builds also the address sanitizer. A finding stops the program, so that the test fails.
 
 When you change the simulator core often, configure a separate build directory with `-DENABLE_LTO=OFF`.
 A rebuild after one core edit then takes about half the time, and the unit tests run at the same speed.
@@ -126,7 +127,6 @@ It also returns 1 when firmware crashes or the simulation cannot finish, and 2 w
 After a firmware fault or watchdog timeout, the world stops that module and continues the scenario.
 Keep the matching `world.exe.dbg` beside the executable for source lines in crash reports.
 Set `QSIM_WATCHDOG_MS` to change the five-second grant watchdog limit. Set it to zero to disable the watchdog.
-Rebuild Windows firmware with the updated SDK to enable coroutine stack-overflow recovery.
 
 ### Interactive runs
 
@@ -143,12 +143,10 @@ The simulation continues until you close the window or press Ctrl+C.
 
 The [SDL3 workflow](.github/workflows/sdl3.yml) prepares the native libraries and their SHA-256 files.
 Linux artifacts also contain a glibc loader helper and its SHA-256 file.
-For a Linux GUI world, use a cosmocc build with the `COSMO_DLOPEN_HELPER` patch.
 To embed SDL3, put the files from the matching artifact in a directory.
 Set `QSIM_SDL3_ASSETS` to that directory when you configure CMake.
 Without it, the world build uses `native/<os>-<cpu>` in the cosmocc toolchain if it exists, for example `native/linux-amd64`.
 Then build the simulator and assemble the world. The world extracts the files to the user cache on a GUI run.
-To let Ctrl+C close the GUI and flush the trace, rebuild the firmware with the updated SDK.
 Intel macOS supports headless runs.
 
 ### Scenario files
@@ -206,19 +204,19 @@ python3 test/run_scenario.py --verbose build/qsim test/applets/out test/applets/
 #### Test coverage
 
 Generate an HTML coverage report with a Debug build. The report includes the code that the world and applet tests run.
-[gcovr](https://gcovr.com) must use the `gcov` of the simulator's compiler.
+Every test process writes its profile to `build-coverage/coverage/`.
+The report needs `llvm-cov` from LLVM 22 or later, which the bundle does not include yet.
 
 ```sh
 cmake -S . -B build-coverage -G Ninja -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-coverage
 ctest --test-dir build-coverage -j
-mkdir -p build-coverage/coverage
-gcovr -r . build-coverage --filter src/ --exclude-throw-branches \
-    --gcov-executable "sh $COSMOCC_TOOLCHAIN_PATH/bin/$(uname -m | sed s/arm64/aarch64/)-linux-cosmo-gcov" \
-    --html-details build-coverage/coverage/index.html
+llvm-profdata merge -o build-coverage/coverage.profdata build-coverage/coverage/*.profraw
+llvm-cov show -format=html -output-dir=build-coverage/report -instr-profile=build-coverage/coverage.profdata \
+    build-coverage/tests.exe.dbg -object build-coverage/qsim.o src
 ```
 
-For a host-compiler build, add `-DQSIM_COSMOCC=OFF` and omit `--gcov-executable`.
+For a host build, add `-DQSIM_COSMOCC=OFF` and name `build-coverage/tests.exe` instead.
 
 ## Support
 
