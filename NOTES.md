@@ -283,8 +283,6 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   FLEET_END = 25 (24 modules), which also keeps it at its old run time.
 - VS Code LTLf extension: default module IDs 1-254 + 255 (extension.js; package.json no longer
   repeats the list), validator.wasm rebuilt (emscripten 7.0.0; accepts module(254), rejects 256).
-  NOT DONE: repackaging simulation-ltlf-0.1.2.vsix (`npx @vscode/vsce package` was blocked in
-  this session); the committed .vsix still has the old validator and defaults.
 - Verified: MiniPC cosmo x86_64 47/47 + format-check; Docker arm64 native clang 21 with
   ASan+UBSan 47/47. (Docker Desktop's disk was nearly full with other sessions' data: mount a
   clean rsync of the sources, /private/tmp/qs-clean, not the worktree.)
