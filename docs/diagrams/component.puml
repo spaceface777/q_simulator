@@ -1,30 +1,29 @@
 @startuml High-level component diagram
 
-package "native_sim application process" {
-    [Application]
-    [Lockstep adapter]
+package "World process" {
+    package "Firmware image (one per active module)" {
+        [Application]
+        [native_sim runner]
 
-    [Application] <--> [Lockstep adapter] : SDK RPC
-}
+        [Application] <--> [native_sim runner] : SDK RPC
+    }
 
-package "Simulation process" {
     [Runtime]
-    [Shared barrier]
+    [In-process backend]
     [RPC platform]
     [Network]
     [World]
     [LTLf monitor]
     [Visualization]
 
-    [Runtime] <--> [Shared barrier] : grants and collects ticks
+    [Runtime] --> [In-process backend] : grants ticks
+    [In-process backend] <--> [native_sim runner] : qsim_image_api_t, mailboxes
     [Runtime] --> [RPC platform] : dispatches frames
     [RPC platform] <--> [World] : reads and updates hardware
     [RPC platform] <--> [Network] : sends and receives packets
     [Runtime] --> [World] : advances one tick
     [Runtime] --> [LTLf monitor] : submits observations
     [Runtime] --> [Visualization] : exposes current state
-    [Shared barrier] <--> [Lockstep adapter] : shared control
-    [RPC platform] <--> [Lockstep adapter] : shared mailboxes
 }
 
 @enduml

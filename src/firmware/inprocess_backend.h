@@ -9,6 +9,7 @@
 
 #include <quercus/sim_instance.h>
 
+#include "../defs.h"
 #include "../module/types.h"
 #include "crash.h"
 
@@ -44,7 +45,7 @@ namespace firmware {
 			uint64_t                next_wake = 0;
 		};
 
-		std::vector<qsim_env_entry_t>                   environment_;
-		std::array<Instance, QUERCUS_MODULE_TABLE_SIZE> instances_{};
+		std::vector<qsim_env_entry_t>           environment_;
+		std::array<Instance, MODULE_TABLE_SIZE> instances_{};
 	};
 } // namespace firmware

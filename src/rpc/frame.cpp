@@ -34,7 +34,7 @@ namespace rpc {
 		out[1] = frame.cmd;
 		write_u16(out.data() + 2, frame.call_id);
 		write_u16(out.data() + 4, static_cast<uint16_t>(static_cast<int16_t>(frame.payload.size())));
-		if (frame.type == MT_RESP || frame.type == MT_ACK) {
+		if (frame.type == MT_RESP) {
 			write_u16(out.data() + 6, static_cast<uint16_t>(frame.status));
 		} else {
 			write_u16(out.data() + 6, frame.flags);

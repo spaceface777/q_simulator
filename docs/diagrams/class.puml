@@ -27,12 +27,9 @@ class "platform::Manager" {
  vector<Frame> take_outbound(ModuleId, size_t)
 }
 
-class "childsync::SharedControl" {
- Control& get()
-}
-
-class "childsync::ChildSegment" {
- Segment& get()
+class "firmware::InProcessBackend" {
+ void execute_epoch(span<ExecutionGrant>)
+ void retire(ModuleId)
 }
 
 class "ltl::Monitor" {
@@ -47,12 +44,12 @@ class Visualization {
 
 }
 
-package "native_sim application" {
+package "Firmware image" {
  hide empty members
  class app as "application main" {}
- class adapter as "lockstep adapter" {
-  void wait_for_tick()
-  void exchange_mailboxes()
+ class image as "qsim_image_api_t" {
+  int bind(uint32_t, uint8_t, const qsim_env_entry_t*, size_t)
+  int run(uint64_t, uint64_t, const quercus_mailbox_t*, quercus_mailbox_t*, uint64_t*)
  }
 }
 
@@ -60,11 +57,8 @@ mainS "1" *-- "sim::Runtime"
 mainS "1" *-- Visualization
 "sim::Runtime" "1" *-- "world::State"
 "sim::Runtime" "1" *-- "platform::Manager"
-"sim::Runtime" "1" *-- "childsync::SharedControl"
-"sim::Runtime" "1..n" *-- "childsync::ChildSegment"
+"sim::Runtime" "1" *-- "firmware::InProcessBackend"
 "sim::Runtime" "0..n" *-- "ltl::Monitor"
-"sim::Runtime" --> app : starts as process
-"childsync::SharedControl" <--> adapter : shared barrier
-"childsync::ChildSegment" <--> adapter : shared mailboxes
-app "1" *-- adapter
+"firmware::InProcessBackend" "1..n" --> image : runs grants
+image --> app : runs
 @enduml

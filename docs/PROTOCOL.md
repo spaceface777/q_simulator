@@ -1,6 +1,6 @@
 # Quercus RPC
 
-This document defines the RPC frame and shared-memory exchange between each Quercus application process and the simulation process. The simulator and applications compile the wire types from the pinned `q_sdk` headers.
+This document defines the RPC frame and the mailbox exchange between each Quercus application and the simulator, which links every application into a world and runs it in the world's own process. The simulator and applications compile the wire types from the pinned `q_sdk` headers.
 
 ## Format
 
@@ -8,13 +8,13 @@ Each RPC frame has an 8-byte packed header followed by zero or more payload byte
 
 | Offset | Size | Field | Meaning |
 |---:|---:|---|---|
-| 0 | 1 | `type` | Request, response, event, tick, or acknowledgement |
+| 0 | 1 | `type` | Request, response, or event |
 | 1 | 1 | `cmd` | RPC command for requests and responses, or event mask for events |
 | 2 | 2 | `call_id` | Request and response correlation id |
 | 4 | 2 | `payload_len` | Number of payload bytes after the header |
 | 6 | 2 | `flags` or `status` | Request or event flags, or response status |
 
-The accepted types are `MT_REQ` (1), `MT_RESP` (2), `MT_EVENT` (3), `MT_TICK` (4), and `MT_ACK` (5). The lockstep shared-memory adapter uses the tick and acknowledgement types. Normal platform calls use requests, responses, and events.
+The types are `MT_REQ` (1), `MT_RESP` (2), and `MT_EVENT` (3).
 
 ## Sending
 
@@ -22,19 +22,11 @@ The sender encodes one complete header and payload into one mailbox slot. A mail
 
 A request uses a unique `call_id`. A confirmable request receives one response with the same `cmd` and `call_id`. A request with `RPC_FLAG_NON_CON` does not receive a response. An event does not receive a response.
 
-The simulator supplies one inbound and one outbound mailbox for each relative tick in the granted batch. The sender writes only while the other process is blocked at the lockstep barrier.
-
-Exact runahead does not use intermediate mailboxes. Its grant contains a 100-tick bit mask and one exact clock delta for each global tick.
-
-At each barrier, the child publishes the current local time and the next possible Zephyr execution time. The certificate names the completed barrier generation.
-
-The parent accepts only a current certificate. It sends a runahead grant only when all child and parent boundaries are later than the grant.
-
-An application must not send an RPC during an exact-runahead grant. The native_sim transport treats this condition as a certificate error.
+For each grant, the simulator passes the application one inbound mailbox, which the application reads at the start of the grant, and one outbound mailbox, which the application fills until the grant ends. The image reports the time of its next hardware event, so that the simulator can skip ticks in which the application has nothing to do.
 
 ## Receiving
 
-The receiver validates the mailbox slot offsets before it reads frame bytes. It then validates the header and waits for the complete payload. An invalid mailbox or frame stops the run because the two processes no longer share a valid protocol state.
+The receiver validates the mailbox slot offsets before it reads frame bytes. It then validates the header and waits for the complete payload. An invalid mailbox or frame stops the run because the two sides no longer share a valid protocol state.
 
 A response has status 0 for success or a negative errno value for failure. Common values are permission denied (`-1`), not found (`-2`), try again (`-11`), invalid argument (`-22`), and not supported (`-38`). The platform can also return range and no-entry errors for commands that need them.
 
