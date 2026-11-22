@@ -34,7 +34,7 @@ jobs:
           curl --fail --location "$SDL_RELEASE/SDL3-$SDL_VERSION.tar.gz" --output sdl.tar.gz
           echo 'f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f  sdl.tar.gz' | sha256sum --check
           tar -xf sdl.tar.gz
-          cmake -S "SDL3-$SDL_VERSION" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          CC=clang cmake -S "SDL3-$SDL_VERSION" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST_LIBRARY=OFF
           cmake --build build --config Release
           mkdir assets
@@ -42,7 +42,7 @@ jobs:
           sha256sum assets/libSDL3.so | cut -d ' ' -f 1 > assets/libSDL3.so.sha256
       - name: Build the glibc loader helper
         run: |
-          cc -O2 -pie -fPIC -Wl,-z,execstack tools/dlopen_helper.c -ldl -o assets/dlopen-helper
+          clang -O2 -pie -fPIC -Wl,-z,execstack tools/dlopen_helper.c -ldl -o assets/dlopen-helper
           sha256sum assets/dlopen-helper | cut -d ' ' -f 1 > assets/dlopen-helper.sha256
       - uses: actions/upload-artifact@v4
         with:

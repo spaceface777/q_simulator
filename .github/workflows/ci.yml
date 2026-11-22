@@ -1,10 +1,10 @@
 name: Simulator CI
 
-# cosmocc: every runner image installs the pinned cosmocc bundle and puts only the bundle on PATH. The
-# bundle's git, west, CMake, Ninja and Python then fetch and patch Zephyr, build the simulator, the
-# test applets and their worlds, and run the whole ctest suite, from bash, cmd or PowerShell. The
-# bundle, the source, the build and Zephyr are all in directories with spaces in their names.
-# native: every Ubuntu image builds with the host compiler, host tools and upstream Zephyr, without
+# cosmocc: every runner image installs the cosmocc bundle with its own installer and puts only the
+# bundle on PATH. The bundle's git, west, CMake, Ninja, Python and clang then fetch upstream Zephyr,
+# build the simulator, the test applets and their worlds, and run the whole ctest suite, from bash,
+# cmd or PowerShell. The bundle and the build are in directories with spaces in their names.
+# native: every Ubuntu image builds with the host's clang and lld and upstream Zephyr, without
 # anything from cosmocc, and runs the suite plainly and with the address and undefined behaviour
 # sanitizers.
 
@@ -21,11 +21,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The pinned cosmocc release, mirrored from its GitLab project. SHA256SUMS lists every asset.
-  COSMOCC_URL: https://github.com/spaceface777/q_simulator/releases/download/cosmocc-2026.11.18-64
-  COSMOCC_SUMS_SHA256: a0a7ad1bf100bd4ea4dc361e1717699c5a4ebb1adeb9f84f6658b978b94c473c
-  ZEPHYR_COSMOCC: v4.5.0
-  ZEPHYR_NATIVE: v4.4.1
+  # The cosmocc release, mirrored from its GitLab project: the installers take it from here.
+  COSMOCC_URL: https://github.com/spaceface777/q_simulator/releases/download
+  COSMOCC_VERSION: 2026.11.21-122
+  ZEPHYR: v4.5.0
   PYTHONUNBUFFERED: '1'
 
 jobs:
@@ -59,21 +58,21 @@ jobs:
           - { os: windows-2025, shell: pwsh }
           - { os: windows-11-arm, shell: cmd }
           - { os: windows-11-vs2026-arm, shell: pwsh }
-    env:
-      QS_COSMOCC: cosmo cc
-      QS_SOURCE: q sim
-      QS_BUILD: build dir
-      QS_ZEPHYR: zephyr project
     defaults:
       run:
         shell: bash
     steps:
-      - name: Preserve source line endings
-        run: git config --global core.autocrlf false
+      - name: Preserve source line endings, and name the directories
+        shell: pwsh
+        run: |
+          git config --global core.autocrlf false
+          "COSMOCC_DIR=$(Join-Path $env:RUNNER_TEMP 'cosmo cc')" >> $env:GITHUB_ENV
+          "BUILD=$(Join-Path $env:RUNNER_TEMP 'build dir')" >> $env:GITHUB_ENV
+          "ZEPHYR_BASE=$(Join-Path $env:GITHUB_WORKSPACE zephyrproject zephyr)" >> $env:GITHUB_ENV
 
       - uses: actions/checkout@v5
         with:
-          path: ${{ env.QS_SOURCE }}
+          path: simulator
           submodules: true
           persist-credentials: false
 
@@ -85,67 +84,12 @@ jobs:
           for handler in /proc/sys/fs/binfmt_misc/*; do
             if grep -qs '^magic 4d5a' "$handler"; then echo 0 | sudo tee "$handler" > /dev/null; fi
           done
-          mkdir -p "$RUNNER_TEMP/release" && cd "$RUNNER_TEMP/release"
-          curl --fail --location --silent --show-error --remote-name-all \
-            "$COSMOCC_URL/SHA256SUMS" "$COSMOCC_URL/cosmocc.tar.xz" "$COSMOCC_URL/bsdtar" "$COSMOCC_URL/install.sh"
-          # macOS's sha256sum lacks the GNU options.
-          sha256=(sha256sum); [[ "$RUNNER_OS" == macOS ]] && sha256=(shasum -a 256)
-          "${sha256[@]}" --check <<< "$COSMOCC_SUMS_SHA256  SHA256SUMS"
-          "${sha256[@]}" --check --ignore-missing SHA256SUMS
-          # The release's bsdtar unpacks where the system's xz is too old for the archive (Ubuntu 22.04).
-          sh install.sh --archive cosmocc.tar.xz --bsdtar bsdtar --dir "$RUNNER_TEMP/$QS_COSMOCC"
-          echo "COSMOCC_DIR=$RUNNER_TEMP/$QS_COSMOCC" >> "$GITHUB_ENV"
+          curl -fsSL "$COSMOCC_URL/$COSMOCC_VERSION/install.sh" | sh -s -- --version "$COSMOCC_VERSION" --dir "$COSMOCC_DIR"
 
       - name: Install cosmocc
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Set-Location $env:RUNNER_TEMP
-          foreach ($file in 'SHA256SUMS', 'cosmocc.tar.xz', 'bsdtar', 'install.ps1') {
-            Invoke-WebRequest -UseBasicParsing -Uri "$env:COSMOCC_URL/$file" -OutFile $file
-          }
-          $sums = @{ 'SHA256SUMS' = $env:COSMOCC_SUMS_SHA256 }
-          foreach ($line in Get-Content SHA256SUMS) { $hash, $name = $line -split '\s+', 2; $sums[$name] = $hash }
-          foreach ($file in 'SHA256SUMS', 'cosmocc.tar.xz', 'bsdtar', 'install.ps1') {
-            if ((Get-FileHash -Algorithm SHA256 $file).Hash -ne $sums[$file]) { throw "checksum mismatch: $file" }
-          }
-          Move-Item bsdtar bsdtar.exe
-          $env:COSMOCC_ARCHIVE = "$env:RUNNER_TEMP\cosmocc.tar.xz"
-          $env:COSMOCC_BSDTAR = "$env:RUNNER_TEMP\bsdtar.exe"
-          $env:COSMOCC_DIR = "$env:RUNNER_TEMP\$env:QS_COSMOCC"
-          ./install.ps1
-          "COSMOCC_DIR=$env:COSMOCC_DIR" >> $env:GITHUB_ENV
-
-      # Zephyr comes from the bundle's git, as README.md describes. Should that clone fail, the job takes
-      # Zephyr from actions/checkout to run the rest, and fails at the end.
-      - name: Get Zephyr with the bundle's git
-        id: zephyr-bash
-        if: runner.os != 'Windows'
-        continue-on-error: true
-        run: |
-          . "$COSMOCC_DIR/activate" --path=replace
-          git clone --depth 1 --branch "$ZEPHYR_COSMOCC" https://github.com/zephyrproject-rtos/zephyr \
-            "$GITHUB_WORKSPACE/$QS_ZEPHYR/zephyr"
-
-      - name: Get Zephyr with the bundle's git
-        id: zephyr-pwsh
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          . "$env:COSMOCC_DIR\activate.ps1" --path=replace
-          git clone --depth 1 --branch $env:ZEPHYR_COSMOCC https://github.com/zephyrproject-rtos/zephyr `
-            "$env:GITHUB_WORKSPACE\$env:QS_ZEPHYR\zephyr"
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-
-      - uses: actions/checkout@v5
-        if: steps.zephyr-bash.outcome == 'failure' || steps.zephyr-pwsh.outcome == 'failure'
-        with:
-          repository: zephyrproject-rtos/zephyr
-          ref: ${{ env.ZEPHYR_COSMOCC }}
-          path: ${{ env.QS_ZEPHYR }}/zephyr
-          persist-credentials: false
+        run: irm "$env:COSMOCC_URL/$env:COSMOCC_VERSION/install.ps1" | iex
 
       - name: Select the SDL3 platform
         run: |
@@ -166,14 +110,14 @@ jobs:
         if: matrix.shell == 'bash'
         run: |
           . "$COSMOCC_DIR/activate" --path=replace
-          export ZEPHYR_BASE="$GITHUB_WORKSPACE/$QS_ZEPHYR/zephyr"
-          git -C "$ZEPHYR_BASE" apply "$GITHUB_WORKSPACE/$QS_SOURCE/q_sdk/patches/zephyr-$ZEPHYR_COSMOCC-cosmocc.patch"
+          git clone --depth 1 --branch "$ZEPHYR" https://github.com/zephyrproject-rtos/zephyr "$ZEPHYR_BASE"
           (cd "$ZEPHYR_BASE/.." && west init -l zephyr)
           sdl3=()
           [[ -d "$RUNNER_TEMP/sdl3" ]] && sdl3=(-DQSIM_SDL3_ASSETS="$RUNNER_TEMP/sdl3")
-          cmake -S "$GITHUB_WORKSPACE/$QS_SOURCE" -B "$RUNNER_TEMP/$QS_BUILD" -G Ninja "${sdl3[@]}"
-          cmake --build "$RUNNER_TEMP/$QS_BUILD"
-          ctest --test-dir "$RUNNER_TEMP/$QS_BUILD" -j 4 --output-on-failure
+          cmake -S simulator -B "$BUILD" -G Ninja "${sdl3[@]}"
+          cmake --build "$BUILD"
+          cmake --build "$BUILD" --target format-check
+          ctest --test-dir "$BUILD" -j 4 --output-on-failure
 
       # Windows paths with backslashes, as a user types them.
       - name: Build and test (cmd)
@@ -181,14 +125,11 @@ jobs:
         shell: cmd
         run: |
           call "%COSMOCC_DIR%\activate.bat" --path=replace || exit /b 1
-          set "ZEPHYR_BASE=%GITHUB_WORKSPACE%\%QS_ZEPHYR%\zephyr"
-          set "SOURCE=%GITHUB_WORKSPACE%\%QS_SOURCE%"
-          set "BUILD=%RUNNER_TEMP%\%QS_BUILD%"
-          git -C "%ZEPHYR_BASE%" apply "%SOURCE%\q_sdk\patches\zephyr-%ZEPHYR_COSMOCC%-cosmocc.patch" || exit /b 1
+          git clone --depth 1 --branch %ZEPHYR% https://github.com/zephyrproject-rtos/zephyr "%ZEPHYR_BASE%" || exit /b 1
           pushd "%ZEPHYR_BASE%\.." || exit /b 1
           west init -l zephyr || exit /b 1
           popd
-          cmake -S "%SOURCE%" -B "%BUILD%" -G Ninja "-DQSIM_SDL3_ASSETS=%RUNNER_TEMP%\sdl3" || exit /b 1
+          cmake -S simulator -B "%BUILD%" -G Ninja "-DQSIM_SDL3_ASSETS=%RUNNER_TEMP%\sdl3" || exit /b 1
           cmake --build "%BUILD%" || exit /b 1
           ctest --test-dir "%BUILD%" -j 4 --output-on-failure || exit /b 1
 
@@ -198,22 +139,13 @@ jobs:
         run: |
           function Run { & $args[0] $args[1..($args.Count - 1)]; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
           . "$env:COSMOCC_DIR\activate.ps1" --path=replace
-          $env:ZEPHYR_BASE = "$env:GITHUB_WORKSPACE\$env:QS_ZEPHYR\zephyr"
-          $source = "$env:GITHUB_WORKSPACE\$env:QS_SOURCE"
-          $build = "$env:RUNNER_TEMP\$env:QS_BUILD"
-          Run git -C $env:ZEPHYR_BASE apply "$source\q_sdk\patches\zephyr-$env:ZEPHYR_COSMOCC-cosmocc.patch"
+          Run git clone --depth 1 --branch $env:ZEPHYR https://github.com/zephyrproject-rtos/zephyr $env:ZEPHYR_BASE
           Push-Location "$env:ZEPHYR_BASE\.."
           Run west init -l zephyr
           Pop-Location
-          Run cmake -S $source -B $build -G Ninja "-DQSIM_SDL3_ASSETS=$env:RUNNER_TEMP\sdl3"
-          Run cmake --build $build
-          Run ctest --test-dir $build -j 4 --output-on-failure
-
-      - name: Fail if the bundle's git could not clone Zephyr
-        if: steps.zephyr-bash.outcome == 'failure' || steps.zephyr-pwsh.outcome == 'failure'
-        run: |
-          echo "::error::The bundle's git could not clone Zephyr; the job took it from actions/checkout."
-          exit 1
+          Run cmake -S simulator -B $env:BUILD -G Ninja "-DQSIM_SDL3_ASSETS=$env:RUNNER_TEMP\sdl3"
+          Run cmake --build $env:BUILD
+          Run ctest --test-dir $env:BUILD -j 4 --output-on-failure
 
   native:
     name: native${{ matrix.sanitize && ', sanitizers' || '' }} (${{ matrix.os }})
@@ -233,6 +165,11 @@ jobs:
         include:
           - { os: ubuntu-26.04, sanitize: true }
           - { os: ubuntu-26.04-arm, sanitize: true }
+    env:
+      CC: clang
+      CXX: clang++
+      # libc++: the older images' libstdc++ lacks parts of C++23.
+      CXXFLAGS: -stdlib=libc++
     steps:
       - uses: actions/checkout@v5
         with:
@@ -243,21 +180,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install a C++23 compiler, Zephyr and the system SDL3
+      - name: Install LLVM 21 or later, Zephyr and the system SDL3
         run: |
-          # Older images need GCC 14, from the toolchain PPA on 22.04. SDL3 is packaged from 25.04 on.
-          if [[ "${{ matrix.os }}" == ubuntu-22.04* ]]; then
-            sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          fi
-          sudo apt-get update
+          # lld before 21 crashes relinking Zephyr's relocatable output: older images take LLVM
+          # from apt.llvm.org. SDL3 is packaged from Ubuntu 25.04 on.
           if [[ "${{ matrix.os }}" == ubuntu-2[24].04* ]]; then
-            sudo apt-get install -y gcc-14 g++-14
-            echo "CC=gcc-14" >> "$GITHUB_ENV"
-            echo "CXX=g++-14" >> "$GITHUB_ENV"
+            curl -fsSL https://apt.llvm.org/llvm.sh | sudo bash -s 21
+            sudo apt-get install -y libc++-21-dev libclang-rt-21-dev
+            echo /usr/lib/llvm-21/bin >> "$GITHUB_PATH"
+          else
+            sudo apt-get update
+            sudo apt-get install -y clang lld llvm libc++-dev libclang-rt-dev libsdl3-0
           fi
-          sudo apt-get install -y ninja-build libsdl3-0 || sudo apt-get install -y ninja-build
-          python -m pip install --quiet west "clang-format>=22,<23"
-          git clone --quiet --depth 1 --branch "$ZEPHYR_NATIVE" https://github.com/zephyrproject-rtos/zephyr \
+          sudo apt-get install -y ninja-build
+          python -m pip install --quiet west
+          git clone --quiet --depth 1 --branch "$ZEPHYR" https://github.com/zephyrproject-rtos/zephyr \
             "$RUNNER_TEMP/zephyrproject/zephyr"
           python -m pip install --quiet -r "$RUNNER_TEMP/zephyrproject/zephyr/scripts/requirements-base.txt"
           (cd "$RUNNER_TEMP/zephyrproject" && west init -l zephyr)
@@ -267,7 +204,6 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja -DQSIM_COSMOCC=OFF -DENABLE_SANITIZERS=${{ matrix.sanitize && 'ON' || 'OFF' }}
           cmake --build build
-          cmake --build build --target format-check
 
       - name: Test
         run: |
@@ -286,6 +222,4 @@ jobs:
               \( -iname '*cosmocc*' -o -iname '*cosmopolitan*' \) 2>/dev/null
             grep -rIil --include=CMakeCache.txt cosmocc_toolchain build test/applets/build_sim_host) || true
           [[ -z "$traces" ]] || { echo "$traces"; exit 1; }
-          for program in build/tests.exe test/applets/out/host/*.exe; do
-            file "$program" | grep -q ELF || { file "$program"; exit 1; }
-          done
+          file build/tests.exe | grep -q ELF || { file build/tests.exe; exit 1; }

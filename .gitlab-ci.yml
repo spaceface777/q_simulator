@@ -8,11 +8,11 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
   GIT_SUBMODULE_FORCE_HTTPS: "true"
 
-# A host-compiler build. ctest builds the test applets with the image's upstream Zephyr and the host
+# A host build with clang and lld (LLVM 21 or later). ctest builds the test applets with the image's upstream Zephyr and the host
 # compiler, then runs the unit, world and applet tests.
 build:
   script:
-    - cmake -B build -S . -G Ninja -DQSIM_COSMOCC=OFF
+    - CC=clang CXX=clang++ cmake -B build -S . -G Ninja -DQSIM_COSMOCC=OFF
     - sudo apt-get update && sudo apt-get install -y clang-format-22
     - cmake --build build -j --target format-check
     - cmake --build build -j --target all
