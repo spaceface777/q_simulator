@@ -203,6 +203,20 @@ PLANNED / NOT DONE:
 - coro.c's `CORO_X18`/`CORO_X28`: clang warns about reserved registers in a clobber list at
   every LTO link under cosmo; a host compiler must be told. Kept (from the train suite).
 
+## Toolchain gaps fixed in cosmocc-build (2026-11-22, round 2)
+
+Fixed in cosmocc-build (uncommitted there; its NOTES.md "What the simulator's port to 122
+needed"), so that this tree drops its exceptions:
+- 0007 (clang's Cosmo driver): arm64 `.exe`/`.com` outputs are APEs (apelink, as the fat
+  cosmocc does) -> CMakeLists.txt's extra apelink link command and qsim.py's apelink step deleted.
+- 0007: `--coverage` links the profile runtime; `-pthread` claimed at links.
+- 0016: llvm-cov in the multicall, `bin/llvm-cov` -> README's coverage report uses the bundle's.
+- cosmopolitan 0047: uname() says `aarch64` on Apple silicon -> qbuild's NATIVE_TARGET_HOST
+  line deleted.
+- Kept, with reason: assemble.py's `-nostdinc` when it preprocesses the runner's linker script.
+  `-E` must keep normalize.inc for C; a linker script must not see the C library's headers.
+- Needs a release built from those changes; the CI's COSMOCC_VERSION follows it.
+
 ## Build and link timings (2026-11-22)
 
 Cosmo, clean, ccache off, dependencies pre-downloaded (/private/tmp/qs-scripts/bench.sh). Mac:
@@ -234,6 +248,47 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   "host/llvm", but Zephyr caches "host" (it splits off the compiler). Every incremental qbuild
   reconfigured Zephyr, about 10 s (12.5-15.7 s for a one-file edit); now 1.5-1.7 s.
 
+## Module count scaling (2026-11-22)
+
+- The module limit is only validation: MAX_MODULES = 25 (src/defs.h; routing IDs 1-24, tower 255)
+  in settings, events, the LTL checker, module types and qsim.py. Every per-module table is
+  already 256 entries (MODULE_TABLE_SIZE, which the in-process instances use too, the
+  runtime's tick array) and IDs are uint8_t, so 254 routing modules
+  fit without layout changes. Second limit: `pos` must be 0..10 on both axes (settings.cpp),
+  121 cells.
+- Measured in a scratch copy with MAX_MODULES = 255 and pos <= 15 (/private/tmp/qs-scripts/
+  scale.sh), M1 (busy with a toolchain build), cosmo, idle applet with heartbeats, no
+  neighbors, 5 s of simulated time:
+
+| modules | world link | world size | run wall | max RSS |
+|---:|---:|---:|---:|---:|
+| 1 | 0.34 s | 2.0 MiB | 0.19 s | 4 MiB |
+| 24 | 0.55 s | 4.9 MiB | 0.22 s | 9 MiB |
+| 50 | 0.74 s | 8.2 MiB | 0.29 s | 15 MiB |
+| 100 | 1.27 s | 14.4 MiB | 0.44 s | 27 MiB |
+| 150 | 1.67 s | 20.7 MiB | 0.58 s | 38 MiB |
+| 200 | 2.43 s | 26.9 MiB | 0.68 s | 50 MiB |
+| 254 | 3.23 s | 33.7 MiB | 0.97 s | 62 MiB |
+
+- Linear: about 11 ms of link, 128 KiB of world and 0.24 MiB of memory per module (one copy of
+  the firmware image each). Not measured: real routing workloads (neighbors, tubs), the GUI
+  with that many modules on screen.
+- Done in the tree (2026-11-22): MAX_MODULES = 255 (routing IDs 1-254, tower 255), qsim.py
+  likewise; `pos` checks the raw value against 0..255 instead of 0..10. Both `pos` and neighbor
+  IDs had been cast to uint8_t before the check, so 256 or -1 wrapped into range (neighbor 257
+  became module 1): fixed, with tests. The limit is the simulator's own (src/defs.h); the SDK has
+  no module-count constant, so firmware and metal builds are unchanged.
+- Tests that encoded 24: ModuleId bound, tub module 25, LTL module(25), now 255/256. The
+  calibration statistics are about a fleet, not the ID space: that file uses its own
+  FLEET_END = 25 (24 modules), which also keeps it at its old run time.
+- VS Code LTLf extension: default module IDs 1-254 + 255 (extension.js; package.json no longer
+  repeats the list), validator.wasm rebuilt (emscripten 7.0.0; accepts module(254), rejects 256).
+  NOT DONE: repackaging simulation-ltlf-0.1.2.vsix (`npx @vscode/vsce package` was blocked in
+  this session); the committed .vsix still has the old validator and defaults.
+- Verified: MiniPC cosmo x86_64 47/47 + format-check; Docker arm64 native clang 21 with
+  ASan+UBSan 47/47. (Docker Desktop's disk was nearly full with other sessions' data: mount a
+  clean rsync of the sources, /private/tmp/qs-clean, not the worktree.)
+
 ## Process transport remnants (2026-11-22)
 
 - Missed in the first pass: q_sdk's `lockstep_shm.h` (199 lines) was still there. The in-process
@@ -256,3 +311,33 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   NATIVE_TARGET_HOST and apelink workarounds were removed. Docker's VM disk is full (a 45 GB
   volume in use and a stopped 6.3 GB debian:trixie-slim container, neither from this work), so
   no arm64 Linux run this time.
+
+## GUI auto-fit (2026-11-22)
+
+- Before: a fixed 800x800 window and a fixed module pitch (126 px + 14 px at `scale = 1`), from
+  position (0, 0): about 5x5 modules fitted, the old 11x11 grid only at `scale` <= 0.4, and
+  offset layouts drew off screen.
+- Now (visualization.cpp, fit_layout(), every frame): the active modules' bounding box,
+  shifted to its own top left corner, scaled to fit the window above the 70 px toolbar and
+  centred; a module is at most 250 px wide (a 1-module world). `scale` (setting, zoom buttons,
+  Ctrl -/+) zooms from the fitted size: 1.0 = fit. Window resizes refit. Text stays fixed-size:
+  at 16x16 modules (~40 px) the 3-digit IDs crowd their module but stay legible.
+- Seen via a scratch-only frame dump (QSIM_SHOT=file.bmp saves frame 30 and exits; the dummy
+  SDL driver renders in software; /private/tmp/qs-scripts/shotpatch.py, gui-shots2.sh):
+  1 module, router18, router18 shifted by (+100, +60) (identical image), 10x5, 16x16 (254),
+  router18 in 1400x700. This process can't capture real windows (no Screen Recording grant).
+- Docker 26.04 native with libsdl3-0: world.gui ran (not skipped), 47/47.
+- Tested (macOS arm64, 2026-11-22) on a copy of 122 with cosmocc-build's native LLVM build of
+  patches 0001-0017, the libc with 0047/0048, and cmake + coreutils rebuilt on it: 47/47, with
+  CMakeLists.txt's apelink command, qsim.py's apelink step and qbuild's NATIVE_TARGET_HOST line
+  removed. tests.exe and every world are APEs straight from the driver; Zephyr's CMake sees
+  `aarch64`; no "-pthread unused" warnings; the bundle's llvm-cov reports source-based coverage.
+- Two more toolchain bugs surfaced and were fixed there: --coverage programs crashed at start
+  (gcov's constructor ran before malloc's: LLVM 0017), and apelink refused -mtiny arm64 programs
+  (empty .zip section: cosmopolitan 0048), which the simulator's -mtiny world links would hit.
+- OPEN (toolchain, also in 122): on macOS, an arm64 ELF exactly as lld wrote it is SIGKILLed when
+  `bin/ape` starts it in place; any copy runs. The simulator never runs such files.
+- Labels (module IDs, tub IDs, module types, debug values) scale with the modules:
+  label_scale_ = clamp(round(unit_ * 4), 1, 5), offsets scaled from their size-2 values. Sizes:
+  1 module 5, router18 3 (was 2), 10x5 2, 16x16 1 (no longer crowded). Native 26.04 with SDL3:
+  47/47, world.gui run. (`debug` can't be set from a settings file: always starts off.)
