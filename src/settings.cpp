@@ -90,6 +90,7 @@ namespace settings {
 
 	static std::optional<module::ModuleId> parse_neighbor(int64_t id) {
 		if (id == 0) return {};
+		util::require_range(id > 0 && id <= UINT8_MAX, "Module id out of range");
 		return module::ModuleId{static_cast<uint8_t>(id)};
 	}
 
@@ -126,13 +127,14 @@ namespace settings {
 							  "Attribute 'pos' not found for module " + std::to_string(id));
 				util::require(pos->size() == 2, "Invalid value for attribute 'pos' of module " + std::to_string(id));
 
-				module_settings[id].x = static_cast<uint8_t>(pos->get(0)->value_exact<int64_t>().value());
-				module_settings[id].y = static_cast<uint8_t>(pos->get(1)->value_exact<int64_t>().value());
-
-				util::require(module_settings[id].x <= 10,
-							  "Invalid value for attribute 'pos' of module " + std::to_string(id));
-				util::require(module_settings[id].y <= 10,
-							  "Invalid value for attribute 'pos' of module " + std::to_string(id));
+				const auto coordinate = [&](std::size_t axis) {
+					const auto value = pos->get(axis)->value_exact<int64_t>();
+					util::require(value && *value >= 0 && *value <= 10,
+								  "Invalid value for attribute 'pos' of module " + std::to_string(id));
+					return static_cast<uint8_t>(*value);
+				};
+				module_settings[id].x = coordinate(0);
+				module_settings[id].y = coordinate(1);
 			}
 		}
 		{

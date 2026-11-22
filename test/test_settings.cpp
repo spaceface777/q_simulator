@@ -305,6 +305,15 @@ angle = 0
 	EXPECT_THROW(settings::parse_settings(temp_settings_path, layout), std::out_of_range);
 }
 
+// Out-of-range values must not wrap around into valid ones.
+TEST_F(SettingsTest, ParseSettingsWrappingPositionOrNeighbor) {
+	for (const char* geometry : {"neighbors = [0, 0, 0]\npos = [256, 0]", "neighbors = [0, 0, 0]\npos = [0, -1]",
+								 "neighbors = [257, 0, 0]\npos = [0, 0]"}) {
+		write_layout(std::string("[module.1]\nactive = true\nangle = 0\n") + geometry + "\n");
+		EXPECT_ANY_THROW(settings::parse_settings(temp_settings_path, layout)) << geometry;
+	}
+}
+
 TEST_F(SettingsTest, ParseSettingsOneWayConnectionThrows) {
 	write_layout(R"(
 [module.1]
