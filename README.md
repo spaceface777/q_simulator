@@ -205,7 +205,7 @@ python3 test/run_scenario.py --verbose build/qsim test/applets/out test/applets/
 
 Generate an HTML coverage report with a Debug build. The report includes the code that the world and applet tests run.
 Every test process writes its profile to `build-coverage/coverage/`.
-The report needs `llvm-cov` from LLVM 22 or later, which the bundle does not include yet.
+The bundle's `llvm-profdata` and `llvm-cov` make the report.
 
 ```sh
 cmake -S . -B build-coverage -G Ninja -DENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
