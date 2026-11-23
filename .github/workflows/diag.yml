@@ -7,58 +7,16 @@ permissions:
 env:
   COSMOCC_INSTALL: https://gitlab.tue.nl/20223853/cosmopolitan-distribution-builder-test/-/releases/permalink/latest/downloads/install.sh
 jobs:
-  # static facts and the loader's address-space scan on each arm64 macOS
-  osinfo:
-    name: osinfo ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-26, macos-15, xcode-27]
-    steps:
-      - uses: actions/checkout@v5
-        with: { persist-credentials: false }
-      - name: Install cosmocc
-        run: |
-          curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
-          head -1 "$RUNNER_TEMP/cosmo cc/BUILD_INFO"
-      - name: Facts
-        run: |
-          D="$RUNNER_TEMP/diag"; mkdir -p "$D"
-          . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
-          export PATH="$PATH:/usr/bin:/bin:/usr/sbin:/sbin"
-          diag/osinfo.sh "$D/osinfo"
-          cat "$D/osinfo/os.txt" "$D/osinfo/blockedfault.txt"
-          grep -E "^tsd|fork\(\)" "$D/osinfo/forktrace.calls" || true
-          grep -A3 "p \$d\|malloc_size\|memory region" "$D/osinfo/forkslot.txt" | head -40 || true
-      - name: Loader scan, 1000 launches of clang --version
-        run: |
-          D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"
-          diag/make-scan-loader.sh "$T/ape-m1.c" "$D/ape-scan"
-          export APE_SCAN_LOG="$D/scan.log" APE_SCAN_ALL=1
-          for i in $(seq 1000); do "$D/ape-scan" "$T/clang" --version > /dev/null; done
-          python3 -I diag/summarize-scan.py "$D/scan.log" | tail -40
-          xz -T0 "$D/scan.log"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: osinfo-${{ matrix.os }}
-          path: ${{ runner.temp }}/diag
-          retention-days: 5
-
-  # the real workload with a watchdog that captures a spinning fork child
+  # the fix's premise: a loader that never replaces live memory never hangs
   qbuild:
-    name: qbuild ${{ matrix.loader }} ${{ matrix.rep }}
+    name: qbuild ${{ matrix.policy }} ${{ matrix.rep }}
     runs-on: macos-26
-    timeout-minutes: 40
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        loader: [stock, scan]
-        rep: [1]
-        include:
-          - { loader: stock, rep: 2 }
+        policy: [avoid]
+        rep: [1, 2, 3]
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true, persist-credentials: false }
@@ -67,19 +25,20 @@ jobs:
           curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
           head -1 "$RUNNER_TEMP/cosmo cc/BUILD_INFO"
       - name: Scan loader
-        if: matrix.loader == 'scan'
         run: |
           D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"; mkdir -p "$D"
           diag/make-scan-loader.sh "$T/ape-m1.c" "$D/ape-scan"
           rm -f "$T/ape" "$HOME/.ape-1.10"
           cp "$D/ape-scan" "$T/ape"; cp "$D/ape-scan" "$HOME/.ape-1.10"
           echo "APE_SCAN_LOG=$D/scan.log" >> "$GITHUB_ENV"
+          echo "APE_SCAN_POLICY=${{ matrix.policy }}" >> "$GITHUB_ENV"
       - name: Zephyr
         run: |
           . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
           git clone -q --depth 1 --branch v4.5.0 https://github.com/zephyrproject-rtos/zephyr "$GITHUB_WORKSPACE/../zephyrproject/zephyr"
           (cd "$GITHUB_WORKSPACE/../zephyrproject" && west init -l zephyr)
       - name: qbuild sim, with a watchdog
+        timeout-minutes: 15
         run: |
           D="$RUNNER_TEMP/diag"; mkdir -p "$D"
           diag/watchdog.sh "$D/wd" 20 > "$D/watchdog.log" 2>&1 &
@@ -91,61 +50,106 @@ jobs:
           qb=$!
           while kill -0 $qb 2>/dev/null && [ $(( $(date +%s) - start )) -lt 480 ]; do sleep 5; done
           if kill -0 $qb 2>/dev/null; then
-            status=hung
-            /bin/ps -axo pid,ppid,pgid,stat,etime,utime,stime,command | /usr/bin/awk 'NR==1 || /cosmo cc/' | /usr/bin/grep -v awk > "$D/ps-at-timeout.txt"
-            /bin/sleep 60   # let the watchdog finish its captures
-            kill -9 $qb
+            status=hung; /bin/sleep 60; kill -9 $qb
           else
             wait $qb && status=ok || status="exit $?"
           fi
           touch "$D/wd/stop"
           echo "qbuild: $status after $(( $(date +%s) - start )) s"
           cat "$D/watchdog.log"
-          for f in "$D"/wd/capture-*/; do
-            [ -d "$f" ] || continue
-            echo "===== $f"; cat "$f/addr.txt"
-            /usr/bin/grep -A4 "top fault" "$f/ps.txt"; /usr/bin/grep -E "stop reason|far =|esr =" "$f/lldb-child.txt" | head -4
-            /usr/bin/grep -A3 "memory region" "$f/lldb-child.txt" | head -12; cat "$f/around.txt" | head -40
-            [ -f "$f/scan.txt" ] && /usr/bin/grep -v "depth=1" "$f/scan.txt" | head
-          done
-          tail -20 "$D/qbuild.log"
-          [ -f "$D/scan.log" ] && python3 -I diag/summarize-scan.py "$D/scan.log" | tail -20 && xz -T0 "$D/scan.log"
+          tail -5 "$D/qbuild.log"
+          python3 -I diag/summarize-scan.py "$D/scan.log" | grep -v NOTABLE
+          echo "re-execs: $(/usr/bin/grep -c 'RE-EXEC' "$D/scan.log")"; /usr/bin/grep 'RE-EXEC' "$D/scan.log" | sed 's/.*exe=//' | sort | uniq -c
+          xz -T0 "$D/scan.log"
           [ "$status" = ok ]
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: qbuild-${{ matrix.loader }}-${{ matrix.rep }}
+          name: qbuild-${{ matrix.policy }}-${{ matrix.rep }}
           path: ${{ runner.temp }}/diag
           retention-days: 5
 
-  # a minimal workload: 4 loops of CMake-style test links
-  stress:
-    name: stress links
+  # the converse: force the overlap and count hangs; plus the natural rate
+  links:
+    name: links ${{ matrix.mode }}
     runs-on: macos-26
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [forced, natural]
+    steps:
+      - uses: actions/checkout@v5
+        with: { persist-credentials: false }
+      - name: Install cosmocc and the scan loader
+        run: |
+          curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
+          D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"; mkdir -p "$D"
+          diag/make-scan-loader.sh "$T/ape-m1.c" "$D/ape-scan"
+          rm -f "$T/ape" "$HOME/.ape-1.10"
+          cp "$D/ape-scan" "$T/ape"; cp "$D/ape-scan" "$HOME/.ape-1.10"
+          echo "APE_SCAN_LOG=$D/scan.log" >> "$GITHUB_ENV"
+      - name: Links, with a watchdog
+        timeout-minutes: 30
+        run: |
+          D="$RUNNER_TEMP/diag"
+          diag/watchdog.sh "$D/wd" 15 > "$D/watchdog.log" 2>&1 &
+          . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
+          if [ ${{ matrix.mode }} = forced ]; then
+            diag/forced.sh "$D/f" 30 > "$D/links.log" 2>&1
+          else
+            diag/stress.sh "$D/s" 300 4 > "$D/links.log" 2>&1
+          fi
+          touch "$D/wd/stop"; /bin/sleep 6
+          /usr/bin/grep -vE "^loop [0-9]+ link" "$D/links.log" | tail -12; /usr/bin/grep -c HUNG "$D/links.log"
+          cat "$D/watchdog.log"
+          for f in "$D"/wd/capture-*/; do
+            [ -d "$f" ] || continue
+            echo "===== $f"; cat "$f/addr.txt"; /usr/bin/grep -E "stop reason" "$f/lldb-child.txt" | head -1
+            /usr/bin/grep -v depth=1 "$f/scan.txt" | head -6
+          done
+          python3 -I diag/summarize-scan.py "$D/scan.log" | grep -v NOTABLE
+          /usr/bin/grep -E "policy .*(ok after|GAVE)" "$D/scan.log" | awk '{print $6}' | sort -n | awk '{a[NR]=$1} END {if (NR) print "force re-execs: n=" NR " median=" a[int((NR+1)/2)] " max=" a[NR]}'
+          xz -T0 "$D/scan.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: links-${{ matrix.mode }}
+          path: ${{ runner.temp }}/diag
+          retention-days: 5
+
+  # does malloc ever map over what was put into its reservation; who makes
+  # the objc SyncData nodes that the fork child frees
+  facts:
+    name: facts ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26]
     steps:
       - uses: actions/checkout@v5
         with: { persist-credentials: false }
       - name: Install cosmocc
-        run: |
-          curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
-          head -1 "$RUNNER_TEMP/cosmo cc/BUILD_INFO"
-      - name: 4 x 400 links, with a watchdog
+        run: curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
+      - name: Reservation probe, 5 runs
         run: |
           D="$RUNNER_TEMP/diag"; mkdir -p "$D"
-          diag/watchdog.sh "$D/wd" 20 > "$D/watchdog.log" 2>&1 &
+          /usr/bin/cc -O1 -w -o "$D/resv" diag/resv.c
+          for i in 1 2 3 4 5; do "$D/resv" > "$D/resv-$i.txt" 2>&1; echo "exit $?" >> "$D/resv-$i.txt"; /usr/bin/grep -vE "^(before|after) " "$D/resv-$i.txt"; done
+          cat "$D/resv-1.txt" | head -60
+      - name: objc SyncData at fork
+        run: |
+          D="$RUNNER_TEMP/diag"; mkdir -p "$D/w"; T="$RUNNER_TEMP/cosmo cc/bin"
           . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
-          diag/stress.sh "$D/s" 400 4 | tee "$D/stress.log"
-          touch "$D/wd/stop"; /bin/sleep 6
-          cat "$D/watchdog.log"
-          for f in "$D"/wd/capture-*/; do
-            [ -d "$f" ] || continue
-            echo "===== $f"; cat "$f/addr.txt"; /usr/bin/grep -E "stop reason|far =|esr =" "$f/lldb-child.txt" | head -4
-            cat "$f/around.txt" | head -30
-          done
+          export PATH="$PATH:/usr/bin:/bin:/usr/sbin:/sbin"
+          cd "$D/w"; printf 'int main(void){return 0;}\n' > src.c; clang -c src.c -o src.c.obj
+          /usr/bin/lldb --batch -o "command script import $GITHUB_WORKSPACE/diag/objcsync.py" -o "objcsync $D/objcsync.txt" -- "$T/ape" "$T/clang" -fuse-ld=lld src.c.obj -o cmTC > "$D/objcsync.lldb" 2>&1
+          cut -c1-200 "$D/objcsync.txt" | head -60
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stress
+          name: facts-${{ matrix.os }}
           path: ${{ runner.temp }}/diag
           retention-days: 5

@@ -11,6 +11,15 @@
 #include <unistd.h>
 
 static int ApeScanFd = -2;
+static char **ApeScanArgv;
+extern char **environ;
+#include <mach-o/dyld.h>
+
+static void ApeScanArgs(int argc, char **argv, char **envp) {
+  (void)argc;
+  (void)envp;
+  ApeScanArgv = argv;
+}
 
 static int ApeScanOpen(void) {
   if (ApeScanFd == -2) {
@@ -26,10 +35,13 @@ static void ApeScanPut(const char *s, int n) {
 }
 
 /* walks regions intersecting [lo,hi); calls back with each */
+static int ApeScanLive, ApeScanMalloc; /* per walk: live regions, tag 1-13 */
+
 static int ApeScanWalk(unsigned long lo, unsigned long hi, const char *exe,
                        const char *why, int all) {
   char buf[512];
   int n, hits = 0;
+  ApeScanLive = ApeScanMalloc = 0;
   mach_vm_address_t a = lo;
   natural_t depth = 0;
   for (;;) {
@@ -50,6 +62,10 @@ static int ApeScanWalk(unsigned long lo, unsigned long hi, const char *exe,
       continue;
     }
     ++hits;
+    if (info.protection || info.user_tag)
+      ++ApeScanLive; /* anything but an inaccessible untagged reservation */
+    if (info.user_tag >= 1 && info.user_tag <= 13)
+      ++ApeScanMalloc;
     n = snprintf(buf, sizeof(buf),
                  "%s pid=%d %s [%llx-%llx) tag=%u prot=%d/%d share=%u "
                  "inh=%u depth=%u exe=%s\n",
@@ -77,4 +93,46 @@ static void ApeScan(unsigned long lo, unsigned long hi, const char *exe) {
                lo, hi, exe);
   ApeScanPut(buf, n);
   ApeScanWalk(lo, hi, exe, "seg", 0);
+  /* APE_SCAN_POLICY=avoid: re-exec while a live region would be replaced;
+     =force: re-exec until the first segment replaces a malloc region */
+  const char *pol = getenv("APE_SCAN_POLICY");
+  if (!pol)
+    return;
+  static int first = 1;
+  int isfirst = first;
+  first = 0;
+  int again = 0;
+  if (!strcmp(pol, "avoid") && ApeScanLive)
+    again = 1;
+  if (!strcmp(pol, "force") && isfirst && !ApeScanMalloc)
+    again = 1;
+  const char *t = getenv("APE_SCAN_TRIES");
+  int tries = t ? atoi(t) : 0;
+  if (!again) {
+    if (tries) {
+      n = snprintf(buf, sizeof(buf), "policy pid=%d %s ok after %d re-execs exe=%s\n",
+                   getpid(), pol, tries, exe);
+      ApeScanPut(buf, n);
+      unsetenv("APE_SCAN_TRIES");
+    }
+    if (!strcmp(pol, "force"))
+      unsetenv("APE_SCAN_POLICY"); /* one-shot: not for the programs it runs */
+    return;
+  }
+  if (tries >= 5000) {
+    n = snprintf(buf, sizeof(buf), "policy pid=%d %s GAVE UP exe=%s\n", getpid(), pol, exe);
+    ApeScanPut(buf, n);
+    return;
+  }
+  char self[4096], num[16];
+  uint32_t len = sizeof(self);
+  if (_NSGetExecutablePath(self, &len))
+    return;
+  snprintf(num, sizeof(num), "%d", tries + 1);
+  setenv("APE_SCAN_TRIES", num, 1);
+  if (!strcmp(pol, "avoid")) {
+    n = snprintf(buf, sizeof(buf), "policy pid=%d avoid RE-EXEC try %d exe=%s\n", getpid(), tries + 1, exe);
+    ApeScanPut(buf, n);
+  }
+  execve(self, ApeScanArgv, environ);
 }
