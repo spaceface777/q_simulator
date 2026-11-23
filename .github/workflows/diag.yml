@@ -7,31 +7,71 @@ permissions:
 env:
   COSMOCC_INSTALL: https://gitlab.tue.nl/20223853/cosmopolitan-distribution-builder-test/-/releases/permalink/latest/downloads/install.sh
 jobs:
-  # the fix's premise: a loader that never replaces live memory never hangs
+  # does a loader segment claim the program range at exec on each macOS
+  scan:
+    name: scan ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15, xcode-27]
+    steps:
+      - uses: actions/checkout@v5
+        with: { persist-credentials: false }
+      - name: Install cosmocc and the reservation loader
+        run: |
+          curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
+          D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"; mkdir -p "$D"
+          diag/make-resv-loader.sh "$T/ape-m1.c" "$D/ape-resv"
+          otool -l "$D/ape-resv" | grep -A3 "segname __APERESV"
+          rm -f "$T/ape" "$HOME/.ape-1.10"
+          cp "$D/ape-resv" "$T/ape"; cp "$D/ape-resv" "$HOME/.ape-1.10"
+          echo "APE_SCAN_LOG=$D/scan.log" >> "$GITHUB_ENV"
+      - name: 1000 launches, then 4 x 100 links
+        timeout-minutes: 20
+        run: |
+          D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"
+          for i in $(seq 1000); do APE_SCAN_ALL=1 "$T/ape" "$T/clang" --version > /dev/null || echo "launch $i failed"; done
+          /usr/bin/grep -E "^all .*tag=0 prot=3/3 share=3" "$D/scan.log" | python3 -I diag/slide.py
+          /usr/bin/grep -E "^all .*tag=2 " "$D/scan.log" | /usr/bin/awk '{print $4}' | sort | sed -n '1p;$p'
+          /usr/bin/grep -E "^all .*/usr/lib/dyld|^all .*tag=0 prot=0/0 share=1 inh=1 depth=1" "$D/scan.log" | head -2
+          diag/watchdog.sh "$D/wd" 15 > "$D/watchdog.log" 2>&1 &
+          . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
+          diag/stress.sh "$D/s" 100 4 > "$D/links.log" 2>&1
+          touch "$D/wd/stop"; /bin/sleep 6
+          /usr/bin/grep -E "^loop [0-9]+:|stress:" "$D/links.log"; cat "$D/watchdog.log"
+          python3 -I diag/summarize-scan.py "$D/scan.log" | /usr/bin/grep -v NOTABLE || true
+          echo "replaced regions other than the loader's reservation: $(/usr/bin/grep CLOBBER "$D/scan.log" | /usr/bin/grep -vc 'tag=0 prot=3/3 share=3')"
+          /usr/bin/grep CLOBBER "$D/scan.log" | /usr/bin/grep -v 'tag=0 prot=3/3 share=3' | head -5 || true
+          xz -T0 "$D/scan.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scan-${{ matrix.os }}
+          path: ${{ runner.temp }}/diag
+          retention-days: 5
+
   qbuild:
-    name: qbuild ${{ matrix.policy }} ${{ matrix.rep }}
+    name: qbuild resv ${{ matrix.rep }}
     runs-on: macos-26
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        policy: [avoid]
-        rep: [1, 2, 3]
+        rep: [1, 2]
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true, persist-credentials: false }
-      - name: Install cosmocc
+      - name: Install cosmocc and the reservation loader
         run: |
           curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
-          head -1 "$RUNNER_TEMP/cosmo cc/BUILD_INFO"
-      - name: Scan loader
-        run: |
           D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"; mkdir -p "$D"
-          diag/make-scan-loader.sh "$T/ape-m1.c" "$D/ape-scan"
+          diag/make-resv-loader.sh "$T/ape-m1.c" "$D/ape-resv"
+          otool -l "$D/ape-resv" | grep -A3 "segname __APERESV"
           rm -f "$T/ape" "$HOME/.ape-1.10"
-          cp "$D/ape-scan" "$T/ape"; cp "$D/ape-scan" "$HOME/.ape-1.10"
+          cp "$D/ape-resv" "$T/ape"; cp "$D/ape-resv" "$HOME/.ape-1.10"
           echo "APE_SCAN_LOG=$D/scan.log" >> "$GITHUB_ENV"
-          echo "APE_SCAN_POLICY=${{ matrix.policy }}" >> "$GITHUB_ENV"
       - name: Zephyr
         run: |
           . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
@@ -40,116 +80,60 @@ jobs:
       - name: qbuild sim, with a watchdog
         timeout-minutes: 15
         run: |
-          D="$RUNNER_TEMP/diag"; mkdir -p "$D"
+          D="$RUNNER_TEMP/diag"
           diag/watchdog.sh "$D/wd" 20 > "$D/watchdog.log" 2>&1 &
           export ZEPHYR_BASE="$GITHUB_WORKSPACE/../zephyrproject/zephyr"
-          . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
-          cd test/applets
           start=$(date +%s)
-          python q_sdk/qbuild sim --toolchain cosmocc > "$D/qbuild.log" 2>&1 &
+          (. "$RUNNER_TEMP/cosmo cc/activate" --path=replace; cd test/applets; exec python q_sdk/qbuild sim --toolchain cosmocc) > "$D/qbuild.log" 2>&1 &
           qb=$!
           while kill -0 $qb 2>/dev/null && [ $(( $(date +%s) - start )) -lt 480 ]; do sleep 5; done
-          if kill -0 $qb 2>/dev/null; then
-            status=hung; /bin/sleep 60; kill -9 $qb
-          else
-            wait $qb && status=ok || status="exit $?"
-          fi
+          if kill -0 $qb 2>/dev/null; then status=hung; /bin/sleep 60; kill -9 $qb; else wait $qb && status=ok || status="exit $?"; fi
           touch "$D/wd/stop"
           echo "qbuild: $status after $(( $(date +%s) - start )) s"
-          cat "$D/watchdog.log"
-          tail -5 "$D/qbuild.log"
-          python3 -I diag/summarize-scan.py "$D/scan.log" | grep -v NOTABLE
-          echo "re-execs: $(/usr/bin/grep -c 'RE-EXEC' "$D/scan.log")"; /usr/bin/grep 'RE-EXEC' "$D/scan.log" | sed 's/.*exe=//' | sort | uniq -c
+          cat "$D/watchdog.log"; tail -3 "$D/qbuild.log"
+          python3 -I diag/summarize-scan.py "$D/scan.log" | /usr/bin/grep -v NOTABLE || true
+          echo "replaced regions other than the loader's reservation: $(/usr/bin/grep CLOBBER "$D/scan.log" | /usr/bin/grep -vc 'tag=0 prot=3/3 share=3')"
+          /usr/bin/grep CLOBBER "$D/scan.log" | /usr/bin/grep -v 'tag=0 prot=3/3 share=3' | head -5 || true
           xz -T0 "$D/scan.log"
           [ "$status" = ok ]
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: qbuild-${{ matrix.policy }}-${{ matrix.rep }}
+          name: qbuild-resv-${{ matrix.rep }}
           path: ${{ runner.temp }}/diag
           retention-days: 5
 
-  # the converse: force the overlap and count hangs; plus the natural rate
   links:
-    name: links ${{ matrix.mode }}
+    name: links resv 4 x 300
     runs-on: macos-26
     timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [forced, natural]
     steps:
       - uses: actions/checkout@v5
         with: { persist-credentials: false }
-      - name: Install cosmocc and the scan loader
+      - name: Install cosmocc and the reservation loader
         run: |
           curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
           D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"; mkdir -p "$D"
-          diag/make-scan-loader.sh "$T/ape-m1.c" "$D/ape-scan"
+          diag/make-resv-loader.sh "$T/ape-m1.c" "$D/ape-resv"
+          otool -l "$D/ape-resv" | grep -A3 "segname __APERESV"
           rm -f "$T/ape" "$HOME/.ape-1.10"
-          cp "$D/ape-scan" "$T/ape"; cp "$D/ape-scan" "$HOME/.ape-1.10"
+          cp "$D/ape-resv" "$T/ape"; cp "$D/ape-resv" "$HOME/.ape-1.10"
           echo "APE_SCAN_LOG=$D/scan.log" >> "$GITHUB_ENV"
       - name: Links, with a watchdog
         timeout-minutes: 30
         run: |
           D="$RUNNER_TEMP/diag"
           diag/watchdog.sh "$D/wd" 15 > "$D/watchdog.log" 2>&1 &
-          . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
-          if [ ${{ matrix.mode }} = forced ]; then
-            diag/forced.sh "$D/f" 30 > "$D/links.log" 2>&1
-          else
-            diag/stress.sh "$D/s" 300 4 > "$D/links.log" 2>&1
-          fi
+          (. "$RUNNER_TEMP/cosmo cc/activate" --path=replace; diag/stress.sh "$D/s" 300 4) > "$D/links.log" 2>&1
           touch "$D/wd/stop"; /bin/sleep 6
-          /usr/bin/grep -vE "^loop [0-9]+ link" "$D/links.log" | tail -12; /usr/bin/grep -c HUNG "$D/links.log"
-          cat "$D/watchdog.log"
-          for f in "$D"/wd/capture-*/; do
-            [ -d "$f" ] || continue
-            echo "===== $f"; cat "$f/addr.txt"; /usr/bin/grep -E "stop reason" "$f/lldb-child.txt" | head -1
-            /usr/bin/grep -v depth=1 "$f/scan.txt" | head -6
-          done
-          python3 -I diag/summarize-scan.py "$D/scan.log" | grep -v NOTABLE
-          /usr/bin/grep -E "policy .*(ok after|GAVE)" "$D/scan.log" | awk '{print $6}' | sort -n | awk '{a[NR]=$1} END {if (NR) print "force re-execs: n=" NR " median=" a[int((NR+1)/2)] " max=" a[NR]}'
+          /usr/bin/grep -E "^loop [0-9]+:|stress:" "$D/links.log"; echo "HUNG: $(/usr/bin/grep -c HUNG "$D/links.log")"; cat "$D/watchdog.log"
+          python3 -I diag/summarize-scan.py "$D/scan.log" | /usr/bin/grep -v NOTABLE || true
+          echo "replaced regions other than the loader's reservation: $(/usr/bin/grep CLOBBER "$D/scan.log" | /usr/bin/grep -vc 'tag=0 prot=3/3 share=3')"
+          /usr/bin/grep CLOBBER "$D/scan.log" | /usr/bin/grep -v 'tag=0 prot=3/3 share=3' | head -5 || true
           xz -T0 "$D/scan.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: links-${{ matrix.mode }}
-          path: ${{ runner.temp }}/diag
-          retention-days: 5
-
-  # does malloc ever map over what was put into its reservation; who makes
-  # the objc SyncData nodes that the fork child frees
-  facts:
-    name: facts ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-26]
-    steps:
-      - uses: actions/checkout@v5
-        with: { persist-credentials: false }
-      - name: Install cosmocc
-        run: curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
-      - name: Reservation probe, 5 runs
-        run: |
-          D="$RUNNER_TEMP/diag"; mkdir -p "$D"
-          /usr/bin/cc -O1 -w -o "$D/resv" diag/resv.c
-          for i in 1 2 3 4 5; do "$D/resv" > "$D/resv-$i.txt" 2>&1; echo "exit $?" >> "$D/resv-$i.txt"; /usr/bin/grep -vE "^(before|after) " "$D/resv-$i.txt"; done
-          cat "$D/resv-1.txt" | head -60
-      - name: objc SyncData at fork
-        run: |
-          D="$RUNNER_TEMP/diag"; mkdir -p "$D/w"; T="$RUNNER_TEMP/cosmo cc/bin"
-          . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
-          export PATH="$PATH:/usr/bin:/bin:/usr/sbin:/sbin"
-          cd "$D/w"; printf 'int main(void){return 0;}\n' > src.c; clang -c src.c -o src.c.obj
-          /usr/bin/lldb --batch -o "command script import $GITHUB_WORKSPACE/diag/objcsync.py" -o "objcsync $D/objcsync.txt" -- "$T/ape" "$T/clang" -fuse-ld=lld src.c.obj -o cmTC > "$D/objcsync.lldb" 2>&1
-          cut -c1-200 "$D/objcsync.txt" | head -60
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: facts-${{ matrix.os }}
+          name: links-resv
           path: ${{ runner.temp }}/diag
           retention-days: 5
