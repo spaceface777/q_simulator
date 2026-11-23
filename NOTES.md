@@ -436,3 +436,12 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   0 where the system passes no auxiliary vector (XNU x86-64, Windows), so LLVM's MemoryBuffer
   mapped page-sized headers and read one byte past them. Fixed in cosmocc-build aaadfba
   (patches/cosmopolitan/0049). Nothing to change here.
+- Rehearsed the macos-15-intel job locally under Rosetta (`arch -x86_64 /bin/bash`; uname -m
+  says x86_64, so install.sh installs the amd64 package of 126). To emulate the fix, the
+  pad script (../tmp/rosetta-ci-scripts) appended a newline to every text file of 16 KiB or more
+  whose size is a multiple of 4096: one in the bundle (`__chrono/formatter.h`), one in Zephyr. The
+  CI's bash steps then pass: west init, configure, build (simulator, applets, worlds),
+  format-check, and ctest 47/47 (world.gui skipped, no SDL3, as on the runner). Two differences
+  from the runner: Zephyr was cloned with the Mac's git, as cosmo programs can't start threads
+  under Rosetta (cosmocc-build patch 0030); and the global git config was off, as on a runner.
+  So nothing past the page size is expected to break on Intel macOS. Windows is not rehearsed.
