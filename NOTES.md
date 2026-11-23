@@ -428,3 +428,11 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   install.ps1 from GitLab's permalink (`.../-/releases/permalink/latest/downloads/`), which then
   download that release. Users install the latest release too, so a toolchain change that breaks
   the simulator shows up in its next CI run. The older mirror releases on GitHub stay, unused.
+
+## Run 45089940928 on release 126: clang crashes on Intel macOS and Windows
+
+- Python works now. clang itself segfaulted on `<chrono>` on Intel macOS and on all four
+  Windows runners; Linux and Apple silicon passed. Cause: cosmo's `getauxval(AT_PAGESZ)` returned
+  0 where the system passes no auxiliary vector (XNU x86-64, Windows), so LLVM's MemoryBuffer
+  mapped page-sized headers and read one byte past them. Fixed in cosmocc-build aaadfba
+  (patches/cosmopolitan/0049). Nothing to change here.
