@@ -445,3 +445,20 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   from the runner: Zephyr was cloned with the Mac's git, as cosmo programs can't start threads
   under Rosetta (cosmocc-build patch 0030); and the global git config was off, as on a runner.
   So nothing past the page size is expected to break on Intel macOS. Windows is not rehearsed.
+
+## Run 45099863369 on release 128
+
+- Linux, Apple silicon and now both Intel macOS jobs pass: clang no longer crashes (cosmocc-build
+  0049).
+- All four Windows jobs: every firmware configure stops at upstream Zephyr's arch/posix check,
+  `if(NOT CMAKE_HOST_UNIX OR CMAKE_HOST_APPLE)` "only works on Linux". The bundle's CMake sets
+  CMAKE_HOST_WIN32 on Windows (cmStateSnapshot: from the runtime system name); on macOS it sets
+  CMAKE_HOST_UNIX and never CMAKE_HOST_APPLE (a compile-time `__APPLE__` check), which is why
+  macOS passed. The user chose a q_sdk line over a CMake patch or an upstream change:
+  quercus_configure_application() sets CMAKE_HOST_UNIX for native_sim on a Windows host, before
+  find_package(Zephyr).
+- windows-2022 (cmd) also failed VirtualClockTest.DynamicSpeedChanges: after
+  `sleep_for(30ms)` only 22 ms of steady_clock had passed. Cosmo's Windows clock_nanosleep waits
+  for an absolute waitable timer on the wall clock and never checks the requested clock again.
+  Fixed in cosmocc-build (patches/cosmopolitan/0050: wait again until the requested clock reaches
+  the deadline).
