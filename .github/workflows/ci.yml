@@ -1,6 +1,6 @@
 name: Simulator CI
 
-# cosmocc: every runner image installs the cosmocc bundle with its own installer and puts only the
+# cosmocc: every runner image installs the latest cosmocc release with its own installer and puts only the
 # bundle on PATH. The bundle's git, west, CMake, Ninja, Python and clang then fetch upstream Zephyr,
 # build the simulator, the test applets and their worlds, and run the whole ctest suite, from bash,
 # cmd or PowerShell. The bundle and the build are in directories with spaces in their names.
@@ -21,9 +21,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The cosmocc release, mirrored from its GitLab project: the installers take it from here.
-  COSMOCC_URL: https://github.com/spaceface777/q_simulator/releases/download
-  COSMOCC_VERSION: 2026.11.22-124
+  # The latest cosmocc release, which users install too, with its own installer.
+  COSMOCC_RELEASE: https://gitlab.tue.nl/20223853/cosmopolitan-distribution-builder-test/-/releases/permalink/latest/downloads
   ZEPHYR: v4.5.0
   PYTHONUNBUFFERED: '1'
 
@@ -84,12 +83,12 @@ jobs:
           for handler in /proc/sys/fs/binfmt_misc/*; do
             if grep -qs '^magic 4d5a' "$handler"; then echo 0 | sudo tee "$handler" > /dev/null; fi
           done
-          curl -fsSL "$COSMOCC_URL/$COSMOCC_VERSION/install.sh" | sh -s -- --version "$COSMOCC_VERSION" --dir "$COSMOCC_DIR"
+          curl -fsSL "$COSMOCC_RELEASE/install.sh" | sh -s -- --dir "$COSMOCC_DIR"
 
       - name: Install cosmocc
         if: runner.os == 'Windows'
         shell: pwsh
-        run: irm "$env:COSMOCC_URL/$env:COSMOCC_VERSION/install.ps1" | iex
+        run: irm "$env:COSMOCC_RELEASE/install.ps1" | iex
 
       - name: Select the SDL3 platform
         run: |

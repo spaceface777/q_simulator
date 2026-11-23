@@ -421,3 +421,10 @@ MiniPC: N100, 4 jobs, the tree as is (x86-64).
   0xC0000005; Intel macOS: segfault in mi_heap_main_init) and under Rosetta. Fixed in
   cosmocc-build dbddddc (0006 lowers the intrinsic through __get_tls_<reg> too), tested with a
   local LLVM build. Needs a new release; nothing to change here.
+
+## CI tracks the latest release (user, 2026-11-23)
+
+- No GitHub mirror and no pinned version: the cosmocc jobs run the latest release's install.sh /
+  install.ps1 from GitLab's permalink (`.../-/releases/permalink/latest/downloads/`), which then
+  download that release. Users install the latest release too, so a toolchain change that breaks
+  the simulator shows up in its next CI run. The older mirror releases on GitHub stay, unused.
