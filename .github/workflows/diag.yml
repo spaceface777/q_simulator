@@ -41,6 +41,7 @@ jobs:
           gh run download ${id%% *} -R jart/cosmopolitan -n cosmocc -D .
           ls | head; [ -x bin/cosmocc ] || { f=$(ls *.zip 2>/dev/null | head -1); [ -n "$f" ] && unzip -q "$f"; }
           find . -type f \( -path './bin/*' -o -path './libexec/*' -o -path '*-linux-cosmo/bin/*' \) -exec chmod +x {} +
+          "$GITHUB_WORKSPACE/diag/relink-artifact.sh" . | wc -l
           bin/cosmocc -O -o "$D/forkhang-nightly" "$GITHUB_WORKSPACE/diag/forkhang.c"
           ls -la "$D/forkhang-nightly"
       - name: Run it
