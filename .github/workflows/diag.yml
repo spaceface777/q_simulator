@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tc: [4.0.2, nightly]
+        tc: [nightly]
     steps:
       - uses: actions/checkout@v5
         with: { persist-credentials: false }
@@ -40,7 +40,7 @@ jobs:
           echo "nightly run/commit: $id"
           gh run download ${id%% *} -R jart/cosmopolitan -n cosmocc -D .
           ls | head; [ -x bin/cosmocc ] || { f=$(ls *.zip 2>/dev/null | head -1); [ -n "$f" ] && unzip -q "$f"; }
-          chmod +x bin/* 2>/dev/null || true
+          find . -type f \( -path './bin/*' -o -path './libexec/*' -o -path '*-linux-cosmo/bin/*' \) -exec chmod +x {} +
           bin/cosmocc -O -o "$D/forkhang-nightly" "$GITHUB_WORKSPACE/diag/forkhang.c"
           ls -la "$D/forkhang-nightly"
       - name: Run it
@@ -51,7 +51,7 @@ jobs:
           export APE_RETRY_LOG="$D/retries.log"
           # the program's own prologue extracts and compiles the loader it embeds
           rm -f "${TMPDIR:-$HOME}/.ape-1.10" "$HOME/.ape-1.10"; command -v ape || true
-          "$GITHUB_WORKSPACE/diag/repro.sh" 300 "$P"
+          "$GITHUB_WORKSPACE/diag/repro.sh" 600 "$P"
           ls -la "${TMPDIR:-$HOME}/.ape-1.10"
           [ "${{ matrix.tc }}" = 4.0.2 ] && "$GITHUB_WORKSPACE/diag/repro.sh" 300 "$P" "$D/ape-master"
           "$GITHUB_WORKSPACE/diag/repro.sh" 300 "$P" "$D/ape-fixA"
@@ -63,137 +63,5 @@ jobs:
         if: always()
         with:
           name: repro26-${{ matrix.tc }}
-          path: ${{ runner.temp }}/diag
-          retention-days: 5
-
-  # the other arm64 macOS versions: the reproducer, fix A, and on 14 the facts
-  others:
-    name: others ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-14, macos-15, xcode-27]
-    steps:
-      - uses: actions/checkout@v5
-        with: { persist-credentials: false }
-      - name: Build the reproducer with upstream cosmocc 4.0.2
-        run: |
-          D="$RUNNER_TEMP/diag"; mkdir -p "$D/u402"; cd "$D/u402"
-          curl -fsSLo cosmocc.zip https://github.com/jart/cosmopolitan/releases/download/4.0.2/cosmocc-4.0.2.zip
-          echo "85b8c37a406d862e656ad4ec14be9f6ce474c1b436b9615e91a55208aced3f44  cosmocc.zip" | shasum -a 256 -c
-          unzip -q cosmocc.zip && rm cosmocc.zip
-          bin/cosmocc -O -o "$D/forkhang-402" "$GITHUB_WORKSPACE/diag/forkhang.c"
-          ls -la "$D/forkhang-402"
-          /usr/bin/cc -w -O -o "$D/ape-fixA" "$GITHUB_WORKSPACE/diag/ape-m1-fixA-log.c"
-          curl -fsSLo "$D/ape-m1-master.c" https://raw.githubusercontent.com/jart/cosmopolitan/6d26dd25c/ape/ape-m1.c
-          /usr/bin/cc -w -O -o "$D/ape-master" "$D/ape-m1-master.c"
-      - name: Reproducer, stock and fix A
-        timeout-minutes: 20
-        run: |
-          D="$RUNNER_TEMP/diag"; cd "$D"; export APE_RETRY_LOG="$D/retries.log"
-          sw_vers | tr '\n' ' '; echo
-          "$GITHUB_WORKSPACE/diag/repro.sh" 200 "$D/forkhang-402"
-          "$GITHUB_WORKSPACE/diag/repro.sh" 100 "$D/forkhang-402" "$D/ape-fixA"
-          echo "fix A re-runs: $(wc -l < "$D/retries.log" 2>/dev/null || echo 0)"
-          rm -rf "$D/u402" "$D"/forkhang-*
-      - name: Install cosmocc (ours)
-        run: curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
-      - name: Facts (macOS 14)
-        if: matrix.os == 'macos-14'
-        timeout-minutes: 15
-        run: |
-          D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"
-          diag/segprobe2.sh "$D/seg2" 2>&1 | tee "$D/segprobe2.txt" | cut -d';' -f1
-          diag/make-scan-loader.sh "$T/ape-m1.c" "$D/ape-scan"
-          for i in $(seq 1000); do APE_SCAN_LOG="$D/scan.log" APE_SCAN_ALL=1 "$D/ape-scan" "$T/clang" --version > /dev/null; done
-          python3 -I diag/summarize-scan.py "$D/scan.log" | grep -v NOTABLE || true
-          (. "$RUNNER_TEMP/cosmo cc/activate" --path=replace; export PATH="$PATH:/usr/bin:/bin:/usr/sbin:/sbin"; diag/osinfo.sh "$D/osinfo") > /dev/null 2>&1
-          cat "$D/osinfo/os.txt" "$D/osinfo/blockedfault.txt"; grep -E "^tsd|fork\(\)" "$D/osinfo/forktrace.calls" || true
-          xz -T0 "$D/scan.log"
-      - name: Links with fix A's loader, with a watchdog
-        timeout-minutes: 15
-        run: |
-          D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"
-          rm -f "$T/ape" "$HOME/.ape-1.10"; cp "$D/ape-fixA" "$T/ape"; cp "$D/ape-fixA" "$HOME/.ape-1.10"
-          export APE_RETRY_LOG="$D/retries-links.log"
-          diag/watchdog.sh "$D/wd" 15 > "$D/watchdog.log" 2>&1 &
-          (. "$RUNNER_TEMP/cosmo cc/activate" --path=replace; diag/stress.sh "$D/s" 100 4) > "$D/links.log" 2>&1
-          touch "$D/wd/stop"; /bin/sleep 6
-          grep -E "^loop [0-9]+:|stress:" "$D/links.log"; cat "$D/watchdog.log"
-          echo "fix A re-runs during links: $(wc -l < "$D/retries-links.log" 2>/dev/null || echo 0)"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: others-${{ matrix.os }}
-          path: ${{ runner.temp }}/diag
-          retention-days: 5
-
-  # fix A on macOS 26 with the real workload: hangs, re-runs, timing
-  qbuild:
-    name: qbuild fixA ${{ matrix.rep }}
-    runs-on: macos-26
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        rep: [1, 2]
-    steps:
-      - uses: actions/checkout@v5
-        with: { submodules: true, persist-credentials: false }
-      - name: Install cosmocc (ours) and fix A's loader
-        run: |
-          curl -fsSL "$COSMOCC_INSTALL" | sh -s -- --dir "$RUNNER_TEMP/cosmo cc"
-          D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"; mkdir -p "$D"
-          cp "$T/ape" "$D/ape-stock"
-          /usr/bin/cc -w -O -o "$D/ape-fixA" diag/ape-m1-fixA-log.c
-          rm -f "$T/ape" "$HOME/.ape-1.10"
-          cp "$D/ape-fixA" "$T/ape"; cp "$D/ape-fixA" "$HOME/.ape-1.10"
-          echo "APE_RETRY_LOG=$D/retries.log" >> "$GITHUB_ENV"
-      - name: Launch timing, stock vs fix A (5 rounds of 100, alternating)
-        run: |
-          D="$RUNNER_TEMP/diag"; T="$RUNNER_TEMP/cosmo cc/bin"
-          for r in 1 2 3 4 5; do for l in stock fixA; do
-            s=$(python3 -c 'import time; print(time.time())')
-            for i in $(seq 100); do APE_RETRY_LOG="$D/retries-$l-timing.log" "$D/ape-$l" "$T/clang" --version > /dev/null; done
-            e=$(python3 -c 'import time; print(time.time())')
-            python3 -c "print('round $r $l: %.2f ms per clang --version' % (($e - $s) * 10))"
-          done; done
-          echo "fix A re-runs in 500 timing launches: $(wc -l < "$D/retries-fixA-timing.log" 2>/dev/null || echo 0)"
-      - name: Zephyr
-        run: |
-          . "$RUNNER_TEMP/cosmo cc/activate" --path=replace
-          git clone -q --depth 1 --branch v4.5.0 https://github.com/zephyrproject-rtos/zephyr "$GITHUB_WORKSPACE/../zephyrproject/zephyr"
-          (cd "$GITHUB_WORKSPACE/../zephyrproject" && west init -l zephyr)
-      - name: qbuild sim, with a watchdog
-        timeout-minutes: 15
-        run: |
-          D="$RUNNER_TEMP/diag"
-          diag/watchdog.sh "$D/wd" 20 > "$D/watchdog.log" 2>&1 &
-          export ZEPHYR_BASE="$GITHUB_WORKSPACE/../zephyrproject/zephyr"
-          start=$(date +%s)
-          (. "$RUNNER_TEMP/cosmo cc/activate" --path=replace; cd test/applets; exec python q_sdk/qbuild sim --toolchain cosmocc) > "$D/qbuild.log" 2>&1 &
-          qb=$!
-          while kill -0 $qb 2>/dev/null && [ $(( $(date +%s) - start )) -lt 480 ]; do sleep 5; done
-          if kill -0 $qb 2>/dev/null; then status=hung; /bin/sleep 60; kill -9 $qb; else wait $qb && status=ok || status="exit $?"; fi
-          touch "$D/wd/stop"
-          echo "qbuild: $status after $(( $(date +%s) - start )) s"
-          cat "$D/watchdog.log"; tail -3 "$D/qbuild.log"
-          echo "fix A re-runs during qbuild: $(wc -l < "$D/retries.log" 2>/dev/null || echo 0)"
-          [ "$status" = ok ]
-      - name: Links, 4 x 300, with a watchdog
-        timeout-minutes: 15
-        run: |
-          D="$RUNNER_TEMP/diag"; export APE_RETRY_LOG="$D/retries-links.log"
-          diag/watchdog.sh "$D/wd2" 15 > "$D/watchdog2.log" 2>&1 &
-          (. "$RUNNER_TEMP/cosmo cc/activate" --path=replace; diag/stress.sh "$D/s" 300 4) > "$D/links.log" 2>&1
-          touch "$D/wd2/stop"; /bin/sleep 6
-          grep -E "^loop [0-9]+:|stress:" "$D/links.log"; echo "HUNG: $(grep -c HUNG "$D/links.log")"; cat "$D/watchdog2.log"
-          echo "fix A re-runs during links: $(wc -l < "$D/retries-links.log" 2>/dev/null || echo 0)"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: qbuild-fixA-${{ matrix.rep }}
           path: ${{ runner.temp }}/diag
           retention-days: 5
