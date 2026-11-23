@@ -42,7 +42,10 @@ jobs:
           xz -T0 "$D/scan.log"
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: osinfo-${{ matrix.os }}, path: "${{ runner.temp }}/diag", retention-days: 5 }
+        with:
+          name: osinfo-${{ matrix.os }}
+          path: ${{ runner.temp }}/diag
+          retention-days: 5
 
   # the real workload with a watchdog that captures a spinning fork child
   qbuild:
@@ -110,7 +113,10 @@ jobs:
           [ "$status" = ok ]
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: qbuild-${{ matrix.loader }}-${{ matrix.rep }}, path: "${{ runner.temp }}/diag", retention-days: 5 }
+        with:
+          name: qbuild-${{ matrix.loader }}-${{ matrix.rep }}
+          path: ${{ runner.temp }}/diag
+          retention-days: 5
 
   # a minimal workload: 4 loops of CMake-style test links
   stress:
@@ -139,4 +145,7 @@ jobs:
           done
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: stress, path: "${{ runner.temp }}/diag", retention-days: 5 }
+        with:
+          name: stress
+          path: ${{ runner.temp }}/diag
+          retention-days: 5
